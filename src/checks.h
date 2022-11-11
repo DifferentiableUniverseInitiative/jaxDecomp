@@ -1,3 +1,7 @@
+#ifndef _JAX_DECOMP_CHECKS_H_
+#define _JAX_DECOMP_CHECKS_H_
+
+
 #include <cstdio>
 using namespace std;
 
@@ -10,3 +14,7 @@ using namespace std;
       throw exception();                                               \
     }                                                                                                                  \
   } while (false)
+
+
+
+#endif
