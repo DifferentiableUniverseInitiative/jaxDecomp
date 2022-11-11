@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.4...3.18)
+project(cmake_example)
+
+find_package(pybind11 CONFIG REQUIRED)
+find_package(MPI REQUIRED)
+
+enable_language(CUDA)
+message("$ENV{CPATH}")
+include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+include_directories("$ENV{CPATH}")
+include_directories(${CMAKE_CURRENT_LIST_DIR}/src)
+include_directories("third_party/cuDecomp/build/include")
+link_directories("third_party/cuDecomp/build/lib")
+message(${MPI_CXX_LIBRARIES})
+pybind11_add_module(python_example src/main.cc)
+target_link_libraries(python_example PUBLIC MPI::MPI_CXX "-lcudecomp -lopen-pal -lopen-rte" )
