@@ -10,10 +10,6 @@ namespace jaxdecomp {
 
     // Custom data types
     struct decompDescriptor_t {
-        // pdim parameters
-        std::int64_t p_rows;
-        std::int64_t p_cols;
-
         // gdim parameters
         std::int64_t nx;
         std::int64_t ny;
@@ -47,8 +43,8 @@ namespace jaxdecomp {
         cudecompGridDescConfig_t config;
         CHECK_CUDECOMP_EXIT(cudecompGridDescConfigSetDefaults(&config));
 
-        config.pdims[0] = desc.p_cols; // P_rows
-        config.pdims[1] = desc.p_rows; // P_cols
+        config.pdims[0] = 1;//desc.p_cols; // P_rows
+        config.pdims[1] = 1;//desc.p_rows; // P_cols
 
         config.gdims[0] = desc.nx; // X
         config.gdims[1] = desc.ny; // Y
@@ -107,4 +103,10 @@ PYBIND11_MODULE(_jaxdecomp, m) {
          R"pbdoc(
         Runs a transpose operation
     )pbdoc");
+
+    m.def("build_decomp_descriptor", 
+    []( std::int64_t nx,
+        std::int64_t ny,
+        std::int64_t nz        
+    ) { return PackDescriptor(jaxdecomp::decompDescriptor_t{nx, ny, nz}); }); 
 }
