@@ -43,7 +43,7 @@ namespace jaxdecomp {
         cudecompGridDescConfig_t config;
         CHECK_CUDECOMP_EXIT(cudecompGridDescConfigSetDefaults(&config));
 
-        config.pdims[0] = 1;//desc.p_cols; // P_rows
+        config.pdims[0] = 2;//desc.p_cols; // P_rows
         config.pdims[1] = 1;//desc.p_rows; // P_cols
 
         config.gdims[0] = desc.nx; // X
@@ -85,7 +85,7 @@ namespace jaxdecomp {
     // Utility to export ops to XLA
     pybind11::dict Registrations() {
         pybind11::dict dict;
-        dict["transposeXtoY"] = EncapsulateFunction(transposeXtoY);
+        dict["transpose_x_y"] = EncapsulateFunction(transposeXtoY);
         return dict;
     }
 }
