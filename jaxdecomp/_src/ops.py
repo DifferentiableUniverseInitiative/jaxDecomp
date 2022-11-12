@@ -21,9 +21,9 @@ def transposeXtoY_lowering(ctx, x, nx, ny, nz):
     dtype = ir.RankedTensorType(x.type)
     dims = dtype.shape
     layout = tuple(range(len(dims) - 1, -1, -1))
-    descriptor = _jaxdecomp.build_decomp_descriptor(8, 
-                                                    8, 
-                                                    8)
+    descriptor = _jaxdecomp.build_decomp_descriptor(4, 
+                                                    4, 
+                                                    4)
 
     return [custom_call(
         b'transpose_x_y',
@@ -32,8 +32,7 @@ def transposeXtoY_lowering(ctx, x, nx, ny, nz):
       backend_config=descriptor,
       operand_layouts=[layout],
       result_layouts=[layout],
-      has_side_effect=True,
-      operand_output_aliases={0:0})]
+      has_side_effect=True)]
 
 transposeXtoY_p = Primitive("transposeXtoY")
 transposeXtoY_p.def_impl(partial(xla.apply_primitive, transposeXtoY_p))

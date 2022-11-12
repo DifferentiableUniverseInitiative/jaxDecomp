@@ -13,14 +13,14 @@ print(rank, "Setup", jax.devices())
 jaxdecomp.init()
 print(rank, "Initialized")
 
-arr = jnp.zeros([4,8,8])+rank
+arr = jnp.zeros([2,4,4])+rank
 
 print(rank, arr)
 if rank == 0:
     print('--------------------------')
 time.sleep(1)
 
-arrt = jaxdecomp.transposeXtoY(arr, global_shape=[8,8,8])
+arrt = jaxdecomp.transposeXtoY(arr, global_shape=[2,4,4])
 
 print(rank, arrt)
 

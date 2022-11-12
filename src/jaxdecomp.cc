@@ -36,6 +36,7 @@ namespace jaxdecomp {
                        const char* opaque, size_t opaque_len){
 
         void* data_d = buffers[0];
+        void* data_out = buffers[1];
         
         const decompDescriptor_t &desc = *UnpackDescriptor<decompDescriptor_t>(opaque, opaque_len);
         
@@ -51,7 +52,7 @@ namespace jaxdecomp {
         config.gdims[2] = desc.nz; // Z
 
         // Setting default communication backend
-        config.transpose_comm_backend = CUDECOMP_TRANSPOSE_COMM_MPI_P2P;
+        config.transpose_comm_backend = CUDECOMP_TRANSPOSE_COMM_NCCL;
         config.halo_comm_backend = CUDECOMP_HALO_COMM_MPI;
 
         config.transpose_axis_contiguous[0] = true;
@@ -73,9 +74,8 @@ namespace jaxdecomp {
         CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_desc, reinterpret_cast<void**>(&transpose_work_d),
                                             transpose_work_num_elements * dtype_size));
 
-        // Transpose from Y-pencils to Z-pencils.
         CHECK_CUDECOMP_EXIT(
-            cudecompTransposeYToZ(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT, nullptr, nullptr, 0));
+            cudecompTransposeXToY(handle, grid_desc, data_d, data_out, transpose_work_d, CUDECOMP_FLOAT, nullptr, nullptr, 0));
 
         CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc, transpose_work_d));
 
