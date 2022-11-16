@@ -10,20 +10,22 @@ import jaxdecomp
 import time
 
 print(rank, "Setup", jax.devices())
-jaxdecomp.init()
+jaxdecomp.init(2,1)
 print(rank, "Initialized")
 
-arr = jnp.zeros([2,4,4])+rank
+pencil_info = jaxdecomp.get_pencil_info(4,4,4)
+print(rank, pencil_info.lo, pencil_info.hi, pencil_info.shape)
+
+arr = jnp.zeros(pencil_info.shape)+rank
 
 print(rank, arr)
 if rank == 0:
     print('--------------------------')
 time.sleep(1)
 
-arrt = jaxdecomp.transposeXtoY(arr, global_shape=[2,4,4])
+arrt = jaxdecomp.transposeXtoY(arr, global_shape=[4,4,4])
 
 print(rank, arrt)
-
 
 jaxdecomp.finalize()
 
