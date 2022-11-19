@@ -10,21 +10,28 @@ from jax.interpreters import mlir
 
 from jaxdecomp._src import _jaxdecomp
 
-def transposeXtoY(x, global_shape):
+def transposeXtoY(x, pdims, global_shape):
     """Transposes distributed array
     """
     return transposeXtoY_p.bind(x, 
+                        pdims = tuple(pdims),
                         global_shape=tuple(global_shape))
 
-def transposeXtoY_abstract_eval(x, *, global_shape):
+def transposeXtoY_abstract_eval(x, *, pdims, global_shape):
     return abstract_arrays.ShapedArray(x.shape, x.dtype)
 
-def transposeXtoY_lowering(ctx, x, *, global_shape):
+def transposeXtoY_lowering(ctx, x, *, pdims, global_shape):
     dtype = ir.RankedTensorType(x.type)
     dims = dtype.shape
     layout = tuple(range(len(dims) - 1, -1, -1))
 
-    opaque = _jaxdecomp.build_decomp_descriptor(*global_shape)
+    config = _jaxdecomp.GridConfig()
+    config.pdims = pdims
+    config.gdims = global_shape
+    config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
+    config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
+
+    opaque = _jaxdecomp.build_grid_config_descriptor(config)
 
     return [custom_call(
         'transpose_x_y',

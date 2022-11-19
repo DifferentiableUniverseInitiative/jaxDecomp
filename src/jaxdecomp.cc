@@ -4,119 +4,63 @@
 #include <mpi.h>
 #include "checks.h"
 #include "helpers.h"
+#include "jaxdecomp.h"
 
 namespace py = pybind11;
+namespace jd = jaxdecomp;
 
 namespace jaxdecomp {
 
-    // Custom data types
-    struct decompDescriptor_t {
-        // gdim parameters
-        std::int64_t nx;
-        std::int64_t ny;
-        std::int64_t nz;
-    };
-
-    struct pencilInfo_t {
-        std::array<int32_t, 3> shape;
-        std::array<int32_t, 3> lo;
-        std::array<int32_t, 3> hi;
-        std::array<int32_t, 3> order;
-        std::array<int32_t, 3> halo_extents;
-        int64_t size;
-    };
-
-    struct decompConfig_t {
-        int32_t pdims[2]; // Dimensions of the processor grid
-        cudecompTransposeCommBackend_t transpose_comm_backend;
-        cudecompHaloCommBackend_t halo_comm_backend;
-    } global_config;
-
-    // Global handle for the decomposition operations
+    // Global cuDecomp handle, initialized once from Python when the
+    // library is imported, and then implicitly reused in all functions
     cudecompHandle_t handle;
-    
-    void init(int32_t pdim_x, int32_t pdim_y){
-        // TODO: include parameters for the mesh and/or autotune
+
+    /**
+    * @brief Initializes the global handle
+    */
+    void init(){
         CHECK_CUDECOMP_EXIT(cudecompInit(&handle, MPI_COMM_WORLD));
-        global_config.pdims[0] = pdim_x;
-        global_config.pdims[1] = pdim_y;
-        global_config.transpose_comm_backend = CUDECOMP_TRANSPOSE_COMM_NCCL;
-        global_config.halo_comm_backend = CUDECOMP_HALO_COMM_MPI;
     };
     
+    /**
+    * @brief Finalizes the cuDecomp library
+    */
     void finalize(){
         CHECK_CUDECOMP_EXIT(cudecompFinalize(handle));
     };
 
-    pencilInfo_t getPencilInfo(int64_t nx, int64_t ny, int64_t nz){
-
+    /**
+    * @brief Returns Pencil information for a given grid
+    */
+    decompPencilInfo_t getPencilInfo(decompGridDescConfig_t grid_config){ 
         // Create cuDecomp grid descriptor
         cudecompGridDescConfig_t config;
-        CHECK_CUDECOMP_EXIT(cudecompGridDescConfigSetDefaults(&config));
-
-        config.pdims[0] = global_config.pdims[0];
-        config.pdims[1] = global_config.pdims[1];
-
-        config.gdims[0] = nx; // X
-        config.gdims[1] = ny; // Y
-        config.gdims[2] = nz; // Z
-
-        // config.transpose_axis_contiguous[0] = true;
-        // config.transpose_axis_contiguous[1] = true;
-        // config.transpose_axis_contiguous[2] = true;
-
+        cudecompGridDescConfigSet(&config, &grid_config);
         // Create the grid description
         cudecompGridDesc_t grid_desc;
         CHECK_CUDECOMP_EXIT(cudecompGridDescCreate(handle, &grid_desc, &config, nullptr));
-
         cudecompPencilInfo_t pencil_info;
         CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, grid_desc, &pencil_info, 2, nullptr));
-        
-        pencilInfo_t result;
-        for(int i=0; i<3; i++){
-            result.hi[i] = pencil_info.hi[i];
-            result.lo[i] = pencil_info.lo[i];
-            result.halo_extents[i] = pencil_info.halo_extents[i];
-            result.order[i] = pencil_info.order[i];
-            result.shape[i] = pencil_info.shape[i];
-        }
-        result.size = pencil_info.size;
-
+        decompPencilInfo_t result;
+        decompPencilInfoSet(&result, &pencil_info);
         return result;
     };
 
     /// XLA interface ops
 
-    /* Wrapper to cudecompTransposeXToY 
-    Transpose data from X-axis aligned pencils to a Y-axis aligned pencils.
+    /** 
+    * @brief Wrapper to cudecompTransposeXToY 
+    * Transpose data from X-axis aligned pencils to a Y-axis aligned pencils.
     */
     void transposeXtoY(cudaStream_t stream, void** buffers,
                        const char* opaque, size_t opaque_len){
 
         void* data_d = buffers[0]; // In place operations, so only one buffer
-        int32_t* gdims = (int32_t *) (buffers[1]);
-        
-        const decompDescriptor_t &desc = *UnpackDescriptor<decompDescriptor_t>(opaque, opaque_len);
-        
+ 
         // Create cuDecomp grid descriptor
         cudecompGridDescConfig_t config;
-        CHECK_CUDECOMP_EXIT(cudecompGridDescConfigSetDefaults(&config));
-
-        config.pdims[0] = global_config.pdims[0];
-        config.pdims[1] = global_config.pdims[1];
-
-        config.gdims[0] = desc.nx; // X
-        config.gdims[1] = desc.ny; // Y
-        config.gdims[2] = desc.nz; // Z
-
-        // Setting default communication backend
-        config.transpose_comm_backend = global_config.transpose_comm_backend;
-        config.halo_comm_backend = global_config.halo_comm_backend;
-
-        // config.transpose_axis_contiguous[0] = true;
-        // config.transpose_axis_contiguous[1] = true;
-        // config.transpose_axis_contiguous[2] = true;
-
+        cudecompGridDescConfigSet(&config, UnpackDescriptor<decompGridDescConfig_t>(opaque, opaque_len));
+        
         // Create the grid description
         cudecompGridDesc_t grid_desc;
         CHECK_CUDECOMP_EXIT(cudecompGridDescCreate(handle, &grid_desc, &config, nullptr));
@@ -149,33 +93,51 @@ namespace jaxdecomp {
 }
 
 PYBIND11_MODULE(_jaxdecomp, m) {
-    m.def("init", &jaxdecomp::init, R"pbdoc(
-        Initialize the library.
-    )pbdoc");
+    // Utilities
+    m.def("init", &jd::init);
+    m.def("finalize", &jd::finalize);
+    m.def("get_pencil_info", &jd::getPencilInfo);
 
-    m.def("finalize", &jaxdecomp::finalize, R"pbdoc(
-        Finalize the library.
-    )pbdoc");
+    // Function registering the custom ops
+    m.def("registrations", &jd::Registrations);
 
-    m.def("get_pencil_info", &jaxdecomp::getPencilInfo);
+    // Utilities for exported ops
+    m.def("build_grid_config_descriptor", 
+    []( jd::decompGridDescConfig_t config) { return PackDescriptor(config); }); 
 
-    m.def("registrations", &jaxdecomp::Registrations,
-         R"pbdoc(
-        Runs a transpose operation
-    )pbdoc");
+    // Exported types
+    py::enum_<cudecompTransposeCommBackend_t>(m, "TransposeCommBackend")
+    .value("TRANSPOSE_COMM_MPI_P2P", cudecompTransposeCommBackend_t::CUDECOMP_TRANSPOSE_COMM_MPI_P2P)
+    .value("TRANSPOSE_COMM_MPI_P2P_PL", cudecompTransposeCommBackend_t::CUDECOMP_TRANSPOSE_COMM_MPI_P2P_PL)
+    .value("TRANSPOSE_COMM_MPI_A2A", cudecompTransposeCommBackend_t::CUDECOMP_TRANSPOSE_COMM_MPI_A2A)
+    .value("TRANSPOSE_COMM_NCCL", cudecompTransposeCommBackend_t::CUDECOMP_TRANSPOSE_COMM_NCCL)
+    .value("TRANSPOSE_COMM_NCCL_PL", cudecompTransposeCommBackend_t::CUDECOMP_TRANSPOSE_COMM_NCCL_PL)
+    .value("TRANSPOSE_COMM_NVSHMEM", cudecompTransposeCommBackend_t::CUDECOMP_TRANSPOSE_COMM_NVSHMEM)
+    .value("TRANSPOSE_COMM_NVSHMEM_PL", cudecompTransposeCommBackend_t::CUDECOMP_TRANSPOSE_COMM_NVSHMEM_PL)
+    .export_values();
 
-    m.def("build_decomp_descriptor", 
-    []( std::int64_t nx,
-        std::int64_t ny,
-        std::int64_t nz        
-    ) { return PackDescriptor(jaxdecomp::decompDescriptor_t{nx, ny, nz}); }); 
+    py::enum_<cudecompHaloCommBackend_t>(m, "HaloCommBackend")
+    .value("HALO_COMM_MPI", cudecompHaloCommBackend_t::CUDECOMP_HALO_COMM_MPI)
+    .value("HALO_COMM_MPI_BLOCKING", cudecompHaloCommBackend_t::CUDECOMP_HALO_COMM_MPI_BLOCKING)
+    .value("HALO_COMM_NCCL", cudecompHaloCommBackend_t::CUDECOMP_HALO_COMM_NCCL)
+    .value("HALO_COMM_NVSHMEM", cudecompHaloCommBackend_t::CUDECOMP_HALO_COMM_NVSHMEM)
+    .value("HALO_COMM_NVSHMEM_BLOCKING", cudecompHaloCommBackend_t::CUDECOMP_HALO_COMM_NVSHMEM_BLOCKING)
+    .export_values();
 
-    py::class_<jaxdecomp::pencilInfo_t> pencil_info(m, "PencilInfo");
+    py::class_<jd::decompPencilInfo_t> pencil_info(m, "PencilInfo");
     pencil_info.def(py::init<>())
-                .def_readonly("shape", &jaxdecomp::pencilInfo_t::shape)
-                .def_readonly("lo", &jaxdecomp::pencilInfo_t::lo)
-                .def_readonly("hi", &jaxdecomp::pencilInfo_t::hi)
-                .def_readonly("order", &jaxdecomp::pencilInfo_t::order)
-                .def_readonly("halo_extents", &jaxdecomp::pencilInfo_t::halo_extents)
-                .def_readonly("size", &jaxdecomp::pencilInfo_t::size);
+                .def_readonly("shape", &jd::decompPencilInfo_t::shape)
+                .def_readonly("lo", &jd::decompPencilInfo_t::lo)
+                .def_readonly("hi", &jd::decompPencilInfo_t::hi)
+                .def_readonly("order", &jd::decompPencilInfo_t::order)
+                .def_readonly("halo_extents", &jd::decompPencilInfo_t::halo_extents)
+                .def_readonly("size", &jd::decompPencilInfo_t::size);
+
+    py::class_<jaxdecomp::decompGridDescConfig_t> config(m, "GridConfig");
+    config.def(py::init<>())
+        .def_readwrite("gdims", &jd::decompGridDescConfig_t::gdims)
+        .def_readwrite("pdims", &jd::decompGridDescConfig_t::pdims)
+        .def_readwrite("transpose_comm_backend", &jd::decompGridDescConfig_t::transpose_comm_backend)
+        .def_readwrite("halo_comm_backend", &jd::decompGridDescConfig_t::halo_comm_backend);
+
 }

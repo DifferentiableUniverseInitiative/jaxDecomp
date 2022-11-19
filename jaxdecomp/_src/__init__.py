@@ -3,6 +3,8 @@ from . import _jaxdecomp
 init = _jaxdecomp.init
 finalize = _jaxdecomp.finalize
 get_pencil_info = _jaxdecomp.get_pencil_info
+make_config = _jaxdecomp.GridConfig
+
 
 from .ops import transposeXtoY
 
