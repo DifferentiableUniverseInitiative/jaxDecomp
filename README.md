@@ -3,7 +3,9 @@ JAX bindings for the cuDecomp NVIDIA library, to allow for efficient parallel FF
 
 https://nvidia.github.io/cuDecomp/index.html
 
-## Design 
+:warning: very very early stage, nothing works
+
+## Design (still aspirational)
 
 The idea of this project is to provide a few additional JAX ops, that will allow for efficient 3D FFTs and halo operations, directly through cuDecomp instead of letting JAX handles them. This is particularly important because NCCL is not necessarily well supported on all machines, and that JAX is currently not able to natively perform 3D FFTs without replicating the data on all processes.
 
