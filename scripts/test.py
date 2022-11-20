@@ -36,6 +36,11 @@ karray = do_fft(array)
 after = time.time()
 print(rank, 'took', after - before, 's')
 
+# And now, let's do the inverse FFT
+rec_array = jaxdecomp.ipfft3d(karray,
+                          global_shape=global_shape,
+                          pdims=pdims)
+
 from jaxdecomp._src import _jaxdecomp
 config = _jaxdecomp.GridConfig()
 config.pdims = pdims
@@ -46,6 +51,7 @@ pencil = jaxdecomp.get_pencil_info(config, 0)
 print(rank, pencil.shape, pencil.lo, pencil.hi, pencil.order)
 pencil = jaxdecomp.get_pencil_info(config, 2)
 print(rank, pencil.shape, pencil.lo, pencil.hi, pencil.order)
+
 
 if rank ==0:
     # Let's test if things are like we expect
@@ -67,6 +73,20 @@ if rank ==0:
     plt.imshow(jnp.abs(diff).mean(axis=2))    
     plt.colorbar()
     plt.savefig("test_forward_fft.png")
+
+    diff = rec_array - array
+    print('maximum reconstruction difference', jnp.abs(diff).max())
+    plt.figure()
+    plt.subplot(131)
+    plt.imshow(jnp.abs(diff).mean(axis=0)) 
+    plt.colorbar()
+    plt.subplot(132)
+    plt.imshow(jnp.abs(diff).mean(axis=1)) 
+    plt.colorbar()
+    plt.subplot(133)
+    plt.imshow(jnp.abs(diff).mean(axis=2))    
+    plt.colorbar()
+    plt.savefig("test_rec_fft.png")
 
 # Is this necessary?
 jaxdecomp.finalize()
