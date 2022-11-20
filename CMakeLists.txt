@@ -17,5 +17,5 @@ include_directories(${CMAKE_CURRENT_LIST_DIR}/src)
 include_directories("third_party/cuDecomp/build/include")
 link_directories("third_party/cuDecomp/build/lib")
 
-pybind11_add_module(_jaxdecomp src/jaxdecomp.cc)
-target_link_libraries(_jaxdecomp PUBLIC MPI::MPI_CXX "-lcudecomp -lopen-pal -lopen-rte" )
+pybind11_add_module(_jaxdecomp src/fft.cu src/jaxdecomp.cc)
+target_link_libraries(_jaxdecomp PUBLIC MPI::MPI_CXX "-lcudecomp -lcufft -lopen-pal -lopen-rte" )

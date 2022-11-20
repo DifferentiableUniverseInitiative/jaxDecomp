@@ -5,6 +5,7 @@
 #include "checks.h"
 #include "helpers.h"
 #include "jaxdecomp.h"
+#include "fft.h"
 
 namespace py = pybind11;
 namespace jd = jaxdecomp;
@@ -32,7 +33,7 @@ namespace jaxdecomp {
     /**
     * @brief Returns Pencil information for a given grid
     */
-    decompPencilInfo_t getPencilInfo(decompGridDescConfig_t grid_config){ 
+    decompPencilInfo_t getPencilInfo(decompGridDescConfig_t grid_config, int32_t axis){ 
         // Create cuDecomp grid descriptor
         cudecompGridDescConfig_t config;
         cudecompGridDescConfigSet(&config, &grid_config);
@@ -40,7 +41,7 @@ namespace jaxdecomp {
         cudecompGridDesc_t grid_desc;
         CHECK_CUDECOMP_EXIT(cudecompGridDescCreate(handle, &grid_desc, &config, nullptr));
         cudecompPencilInfo_t pencil_info;
-        CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, grid_desc, &pencil_info, 2, nullptr));
+        CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, grid_desc, &pencil_info, axis, nullptr));
         decompPencilInfo_t result;
         decompPencilInfoSet(&result, &pencil_info);
         return result;
@@ -84,10 +85,30 @@ namespace jaxdecomp {
         CHECK_CUDECOMP_EXIT(cudecompGridDescDestroy(handle, grid_desc));
     }
 
+    /** 
+    * @brief Wrapper to cuDecomp-based FFT
+    */
+    void pfft3d(cudaStream_t stream, void** buffers,
+                const char* opaque, size_t opaque_len){
+        // Create cuDecomp grid descriptor
+        cudecompGridDescConfig_t config;
+        cudecompGridDescConfigSet(&config, UnpackDescriptor<decompGridDescConfig_t>(opaque, opaque_len));
+        fft3d(handle, config, buffers[0]);
+    }
+    void ipfft3d(cudaStream_t stream, void** buffers,
+                const char* opaque, size_t opaque_len){
+        // Create cuDecomp grid descriptor
+        cudecompGridDescConfig_t config;
+        cudecompGridDescConfigSet(&config, UnpackDescriptor<decompGridDescConfig_t>(opaque, opaque_len));
+        fft3d(handle, config, buffers[0], false);
+    }
+
     // Utility to export ops to XLA
     py::dict Registrations() {
         py::dict dict;
         dict["transpose_x_y"] = EncapsulateFunction(transposeXtoY);
+        dict["pfft3d"] = EncapsulateFunction(pfft3d);
+        dict["ipfft3d"] = EncapsulateFunction(ipfft3d);
         return dict;
     }
 }

@@ -33,6 +33,7 @@ namespace jaxdecomp {
         CHECK_CUDECOMP_EXIT(cudecompGridDescConfigSetDefaults(config));
         for (int i = 0; i < 3; i++) config->gdims[i] = source->gdims[i];
         for (int i = 0; i < 2; i++) config->pdims[i] = source->pdims[i];
+        for (int i = 0; i < 3; i++) config->transpose_axis_contiguous[i] = true;
         config->halo_comm_backend = source->halo_comm_backend;
         config->transpose_comm_backend = source->transpose_comm_backend;
     };

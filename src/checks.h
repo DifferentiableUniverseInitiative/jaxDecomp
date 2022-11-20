@@ -15,6 +15,14 @@ using namespace std;
     }                                                                                                                  \
   } while (false)
 
+#define CHECK_CUFFT_EXIT(call)                                                                                         \
+  do {                                                                                                                 \
+    cufftResult_t err = call;                                                                                          \
+    if (CUFFT_SUCCESS != err) {                                                                                        \
+      fprintf(stderr, "%s:%d CUFFT error. (error code %d)\n", __FILE__, __LINE__, err);                                \
+      throw exception();                                                                                              \
+    }                                                                                                                  \
+  } while (false)
 
 
 #endif

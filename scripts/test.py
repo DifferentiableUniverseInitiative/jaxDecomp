@@ -1,58 +1,66 @@
 from mpi4py import MPI
+import os
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
-
 # Manually set the GPU to use
-import os
-
 os.environ["CUDA_VISIBLE_DEVICES"] = "%d" % (rank + 1)
 
 import jax
-
-jax.config.update('jax_array', True)
+import numpy as np
 import jax.numpy as jnp
-from jax.experimental import mesh_utils
-from jax.sharding import PositionalSharding
-
 import jaxdecomp
+import matplotlib.pyplot as plt
 
-print(rank, "Setup", jax.devices())
+# Can we remove this?
 jaxdecomp.init()
+pdims= [1,2]
+global_shape=[32,32,32]
 
-jax.distributed.initialize(
-    coordinator_address="dappce88:8880", num_processes=size, process_id=rank)
+# Initialize an array with the expected gobal size
+array = jax.random.normal(shape=[32,
+                                 32,
+                                 16], key=jax.random.PRNGKey(0)) + rank
+array = array.astype('complex64')
 
-print(rank, "Initialized")
+karray = jaxdecomp.pfft3d(array, 
+                          global_shape=global_shape,
+                          pdims=pdims)
 
-# Sharding definition
-sharding = PositionalSharding(mesh_utils.create_device_mesh((size, 1, 1)))
+from jaxdecomp._src import _jaxdecomp
+config = _jaxdecomp.GridConfig()
+config.pdims = pdims
+config.gdims = global_shape
+config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
+config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
+pencil = jaxdecomp.get_pencil_info(config, 0)
 
-# Let's build the local slice
-x = jax.make_array_from_single_device_arrays([8, 8, 8], sharding,
-                                             [jnp.ones([8 // 2, 8, 8])])
+print(rank, pencil.shape, pencil.lo, pencil.hi, pencil.order)
 
-# Let's build a config from what we know about x
-config = jaxdecomp.make_config()
-config.pdims = x.sharding.shape[:2]
-config.gdims = x.shape
-config.halo_comm_backend = jaxdecomp._src._jaxdecomp.HALO_COMM_MPI
-config.transpose_comm_backend = jaxdecomp._src._jaxdecomp.TRANSPOSE_COMM_MPI_P2P
+if rank ==0:
+    # Let's test if things are like we expect
+    global_array = jnp.concatenate([array, array+1], axis=-1)
+    global_array = jnp.fft.fftn(global_array)
 
-print("I have a config", config)
+    # So... if I understand correctly, the array should have shape [z,x,y]?
+    global_array = global_array.transpose([2,0,1])
 
-pencil_info = jaxdecomp.get_pencil_info(config)
-print(rank, pencil_info.lo, pencil_info.hi, pencil_info.shape)
+    diff = global_array[:,:,:16] - karray
+    print(diff)
+    plt.subplot(131)
+    plt.imshow(jnp.abs(diff).mean(axis=0)) 
+    plt.colorbar()
+    plt.subplot(132)
+    plt.imshow(jnp.abs(diff).mean(axis=1)) 
+    plt.colorbar()
+    plt.subplot(133)
+    plt.imshow(jnp.abs(diff).mean(axis=2))    
+    plt.colorbar()
+    plt.savefig("test_forward_fft.png")
 
-arr = jnp.zeros(pencil_info.shape) + rank
 
-print(rank, arr)
-if rank == 0:
-  print('--------------------------')
 
-arrt = jaxdecomp.transposeXtoY(arr, pdims=[2, 1], global_shape=[4, 4, 4])
 
-print(rank, arrt)
-
+# Is this necessary?
 jaxdecomp.finalize()
