@@ -12,6 +12,7 @@ import numpy as np
 import jax.numpy as jnp
 import jaxdecomp
 import matplotlib.pyplot as plt
+import time
 
 # Can we remove this?
 jaxdecomp.init()
@@ -24,9 +25,16 @@ array = jax.random.normal(shape=[32,
                                  16], key=jax.random.PRNGKey(0)) + rank
 array = array.astype('complex64')
 
-karray = jaxdecomp.pfft3d(array, 
+@jax.jit
+def do_fft(x):
+    return jaxdecomp.pfft3d(x, 
                           global_shape=global_shape,
                           pdims=pdims)
+do_fft(array)
+before = time.time()
+karray = do_fft(array)
+after = time.time()
+print(rank, 'took', after - before, 's')
 
 from jaxdecomp._src import _jaxdecomp
 config = _jaxdecomp.GridConfig()
@@ -35,7 +43,8 @@ config.gdims = global_shape
 config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
 config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
 pencil = jaxdecomp.get_pencil_info(config, 0)
-
+print(rank, pencil.shape, pencil.lo, pencil.hi, pencil.order)
+pencil = jaxdecomp.get_pencil_info(config, 2)
 print(rank, pencil.shape, pencil.lo, pencil.hi, pencil.order)
 
 if rank ==0:
@@ -47,7 +56,7 @@ if rank ==0:
     global_array = global_array.transpose([2,0,1])
 
     diff = global_array[:,:,:16] - karray
-    print(diff)
+    print('maximum difference', jnp.abs(diff).max())
     plt.subplot(131)
     plt.imshow(jnp.abs(diff).mean(axis=0)) 
     plt.colorbar()
@@ -58,9 +67,6 @@ if rank ==0:
     plt.imshow(jnp.abs(diff).mean(axis=2))    
     plt.colorbar()
     plt.savefig("test_forward_fft.png")
-
-
-
 
 # Is this necessary?
 jaxdecomp.finalize()

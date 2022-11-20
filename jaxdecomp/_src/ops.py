@@ -22,7 +22,6 @@ def pfft3d_abstract_eval(x, *, global_shape, pdims):
 
 def pfft3d_lowering(ctx, x, *, global_shape, pdims):
     dtype = ir.RankedTensorType(x.type)
-    dims = dtype.shape
     layout = tuple([0,1,2]) # TODO: fix to avoid the memory transpose
 
     config = _jaxdecomp.GridConfig()
