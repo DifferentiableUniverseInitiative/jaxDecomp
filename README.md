@@ -3,11 +3,91 @@ JAX bindings for the cuDecomp NVIDIA library, to allow for efficient parallel FF
 
 https://nvidia.github.io/cuDecomp/index.html
 
-:warning: very very early stage, nothing works
+The idea of this project is to provide a few additional JAX ops, that will allow for efficient 3D FFTs and halo operations, directly through cuDecomp instead of letting JAX handles them. This is particularly important because NCCL is not necessarily well supported on all machines, and that JAX is currently not able to natively perform 3D FFTs without replicating the data on all processes.
+
+:warning: it works :smile: but really hasn't been tested.
+
+## Usage
+
+The API is still under development, so it doesn't look very streamlined, but you
+can already do the following:
+```python
+from mpi4py import MPI
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+size = comm.Get_size()
+
+import jax
+import jax.numpy as jnp
+import jaxdecomp
+
+# Initialise the library
+jaxdecomp.init()
+
+# Setup a processor mesh (should be same size as "size")
+pdims= [2,4]
+global_shape=[1024,1024,1024]
+
+# Initialize an array with the expected gobal size
+array = jax.random.normal(shape=[1024, 
+                                 1024//pdims[0], 
+                                 1024//pdims[1]], 
+            key=jax.random.PRNGKey(rank)).astype('complex64')
+
+# Forward FFT
+karray = jaxdecomp.pfft3d(array, 
+                global_shape=global_shape, pdims=pdims)
+
+# Reverse FFT
+recarray = jaxdecomp.ipfft3d(karray, 
+        global_shape=global_shape, pdims=pdims)
+```
+
+This script would have to be run on 8 GPUs in total with something like
+```bash
+$ mpirun -n 8 python demo.py
+```
+
+## Install
+
+Start by cloning this repository locally on your cluster:
+```bash
+$ git clone --recurse-submodules https://github.com/DifferentiableUniverseInitiative/jaxDecomp
+```
+
+#### Requirements
+
+This install procedure assumes that the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) is available in your environment. You can either install it from the NVIDIA website, or better yet, it may be available as a module on your cluster.
+
+Make sure all environment variables relative to the SDK are properly set.
+
+### Step I: Building cuDecomp
+
+Start by following the instructions in the `third_party/cuDecomp/README.md` to compile 
+cuDecomp for your environment/machine. 
+Note that there are configuration files in `third_party/cuDecomp/configs` for particular systems.
+
+For instance, on NERSC's Perlmutter do the following:
+```bash
+$ cd third_party/cuDecomp
+$ make -j CONFIGFILE=configs/nvhpcsdk_pm.conf
+```
+
+### Step II: Building jaxDecomp
+
+This step is easier :-) From this directory, just run the following
+```bash
+$ pip install --user .
+```
+If CMake complains of not finding the NVHPC SDK, you can manually specify the location
+of the sdk's cmake files like so:
+```
+$ export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:$NVCOMPILERS/$NVARCH/22.9/cmake
+$ pip install --user .
+```
 
 ## Design (still aspirational)
 
-The idea of this project is to provide a few additional JAX ops, that will allow for efficient 3D FFTs and halo operations, directly through cuDecomp instead of letting JAX handles them. This is particularly important because NCCL is not necessarily well supported on all machines, and that JAX is currently not able to natively perform 3D FFTs without replicating the data on all processes.
 
 
 Once core guiding principle is to make high-level JAX primitives compatible with the `jax.Array` API of JAX v0.4 (documented [here](https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.array.html)) making it completely transparent to the user.
