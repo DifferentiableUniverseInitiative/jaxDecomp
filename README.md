@@ -88,9 +88,7 @@ $ pip install --user .
 
 ## Design (still aspirational)
 
-
-
-Once core guiding principle is to make high-level JAX primitives compatible with the `jax.Array` API of JAX v0.4 (documented [here](https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.array.html)) making it completely transparent to the user.
+Ideally we will want to make high-level JAX primitives compatible with the `jax.Array` API of JAX v0.4 (documented [here](https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.array.html)) making it completely transparent to the user.
 
 
 Here is a prototype of what we are aiming for (still aspirational):
