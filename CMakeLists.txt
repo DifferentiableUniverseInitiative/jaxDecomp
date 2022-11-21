@@ -7,7 +7,7 @@ find_package(NVHPC REQUIRED COMPONENTS MATH MPI)
 add_subdirectory(pybind11)
 
 # Adding a bunch of inputs
-include_directories("${NVHPC_ROOT_DIR}/math_libs/include")
+include_directories("${NVHPC_ROOT_DIR}/math_libs/include" "${NVHPC_ROOT_DIR}/comm_libs/nccl/include")
 include_directories(${CMAKE_CURRENT_LIST_DIR}/src)
 include_directories("third_party/cuDecomp/build/include")
 link_directories("third_party/cuDecomp/build/lib")

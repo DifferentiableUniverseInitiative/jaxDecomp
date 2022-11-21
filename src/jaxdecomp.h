@@ -3,7 +3,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <cudecomp.h>
-#include "check.h"
+#include "checks.h"
 
 namespace jaxdecomp {
     /**
