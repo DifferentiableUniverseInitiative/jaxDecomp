@@ -35,11 +35,11 @@ array = jax.random.normal(shape=[1024,
             key=jax.random.PRNGKey(rank)).astype('complex64')
 
 # Forward FFT
-karray = jaxdecomp.pfft3d(array, 
+karray = jaxdecomp.fft.pfft3d(array, 
                 global_shape=global_shape, pdims=pdims)
 
 # Reverse FFT
-recarray = jaxdecomp.ipfft3d(karray, 
+recarray = jaxdecomp.fft.ipfft3d(karray, 
         global_shape=global_shape, pdims=pdims)
 ```
 
