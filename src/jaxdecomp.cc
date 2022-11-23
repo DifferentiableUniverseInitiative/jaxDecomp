@@ -86,29 +86,29 @@ namespace jaxdecomp {
     }
 
     /** 
-    * @brief Wrapper to cuDecomp-based FFT
+    * @brief Wrapper to cuDecomp-based FFTs
     */
     void pfft3d(cudaStream_t stream, void** buffers,
                 const char* opaque, size_t opaque_len){
-        // Create cuDecomp grid descriptor
-        cudecompGridDescConfig_t config;
-        cudecompGridDescConfigSet(&config, UnpackDescriptor<decompGridDescConfig_t>(opaque, opaque_len));
-        fft3d(handle, config, buffers[0]);
-    }
-    void ipfft3d(cudaStream_t stream, void** buffers,
-                const char* opaque, size_t opaque_len){
-        // Create cuDecomp grid descriptor
-        cudecompGridDescConfig_t config;
-        cudecompGridDescConfigSet(&config, UnpackDescriptor<decompGridDescConfig_t>(opaque, opaque_len));
-        fft3d(handle, config, buffers[0], false);
-    }
 
+        fftDescriptor_t descriptor = *UnpackDescriptor<fftDescriptor_t>(opaque, opaque_len);
+
+        // Create cuDecomp grid descriptor
+        cudecompGridDescConfig_t config;
+        cudecompGridDescConfigSet(&config, &descriptor.config);
+
+        if(descriptor.double_precision){
+            fft3d<double>(handle, config, buffers[0], descriptor.forward, descriptor.r2c);
+        }else{
+            fft3d<float>(handle, config, buffers[0], descriptor.forward, descriptor.r2c);
+        }
+    }
+    
     // Utility to export ops to XLA
     py::dict Registrations() {
         py::dict dict;
         dict["transpose_x_y"] = EncapsulateFunction(transposeXtoY);
         dict["pfft3d"] = EncapsulateFunction(pfft3d);
-        dict["ipfft3d"] = EncapsulateFunction(ipfft3d);
         return dict;
     }
 }
@@ -123,8 +123,12 @@ PYBIND11_MODULE(_jaxdecomp, m) {
     m.def("registrations", &jd::Registrations);
 
     // Utilities for exported ops
-    m.def("build_grid_config_descriptor", 
-    []( jd::decompGridDescConfig_t config) { return PackDescriptor(config); }); 
+    m.def("build_fft_descriptor", 
+    []( jd::decompGridDescConfig_t config, bool forward, bool r2c, bool double_precision) {
+         jd::fftDescriptor_t descriptor;
+         descriptor.config = config; descriptor.forward = forward; descriptor.r2c = r2c;
+         descriptor.double_precision = double_precision;
+         return PackDescriptor(descriptor); }); 
 
     // Exported types
     py::enum_<cudecompTransposeCommBackend_t>(m, "TransposeCommBackend")

@@ -7,24 +7,28 @@
 #include <cuda/std/complex>
 #include <cudecomp.h>
 
+#include "fft.h"
 #include "checks.h"
 
 namespace jaxdecomp{
 
-    using real_t = float;
-    using complex_t = cuda::std::complex<real_t>;
-
     static cufftType get_cufft_type_r2c(float) { return CUFFT_R2C; }
     static cufftType get_cufft_type_c2r(float) { return CUFFT_C2R; }
     static cufftType get_cufft_type_c2c(float) { return CUFFT_C2C; }
+    static cufftType get_cufft_type_r2c(double) { return CUFFT_D2Z; }
+    static cufftType get_cufft_type_c2r(double) { return CUFFT_Z2D; }
+    static cufftType get_cufft_type_c2c(double) { return CUFFT_Z2Z; }
     static cudecompDataType_t get_cudecomp_datatype(cuda::std::complex<float>) { return CUDECOMP_FLOAT_COMPLEX; }
+    static cudecompDataType_t get_cudecomp_datatype(cuda::std::complex<double>) { return CUDECOMP_DOUBLE_COMPLEX; }
 
     // These functions are adapted from the cuDecomp benchmark code
-    void fft3d(cudecompHandle_t handle,
+    template<typename real_t> void fft3d(cudecompHandle_t handle,
               cudecompGridDescConfig_t config,
               void* data_d,
-              bool forward=true,
-              bool r2c=false){
+              bool forward,
+              bool r2c){
+
+        using complex_t = cuda::std::complex<real_t>;
 
         /* Setting up cuDecomp grid specifications
         */
@@ -293,4 +297,16 @@ namespace jaxdecomp{
         }
         CHECK_CUDECOMP_EXIT(cudecompGridDescDestroy(handle, grid_desc_c));
     };
+
+    // Declare specialisations for float and double
+    template void fft3d<float>(cudecompHandle_t handle,
+              cudecompGridDescConfig_t config,
+              void* data_d,
+              bool forward,
+              bool r2c);
+    template void fft3d<double>(cudecompHandle_t handle,
+              cudecompGridDescConfig_t config,
+              void* data_d,
+              bool forward,
+              bool r2c);
 };

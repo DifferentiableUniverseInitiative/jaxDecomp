@@ -5,10 +5,13 @@
 
 namespace jaxdecomp {
 
-void fft3d(cudecompHandle_t handle,
+template<typename real_t> void fft3d(cudecompHandle_t handle,
               cudecompGridDescConfig_t config,
               void* data_d,
               bool forward=true,
               bool r2c=false);
 };
+
+
+
 #endif
