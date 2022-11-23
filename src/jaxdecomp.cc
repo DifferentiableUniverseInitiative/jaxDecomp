@@ -90,17 +90,14 @@ namespace jaxdecomp {
     */
     void pfft3d(cudaStream_t stream, void** buffers,
                 const char* opaque, size_t opaque_len){
-
+                    
         fftDescriptor_t descriptor = *UnpackDescriptor<fftDescriptor_t>(opaque, opaque_len);
 
-        // Create cuDecomp grid descriptor
-        cudecompGridDescConfig_t config;
-        cudecompGridDescConfigSet(&config, &descriptor.config);
-
+        // Execute the correct version of the FFT
         if(descriptor.double_precision){
-            fft3d<double>(handle, config, buffers, descriptor.forward, descriptor.r2c);
+            fft3d<double>(handle, descriptor, buffers);
         }else{
-            fft3d<float>(handle, config, buffers, descriptor.forward, descriptor.r2c);
+            fft3d<float>(handle, descriptor, buffers);
         }
     }
     
@@ -124,11 +121,19 @@ PYBIND11_MODULE(_jaxdecomp, m) {
 
     // Utilities for exported ops
     m.def("build_fft_descriptor", 
-    []( jd::decompGridDescConfig_t config, bool forward, bool r2c, bool double_precision) {
-         jd::fftDescriptor_t descriptor;
-         descriptor.config = config; descriptor.forward = forward; descriptor.r2c = r2c;
-         descriptor.double_precision = double_precision;
-         return PackDescriptor(descriptor); }); 
+    []( jd::decompGridDescConfig_t config, bool forward, bool double_precision) {
+        // Create a real cuDecomp grid descriptor
+        cudecompGridDescConfig_t cuconfig;
+        cudecompGridDescConfigSet(&cuconfig, &config);
+
+        std::pair<int64_t, jd::fftDescriptor_t> foo;
+        if (double_precision){
+            foo = jd::get_fft3d_descriptor<double>(jd::handle, cuconfig, forward);
+        }else{
+            foo = jd::get_fft3d_descriptor<float>(jd::handle, cuconfig, forward);
+        }
+        return std::pair<int64_t, pybind11::bytes>(foo.first, PackDescriptor(foo.second));
+        }); 
 
     // Exported types
     py::enum_<cudecompTransposeCommBackend_t>(m, "TransposeCommBackend")

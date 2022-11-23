@@ -38,15 +38,6 @@ namespace jaxdecomp {
         config->transpose_comm_backend = source->transpose_comm_backend;
     };
 
-
-    typedef struct {
-        bool double_precision = false;
-        bool forward = true;   // Whether to compute a forward or backward fft
-        bool r2c = false;       // Whether this is a real FFT
-        decompGridDescConfig_t  config; // Descriptor for the grid
-    } fftDescriptor_t;
-
-
     /**
      * @brief A data structure containing geometry information about a pencil data buffer.
      * Slightly adapted version of cudecompPencilInfo_t which can be automatically translated by pybind11

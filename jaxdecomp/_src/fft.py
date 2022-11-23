@@ -9,99 +9,17 @@ from jaxdecomp._src import _jaxdecomp
 from jax import jit
 from jax.lib import xla_client
 
+from jax._src.lib.mlir.dialects import mhlo
+import jax
 from jax.interpreters import ad
 from jax.interpreters import batching
 
 from jax import lax
 from typing import Union
-from jax._src.api import jit, linear_transpose, ShapeDtypeStruct
-from jax._src.numpy.util import _promote_dtypes_complex, _promote_dtypes_inexact
+from jax._src.api import jit
+from jax._src.numpy.util import _promote_dtypes_complex
 
 FftType = xla_client.FftType
-
-_complex_dtype = lambda dtype: (np.zeros((), dtype) + np.zeros(
-    (), np.complex64)).dtype
-_real_dtype = lambda dtype: np.finfo(dtype).dtype
-_is_even = lambda x: x % 2 == 0
-
-
-def pfft_mhlo(a, dtype, *, fft_type: FftType, pdims, global_shape):
-  """cuDecomp FFT kernel.
-    This implementation is adapted from the logic in
-    https://github.com/google/jax/blob/61aa4153567c96cfc2e2187773153d4a206c0639/jaxlib/ducc_fft.py#L110
-    """
-  a_type = ir.RankedTensorType(a.type)
-  n = len(a_type.shape)
-
-  # Figure out which fft we want
-  forward = fft_type in (FftType.FFT, FftType.RFFT)
-  real = fft_type in (FftType.RFFT, FftType.IRFFT)
-  is_double = np.finfo(dtype).dtype == np.float64
-
-  if fft_type == FftType.RFFT:
-    assert dtype in (np.float32, np.float64), dtype
-    out_dtype = np.dtype(np.complex64 if dtype == np.float32 else np.complex128)
-  elif fft_type == FftType.IRFFT:
-    assert np.issubdtype(dtype, np.complexfloating), dtype
-    out_dtype = np.dtype(np.float32 if dtype == np.complex64 else np.float64)
-  else:
-    assert np.issubdtype(dtype, np.complexfloating), dtype
-    out_dtype = dtype
-
-  if fft_type == xla_client.FftType.RFFT:
-    out_global_shape = global_shape[:-1] + (global_shape[-1]//2 +1,)
-  else:
-    out_global_shape = global_shape
-  # Figure out what is the pencil decomposition at the output
-  axis = 0
-  if fft_type in [xla_client.FftType.RFFT, xla_client.FftType.FFT]:
-    axis = 2
-  config = _jaxdecomp.GridConfig()
-  config.pdims = pdims
-  config.gdims = out_global_shape[::-1]
-  config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
-  config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
-  pencil = _jaxdecomp.get_pencil_info(config, axis)
-  # Dimensions are actually in reverse order du to Fortran indexing
-  out_shape = tuple(pencil.shape[::-1])
-  print('MHLO after', out_shape)
-
-  if tuple(out_shape) == tuple(a_type.shape):
-    inplace = True
-  else:
-    inplace = False
-  assert inplace
-
-  if out_dtype == np.float32:
-    out_type = ir.F32Type.get()
-  elif out_dtype == np.float64:
-    out_type = ir.F64Type.get()
-  elif out_dtype == np.complex64:
-    out_type = ir.ComplexType.get(ir.F32Type.get())
-  elif out_dtype == np.complex128:
-    out_type = ir.ComplexType.get(ir.F64Type.get())
-  else:
-    raise ValueError(f"Unknown output type {out_dtype}")
-
-  config = _jaxdecomp.GridConfig()
-  config.pdims = pdims
-  config.gdims = global_shape
-  config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
-  config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
-  opaque = _jaxdecomp.build_fft_descriptor(config, forward, real, is_double)
-  layout = tuple(range(n - 1, -1, -1))
-
-  return custom_call(
-      "pfft3d",
-      [ir.RankedTensorType.get(out_shape, out_type)],
-      operands=[a],
-      operand_layouts=[layout],
-      result_layouts=[layout],
-      has_side_effect=True,
-      operand_output_aliases= {0:0} if inplace else {}, 
-      backend_config=opaque,
-  )
-
 
 def _str_to_fft_type(s: str) -> xla_client.FftType:
   if s in ("fft", "FFT"):
@@ -115,7 +33,6 @@ def _str_to_fft_type(s: str) -> xla_client.FftType:
   else:
     raise ValueError(f"Unknown FFT type '{s}'")
 
-
 @partial(jit, static_argnums=(1, 2, 3))
 def pfft(x, fft_type: Union[xla_client.FftType, str], pdims, global_shape):
   if isinstance(fft_type, str):
@@ -125,32 +42,17 @@ def pfft(x, fft_type: Union[xla_client.FftType, str], pdims, global_shape):
   else:
     raise TypeError(f"Unknown FFT type value '{fft_type}'")
 
-  if typ == xla_client.FftType.RFFT:
-    if np.iscomplexobj(x):
-      raise ValueError("only real valued inputs supported for rfft")
-    (x,) = _promote_dtypes_inexact(x)
-  else:
-    (x,) = _promote_dtypes_complex(x)
+  if typ in [xla_client.FftType.RFFT, xla_client.FftType.IRFFT]:
+    raise TypeError("only complex FFTs are currently supported through pfft.")
+  
+  (x,) = _promote_dtypes_complex(x)
 
   return pfft_p.bind(x, fft_type=typ, pdims=pdims, global_shape=global_shape)
 
 
 def pfft_abstract_eval(x, fft_type, pdims, global_shape):
-  if not _is_even(global_shape[-1]):
-    raise ValueError(
-        f"Only even arrays on the last dimension are currently supported")
-  
-  if fft_type == xla_client.FftType.RFFT:
-    dtype = _complex_dtype(x.dtype)
-  elif fft_type == xla_client.FftType.IRFFT:
-    dtype = _real_dtype(x.dtype)
-  else:
-    dtype = x.dtype
-  
-  if fft_type == xla_client.FftType.RFFT:
-    out_global_shape = global_shape[:-1] + (global_shape[-1]//2 +1,)
-  else:
-    out_global_shape = global_shape
+
+  out_global_shape = global_shape
   
   # Figure out what is the pencil decomposition at the output
   axis = 0
@@ -158,88 +60,71 @@ def pfft_abstract_eval(x, fft_type, pdims, global_shape):
     axis = 2
   config = _jaxdecomp.GridConfig()
   config.pdims = pdims
+  # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
   config.gdims = out_global_shape[::-1]
   config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
   config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
   pencil = _jaxdecomp.get_pencil_info(config, axis)
-  # Dimensions are actually in reverse order du to Fortran indexing
+  # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
   shape = pencil.shape[::-1]
-  print("This is the shape I think I have",pencil.shape, axis, out_global_shape)
-  print("This is the shape I think I have",shape)
-  return x.update(shape=shape, dtype=dtype)
 
+  assert np.prod(shape) == np.prod(x.shape), "Only array dimensions divisible by the process mesh size are currently supported. The current configuration leads to local slices of varying sizes between forward and reverse FFT."
 
-def pfft_lowering(ctx, x, *, fft_type, pdims, global_shape):
+  return x.update(shape=shape, dtype=x.dtype)
+
+def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape):
   (x_aval,) = ctx.avals_in
-  return [
-      pfft_mhlo(
-          x,
-          x_aval.dtype,
-          fft_type=fft_type,
-          pdims=pdims,
-          global_shape=global_shape)
-  ]
+  (aval_out, ) = ctx.avals_out
+  dtype = x_aval.dtype
+  a_type = ir.RankedTensorType(a.type)
+  n = len(a_type.shape)
 
+  # We currently only support complex FFTs through this interface, so let's check the fft type
+  assert fft_type in (FftType.FFT, FftType.IFFT), "Only complex FFTs are currently supported"
 
-def _naive_rfft(x, pdims, global_shape):
-  y = pfft(x, xla_client.FftType.FFT, pdims, global_shape)
-  n = global_shape[-1]
-  return y[..., :n // 2 + 1]
+  # Figure out which fft we want
+  forward = fft_type in (FftType.FFT, )
+  is_double = np.finfo(dtype).dtype == np.float64
 
+  # Compute the descriptor for our FFT
+  config = _jaxdecomp.GridConfig()
+  config.pdims = pdims
+  config.gdims = global_shape
+  config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
+  config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
+  workspace_size, opaque = _jaxdecomp.build_fft_descriptor(config, forward, is_double)
+  layout = tuple(range(n - 1, -1, -1))
 
-@partial(jit, static_argnums=1)
-def _rfft_transpose(t, pdims, global_shape):
-  # The transpose of RFFT can't be expressed only in terms of irfft. Instead of
-  # manually building up larger twiddle matrices (which would increase the
-  # asymptotic complexity and is also rather complicated), we rely JAX to
-  # transpose a naive RFFT implementation.
-  dummy_shape = t.shape[:-len(global_shape)] + global_shape
-  dummy_primal = ShapeDtypeStruct(dummy_shape, _real_dtype(t.dtype))
-  transpose = linear_transpose(
-      partial(_naive_rfft, pdims, global_shape), dummy_primal)
-  (result,) = transpose(t)
-  assert result.dtype == _real_dtype(t.dtype), (result.dtype, t.dtype)
-  return result
+  # We ask XLA to allocate a workspace for this operation. 
+  # TODO: check that the memory is not used all the time, just when needed
+  workspace = mlir.full_like_aval(0, jax.core.ShapedArray(shape=[workspace_size],
+                                dtype=np.float64 if is_double else np.float32));
 
-
-def _irfft_transpose(t, pdims, global_shape):
-  # The transpose of IRFFT is the RFFT of the cotangent times a scaling
-  # factor and a mask. The mask scales the cotangent for the Hermitian
-  # symmetric components of the RFFT by a factor of two, since these components
-  # are de-duplicated in the RFFT.
-  x = pfft(t, xla_client.FftType.RFFT, pdims, global_shape)
-  n = x.shape[-1]
-  full = partial(lax.full_like, t, dtype=x.dtype)
-  mask = lax.concatenate(
-      [full(1.0, shape=(1,)),
-       full(2.0, shape=(n - 2,)),
-       full(1.0, shape=(1,))],
-      dimension=0,
-  )
-  scale = 1 / np.prod(global_shape)
-  out = scale * lax.expand_dims(mask, range(x.ndim - 1)) * x
-  assert out.dtype == _complex_dtype(t.dtype), (out.dtype, t.dtype)
-  # Use JAX's convention for complex gradients
-  # https://github.com/google/jax/issues/6223#issuecomment-807740707
-  return lax.conj(out)
-
+  # Run the custom op with same input and output shape, so that we can perform operations
+  # inplace.
+  result = custom_call(
+              "pfft3d",
+              [a_type],
+              operands=[a, workspace],
+              operand_layouts=[layout, (0,)],
+              result_layouts=[layout],
+              has_side_effect=True,
+              operand_output_aliases= {0:0}, 
+              backend_config=opaque,
+          )
+  
+  # Finally we reshape the arry to the expected shape.
+  return mhlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
 def _fft_transpose_rule(t, operand, fft_type, pdims, global_shape):
-  if fft_type == xla_client.FftType.RFFT:
-    result = _rfft_transpose(t, pdims, global_shape)
-  elif fft_type == xla_client.FftType.IRFFT:
-    result = _irfft_transpose(t, pdims, global_shape)
-  else:
-    result = pfft(t, fft_type, pdims, global_shape)
+  result = pfft(t, fft_type, pdims, global_shape)
   return (result,)
-
 
 def _fft_batching_rule(batched_args, batch_dims, fft_type, pdims, global_shape):
   (x,) = batched_args
   (bd,) = batch_dims
   x = batching.moveaxis(x, bd, 0)
   return pfft(x, pdims, fft_type, pdims, global_shape), 0
-
 
 pfft_p = Primitive("pfft")
 pfft_p.def_impl(partial(xla.apply_primitive, pfft_p))
