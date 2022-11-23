@@ -29,9 +29,9 @@ pdims= [2,4]
 global_shape=[1024,1024,1024]
 
 # Initialize an array with the expected gobal size
-array = jax.random.normal(shape=[1024, 
+array = jax.random.normal(shape=[1024//pdims[1], 
                                  1024//pdims[0], 
-                                 1024//pdims[1]], 
+                                 1024], 
             key=jax.random.PRNGKey(rank)).astype('complex64')
 
 # Forward FFT
