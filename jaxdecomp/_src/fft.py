@@ -47,7 +47,7 @@ def pfft_mhlo(a, dtype, *, fft_type: FftType, pdims, global_shape):
     assert np.issubdtype(dtype, np.complexfloating), dtype
     out_dtype = np.dtype(np.float32 if dtype == np.complex64 else np.float64)
     out_shape = list(a_type.shape)
-    out_shape[-1] = (out_shape[-1] - 1) * 2
+    out_shape[-1] = global_shape[-1]
   else:
     assert np.issubdtype(dtype, np.complexfloating), dtype
     out_dtype = dtype
@@ -70,7 +70,6 @@ def pfft_mhlo(a, dtype, *, fft_type: FftType, pdims, global_shape):
   config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
   config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
   opaque = _jaxdecomp.build_fft_descriptor(config, forward, real, is_double)
-  print("descriptor", forward, real, is_double)
   layout = tuple(range(n - 1, -1, -1))
   return custom_call(
       "pfft3d",
@@ -79,7 +78,7 @@ def pfft_mhlo(a, dtype, *, fft_type: FftType, pdims, global_shape):
       operand_layouts=[layout],
       result_layouts=[layout],
       has_side_effect=True,
-      operand_output_aliases={0: 0},
+      operand_output_aliases= {} if real else {0: 0}, # In the real case, we don't reuse the input array as they don't have exactly the same size
       backend_config=opaque,
   )
 
@@ -121,16 +120,16 @@ def pfft_abstract_eval(x, fft_type, pdims, global_shape):
     raise ValueError(
         f"Only even arrays on the last dimension are currently supported")
   if fft_type == xla_client.FftType.RFFT:
-    shape = (
-        x.shape[:-len(global_shape)] + global_shape[:-1] +
-        (global_shape[-1] // 2 + 1,))
+    shape = (x.shape[:-1] + (global_shape[-1] // 2 + 1,))
     dtype = _complex_dtype(x.dtype)
   elif fft_type == xla_client.FftType.IRFFT:
-    shape = x.shape[:-len(global_shape)] + global_shape
+    shape = x.shape[:-1] + global_shape[-1:]
     dtype = _real_dtype(x.dtype)
   else:
     shape = x.shape
     dtype = x.dtype
+  # The results of the forward FFT are transposed actually
+  shape = (shape[1], shape[2], shape[0])
   return x.update(shape=shape, dtype=dtype)
 
 

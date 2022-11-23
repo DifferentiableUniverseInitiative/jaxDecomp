@@ -24,7 +24,7 @@ namespace jaxdecomp{
     // These functions are adapted from the cuDecomp benchmark code
     template<typename real_t> void fft3d(cudecompHandle_t handle,
               cudecompGridDescConfig_t config,
-              void* data_d,
+              void** buffers,
               bool forward,
               bool r2c){
 
@@ -198,11 +198,8 @@ namespace jaxdecomp{
         void* work_d;
         CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_desc_c, reinterpret_cast<void**>(&work_d), work_sz));
 
-        real_t* data_r_d = static_cast<real_t*>(data_d);
-        complex_t* data_c_d = static_cast<complex_t*>(data_d);
-        complex_t* work_c_d = static_cast<complex_t*>(work_d);
-
         // Assign cuFFT work area
+        complex_t* work_c_d = static_cast<complex_t*>(work_d);
         if(r2c){
             CHECK_CUFFT_EXIT(cufftSetWorkArea(cufft_plan_r2c_x, work_d));
             CHECK_CUFFT_EXIT(cufftSetWorkArea(cufft_plan_c2r_x, work_d));
@@ -213,6 +210,21 @@ namespace jaxdecomp{
         CHECK_CUFFT_EXIT(cufftSetWorkArea(cufft_plan_c2c_z, work_d));
 
         // Run 3D FFT sequence
+        real_t* data_r_d;
+        complex_t* data_c_d;
+        // The logic below is to figure out which buffer to use depending on the fft case
+        if(r2c){
+            if(forward){
+                data_r_d = static_cast<real_t*>(buffers[0]);
+                data_c_d = static_cast<complex_t*>(buffers[1]);
+            }else{
+                data_r_d = static_cast<real_t*>(buffers[1]);
+                data_c_d = static_cast<complex_t*>(buffers[0]);
+            }
+        }else{
+            data_r_d = static_cast<real_t*>(buffers[0]);
+            data_c_d = static_cast<complex_t*>(buffers[0]);
+        }
         complex_t* input = data_c_d;
         complex_t* output = data_c_d;
         real_t* input_r = data_r_d;
@@ -301,12 +313,12 @@ namespace jaxdecomp{
     // Declare specialisations for float and double
     template void fft3d<float>(cudecompHandle_t handle,
               cudecompGridDescConfig_t config,
-              void* data_d,
+              void** buffers,
               bool forward,
               bool r2c);
     template void fft3d<double>(cudecompHandle_t handle,
               cudecompGridDescConfig_t config,
-              void* data_d,
+              void** buffers,
               bool forward,
               bool r2c);
 };

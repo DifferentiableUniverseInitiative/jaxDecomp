@@ -11,5 +11,4 @@ from .fft import pfft
 
 # Registering ops for XLA
 for name, fn in _jaxdecomp.registrations().items():
-  print("registering", name, fn)
   xla_client.register_custom_call_target(name, fn, platform="gpu")

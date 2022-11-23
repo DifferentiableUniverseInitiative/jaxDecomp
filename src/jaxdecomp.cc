@@ -98,9 +98,9 @@ namespace jaxdecomp {
         cudecompGridDescConfigSet(&config, &descriptor.config);
 
         if(descriptor.double_precision){
-            fft3d<double>(handle, config, buffers[0], descriptor.forward, descriptor.r2c);
+            fft3d<double>(handle, config, buffers, descriptor.forward, descriptor.r2c);
         }else{
-            fft3d<float>(handle, config, buffers[0], descriptor.forward, descriptor.r2c);
+            fft3d<float>(handle, config, buffers, descriptor.forward, descriptor.r2c);
         }
     }
     
