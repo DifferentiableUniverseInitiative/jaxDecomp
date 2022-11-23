@@ -260,18 +260,22 @@ namespace jaxdecomp{
             if (!slab_yz) {
             CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, grid_desc_c, input, output, work_c_d,
                                         get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, 0));
-            }
 
+                
             /*
             * Perform FFT along z
             */
             CHECK_CUFFT_EXIT(cufftXtExec(cufft_plan_c2c_z, output, output, CUFFT_FORWARD));
+            }
+
         }else{
+
+            if (!slab_yz) {
+
             /* Inverse FFT along z and transpose array
             */
             CHECK_CUFFT_EXIT(cufftXtExec(cufft_plan_c2c_z, input, output, CUFFT_INVERSE));
-
-            if (!slab_yz) {
+            
             CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, grid_desc_c, input, output, work_c_d,
                                                         get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, 0));
             }

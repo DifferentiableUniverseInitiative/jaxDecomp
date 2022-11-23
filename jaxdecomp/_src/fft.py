@@ -41,17 +41,36 @@ def pfft_mhlo(a, dtype, *, fft_type: FftType, pdims, global_shape):
   if fft_type == FftType.RFFT:
     assert dtype in (np.float32, np.float64), dtype
     out_dtype = np.dtype(np.complex64 if dtype == np.float32 else np.complex128)
-    out_shape = list(a_type.shape)
-    out_shape[-1] = out_shape[-1] // 2 + 1
   elif fft_type == FftType.IRFFT:
     assert np.issubdtype(dtype, np.complexfloating), dtype
     out_dtype = np.dtype(np.float32 if dtype == np.complex64 else np.float64)
-    out_shape = list(a_type.shape)
-    out_shape[-1] = global_shape[-1]
   else:
     assert np.issubdtype(dtype, np.complexfloating), dtype
     out_dtype = dtype
-    out_shape = list(a_type.shape)
+
+  if fft_type == xla_client.FftType.RFFT:
+    out_global_shape = global_shape[:-1] + (global_shape[-1]//2 +1,)
+  else:
+    out_global_shape = global_shape
+  # Figure out what is the pencil decomposition at the output
+  axis = 0
+  if fft_type in [xla_client.FftType.RFFT, xla_client.FftType.FFT]:
+    axis = 2
+  config = _jaxdecomp.GridConfig()
+  config.pdims = pdims
+  config.gdims = out_global_shape[::-1]
+  config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
+  config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
+  pencil = _jaxdecomp.get_pencil_info(config, axis)
+  # Dimensions are actually in reverse order du to Fortran indexing
+  out_shape = tuple(pencil.shape[::-1])
+  print('MHLO after', out_shape)
+
+  if tuple(out_shape) == tuple(a_type.shape):
+    inplace = True
+  else:
+    inplace = False
+  assert inplace
 
   if out_dtype == np.float32:
     out_type = ir.F32Type.get()
@@ -71,6 +90,7 @@ def pfft_mhlo(a, dtype, *, fft_type: FftType, pdims, global_shape):
   config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
   opaque = _jaxdecomp.build_fft_descriptor(config, forward, real, is_double)
   layout = tuple(range(n - 1, -1, -1))
+
   return custom_call(
       "pfft3d",
       [ir.RankedTensorType.get(out_shape, out_type)],
@@ -78,7 +98,7 @@ def pfft_mhlo(a, dtype, *, fft_type: FftType, pdims, global_shape):
       operand_layouts=[layout],
       result_layouts=[layout],
       has_side_effect=True,
-      operand_output_aliases= {} if real else {0: 0}, # In the real case, we don't reuse the input array as they don't have exactly the same size
+      operand_output_aliases= {0:0} if inplace else {}, 
       backend_config=opaque,
   )
 
@@ -119,17 +139,33 @@ def pfft_abstract_eval(x, fft_type, pdims, global_shape):
   if not _is_even(global_shape[-1]):
     raise ValueError(
         f"Only even arrays on the last dimension are currently supported")
+  
   if fft_type == xla_client.FftType.RFFT:
-    shape = (x.shape[:-1] + (global_shape[-1] // 2 + 1,))
     dtype = _complex_dtype(x.dtype)
   elif fft_type == xla_client.FftType.IRFFT:
-    shape = x.shape[:-1] + global_shape[-1:]
     dtype = _real_dtype(x.dtype)
   else:
-    shape = x.shape
     dtype = x.dtype
-  # The results of the forward FFT are transposed actually
-  # shape = (shape[1], shape[2], shape[0]) # TODO: figure this out!
+  
+  if fft_type == xla_client.FftType.RFFT:
+    out_global_shape = global_shape[:-1] + (global_shape[-1]//2 +1,)
+  else:
+    out_global_shape = global_shape
+  
+  # Figure out what is the pencil decomposition at the output
+  axis = 0
+  if fft_type in [xla_client.FftType.RFFT, xla_client.FftType.FFT]:
+    axis = 2
+  config = _jaxdecomp.GridConfig()
+  config.pdims = pdims
+  config.gdims = out_global_shape[::-1]
+  config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
+  config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
+  pencil = _jaxdecomp.get_pencil_info(config, axis)
+  # Dimensions are actually in reverse order du to Fortran indexing
+  shape = pencil.shape[::-1]
+  print("This is the shape I think I have",pencil.shape, axis, out_global_shape)
+  print("This is the shape I think I have",shape)
   return x.update(shape=shape, dtype=dtype)
 
 
