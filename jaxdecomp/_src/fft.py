@@ -129,7 +129,7 @@ def pfft_abstract_eval(x, fft_type, pdims, global_shape):
     shape = x.shape
     dtype = x.dtype
   # The results of the forward FFT are transposed actually
-  shape = (shape[1], shape[2], shape[0])
+  # shape = (shape[1], shape[2], shape[0]) # TODO: figure this out!
   return x.update(shape=shape, dtype=dtype)
 
 
