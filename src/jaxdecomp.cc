@@ -6,6 +6,7 @@
 #include "helpers.h"
 #include "jaxdecomp.h"
 #include "fft.h"
+#include "halo.h"
 
 namespace py = pybind11;
 namespace jd = jaxdecomp;
@@ -77,7 +78,7 @@ namespace jaxdecomp
                                            transpose_work_num_elements * dtype_size));
 
         CHECK_CUDECOMP_EXIT(
-            cudecompTransposeXToY(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT, nullptr, nullptr, 0));
+            cudecompTransposeXToY(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT, nullptr, nullptr, stream));
 
         CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc, transpose_work_d));
 
@@ -109,7 +110,7 @@ namespace jaxdecomp
                                            transpose_work_num_elements * dtype_size));
 
         CHECK_CUDECOMP_EXIT(
-            cudecompTransposeYToZ(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT, nullptr, nullptr, 0));
+            cudecompTransposeYToZ(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT, nullptr, nullptr, stream));
 
         CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc, transpose_work_d));
 
@@ -141,7 +142,7 @@ namespace jaxdecomp
                                            transpose_work_num_elements * dtype_size));
 
         CHECK_CUDECOMP_EXIT(
-            cudecompTransposeZToY(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT, nullptr, nullptr, 0));
+            cudecompTransposeZToY(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT, nullptr, nullptr, stream));
 
         CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc, transpose_work_d));
 
@@ -173,7 +174,7 @@ namespace jaxdecomp
                                            transpose_work_num_elements * dtype_size));
 
         CHECK_CUDECOMP_EXIT(
-            cudecompTransposeYToX(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT, nullptr, nullptr, 0));
+            cudecompTransposeYToX(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT, nullptr, nullptr, stream));
 
         CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc, transpose_work_d));
 
@@ -192,11 +193,31 @@ namespace jaxdecomp
         // Execute the correct version of the FFT
         if (descriptor.double_precision)
         {
-            fft3d<double>(handle, descriptor, buffers);
+            fft3d<double>(handle, descriptor, stream, buffers);
         }
         else
         {
-            fft3d<float>(handle, descriptor, buffers);
+            fft3d<float>(handle, descriptor, stream, buffers);
+        }
+    }
+
+    /**
+     * @brief Perfom a halo exchange along the 3 dimensions
+     *
+     */
+    void halo(cudaStream_t stream, void **buffers,
+              const char *opaque, size_t opaque_len)
+    {
+        haloDescriptor_t descriptor = *UnpackDescriptor<haloDescriptor_t>(opaque, opaque_len);
+
+        // Execute the correct version of the FFT
+        if (descriptor.double_precision)
+        {
+            halo_exchange<double>(handle, descriptor, stream, buffers);
+        }
+        else
+        {
+            halo_exchange<float>(handle, descriptor, stream, buffers);
         }
     }
 
@@ -209,6 +230,7 @@ namespace jaxdecomp
         dict["transpose_z_y"] = EncapsulateFunction(transposeZtoY);
         dict["transpose_y_x"] = EncapsulateFunction(transposeYtoX);
         dict["pfft3d"] = EncapsulateFunction(pfft3d);
+        dict["halo"] = EncapsulateFunction(halo);
         return dict;
     }
 }
@@ -246,6 +268,18 @@ PYBIND11_MODULE(_jaxdecomp, m)
               {
                   foo = jd::get_fft3d_descriptor<float>(jd::handle, cuconfig, forward, adjoint);
               }
+              return std::pair<int64_t, pybind11::bytes>(foo.first, PackDescriptor(foo.second));
+          });
+
+    m.def("build_halo_descriptor",
+          [](jd::decompGridDescConfig_t config, bool double_precision, std::array<bool, 3> halo_periods = {true, true, true}, int axis = 0)
+          {
+              // Create a real cuDecomp grid descriptor
+              cudecompGridDescConfig_t cuconfig;
+              cudecompGridDescConfigSet(&cuconfig, &config);
+
+              std::pair<int64_t, jd::haloDescriptor_t> foo = jd::get_halo_descriptor(jd::handle, cuconfig, halo_periods, axis, double_precision);
+
               return std::pair<int64_t, pybind11::bytes>(foo.first, PackDescriptor(foo.second));
           });
 

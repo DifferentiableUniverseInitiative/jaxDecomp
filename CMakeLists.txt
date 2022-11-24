@@ -13,5 +13,5 @@ include_directories("third_party/cuDecomp/build/include")
 link_directories("third_party/cuDecomp/build/lib")
 
 
-pybind11_add_module(_jaxdecomp src/fft.cu src/jaxdecomp.cc)
+pybind11_add_module(_jaxdecomp src/fft.cu src/halo.cu src/jaxdecomp.cc)
 target_link_libraries(_jaxdecomp PRIVATE MPI::MPI_CXX NVHPC::MPI NVHPC::CUFFT "-lcudecomp")

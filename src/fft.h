@@ -45,6 +45,7 @@ namespace jaxdecomp
     template <typename real_t>
     void fft3d(cudecompHandle_t handle,
                fftDescriptor_t desc,
+               cudaStream_t stream,
                void **buffers);
 };
 

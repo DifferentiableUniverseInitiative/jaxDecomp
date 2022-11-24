@@ -162,6 +162,7 @@ namespace jaxdecomp
     template <typename real_t>
     void fft3d(cudecompHandle_t handle,
                fftDescriptor_t desc,
+               cudaStream_t stream,
                void **buffers)
     {
 
@@ -188,10 +189,13 @@ namespace jaxdecomp
         cudecompPencilInfo_t pinfo_z_c;
         CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, grid_desc_c, &pinfo_z_c, 2, nullptr));
 
-        // Assign cuFFT work area
+        // Assign cuFFT work area and current XLA stream
         complex_t *work_c_d = static_cast<complex_t *>(work_d);
+        CHECK_CUFFT_EXIT(cufftSetStream(desc.cufft_plan_c2c_x, stream));
         CHECK_CUFFT_EXIT(cufftSetWorkArea(desc.cufft_plan_c2c_x, work_d));
+        CHECK_CUFFT_EXIT(cufftSetStream(desc.cufft_plan_c2c_y, stream));
         CHECK_CUFFT_EXIT(cufftSetWorkArea(desc.cufft_plan_c2c_y, work_d));
+        CHECK_CUFFT_EXIT(cufftSetStream(desc.cufft_plan_c2c_z, stream));
         CHECK_CUFFT_EXIT(cufftSetWorkArea(desc.cufft_plan_c2c_z, work_d));
 
         // Run 3D FFT sequence
@@ -204,7 +208,7 @@ namespace jaxdecomp
         {
             CHECK_CUFFT_EXIT(cufftXtExec(desc.cufft_plan_c2c_x, input, input, desc.adjoint ? CUFFT_INVERSE : CUFFT_FORWARD));
             CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, grid_desc_c, input, output, work_c_d,
-                                                      get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, 0));
+                                                      get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
 
             /*
              * Perform FFT along y and transpose
@@ -228,7 +232,7 @@ namespace jaxdecomp
             if (!desc.slab_yz)
             {
                 CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, grid_desc_c, input, output, work_c_d,
-                                                          get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, 0));
+                                                          get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
 
                 /*
                  * Perform FFT along z
@@ -247,7 +251,7 @@ namespace jaxdecomp
                 CHECK_CUFFT_EXIT(cufftXtExec(desc.cufft_plan_c2c_z, input, output, desc.adjoint ? CUFFT_FORWARD : CUFFT_INVERSE));
 
                 CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, grid_desc_c, input, output, work_c_d,
-                                                          get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, 0));
+                                                          get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
             }
 
             /* Inverse FFT along y and transpose array
@@ -269,7 +273,7 @@ namespace jaxdecomp
             }
 
             CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, grid_desc_c, input, output, work_c_d,
-                                                      get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, 0));
+                                                      get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
 
             /* Inverse FFT along x and we are back to the real world
              */
@@ -290,8 +294,10 @@ namespace jaxdecomp
 
     template void fft3d<float>(cudecompHandle_t handle,
                                fftDescriptor_t desc,
+                               cudaStream_t stream,
                                void **buffers);
     template void fft3d<double>(cudecompHandle_t handle,
                                 fftDescriptor_t desc,
+                                cudaStream_t stream,
                                 void **buffers);
 };
