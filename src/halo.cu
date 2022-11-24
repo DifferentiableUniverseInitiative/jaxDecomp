@@ -10,7 +10,6 @@ namespace jaxdecomp
     static inline cudecompDataType_t get_cudecomp_datatype(float) { return CUDECOMP_FLOAT; }
     static inline cudecompDataType_t get_cudecomp_datatype(double) { return CUDECOMP_DOUBLE; }
 
-    template <typename real_t>
     std::pair<int64_t, haloDescriptor_t> get_halo_descriptor(cudecompHandle_t handle,
                                                              cudecompGridDescConfig_t config,
                                                              std::array<bool, 3> halo_periods,
@@ -38,7 +37,10 @@ namespace jaxdecomp
             cudecompGetHaloWorkspaceSize(handle, grid_desc, axis, pinfo.halo_extents, &workspace_num_elements));
 
         int64_t dtype_size;
-        CHECK_CUDECOMP_EXIT(cudecompGetDataTypeSize(get_cudecomp_datatype(real_t(0)), &dtype_size));
+        if (double_precision)
+            CHECK_CUDECOMP_EXIT(cudecompGetDataTypeSize(CUDECOMP_DOUBLE, &dtype_size));
+        else
+            CHECK_CUDECOMP_EXIT(cudecompGetDataTypeSize(CUDECOMP_FLOAT, &dtype_size));
         int64_t workspace_sz = dtype_size * workspace_num_elements;
 
         // Cleaning up the things that allocated memory
