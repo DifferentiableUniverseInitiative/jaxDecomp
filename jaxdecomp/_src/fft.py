@@ -12,9 +12,7 @@ from jax.lib import xla_client
 from jax._src.lib.mlir.dialects import mhlo
 import jax
 from jax.interpreters import ad
-from jax.interpreters import batching
 
-from jax import lax
 from typing import Union
 from jax._src.api import jit
 from jax._src.numpy.util import _promote_dtypes_complex
@@ -67,7 +65,6 @@ def pfft_abstract_eval(x, fft_type, pdims, global_shape):
   pencil = _jaxdecomp.get_pencil_info(config, axis)
   # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
   shape = pencil.shape[::-1]
-
   assert np.prod(shape) == np.prod(x.shape), "Only array dimensions divisible by the process mesh size are currently supported. The current configuration leads to local slices of varying sizes between forward and reverse FFT."
 
   return x.update(shape=shape, dtype=x.dtype)
@@ -89,7 +86,7 @@ def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape):
   # Compute the descriptor for our FFT
   config = _jaxdecomp.GridConfig()
   config.pdims = pdims
-  config.gdims = global_shape
+  config.gdims = global_shape[::-1]
   config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
   config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
   workspace_size, opaque = _jaxdecomp.build_fft_descriptor(config, forward, is_double)
@@ -116,19 +113,18 @@ def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape):
   # Finally we reshape the arry to the expected shape.
   return mhlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
-def _fft_transpose_rule(t, operand, fft_type, pdims, global_shape):
-  result = pfft(t, fft_type, pdims, global_shape)
-  return (result,)
+def _fft_transpose_rule(x, operand, fft_type, pdims, global_shape):
+  assert fft_type in [FftType.FFT, FftType.IFFT]
 
-def _fft_batching_rule(batched_args, batch_dims, fft_type, pdims, global_shape):
-  (x,) = batched_args
-  (bd,) = batch_dims
-  x = batching.moveaxis(x, bd, 0)
-  return pfft(x, pdims, fft_type, pdims, global_shape), 0
+  if fft_type == FftType.FFT:
+    result = pfft(x, FftType.IFFT, pdims, global_shape)
+  else:
+    result = pfft(x, FftType.FFT, pdims, global_shape)
+    
+  return (result,)
 
 pfft_p = Primitive("pfft")
 pfft_p.def_impl(partial(xla.apply_primitive, pfft_p))
 pfft_p.def_abstract_eval(pfft_abstract_eval)
 ad.deflinear2(pfft_p, _fft_transpose_rule)
 mlir.register_lowering(pfft_p, pfft_lowering, platform="gpu")
-batching.primitive_batchers[pfft_p] = _fft_batching_rule
