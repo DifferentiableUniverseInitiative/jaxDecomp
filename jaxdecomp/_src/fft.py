@@ -31,8 +31,8 @@ def _str_to_fft_type(s: str) -> xla_client.FftType:
   else:
     raise ValueError(f"Unknown FFT type '{s}'")
 
-@partial(jit, static_argnums=(1, 2, 3))
-def pfft(x, fft_type: Union[xla_client.FftType, str], pdims, global_shape):
+@partial(jit, static_argnums=(1, 2, 3, 4))
+def pfft(x, fft_type: Union[xla_client.FftType, str], pdims, global_shape, adjoint=False):
   if isinstance(fft_type, str):
     typ = _str_to_fft_type(fft_type)
   elif isinstance(fft_type, xla_client.FftType):
@@ -45,10 +45,10 @@ def pfft(x, fft_type: Union[xla_client.FftType, str], pdims, global_shape):
   
   (x,) = _promote_dtypes_complex(x)
 
-  return pfft_p.bind(x, fft_type=typ, pdims=pdims, global_shape=global_shape)
+  return pfft_p.bind(x, fft_type=typ, pdims=pdims, global_shape=global_shape, adjoint=adjoint)
 
 
-def pfft_abstract_eval(x, fft_type, pdims, global_shape):
+def pfft_abstract_eval(x, fft_type, pdims, global_shape, adjoint):
 
   out_global_shape = global_shape
   
@@ -69,7 +69,7 @@ def pfft_abstract_eval(x, fft_type, pdims, global_shape):
 
   return x.update(shape=shape, dtype=x.dtype)
 
-def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape):
+def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   (x_aval,) = ctx.avals_in
   (aval_out, ) = ctx.avals_out
   dtype = x_aval.dtype
@@ -89,7 +89,7 @@ def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape):
   config.gdims = global_shape[::-1]
   config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
   config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
-  workspace_size, opaque = _jaxdecomp.build_fft_descriptor(config, forward, is_double)
+  workspace_size, opaque = _jaxdecomp.build_fft_descriptor(config, forward, is_double, adjoint)
   layout = tuple(range(n - 1, -1, -1))
 
   # We ask XLA to allocate a workspace for this operation. 
@@ -113,14 +113,15 @@ def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape):
   # Finally we reshape the arry to the expected shape.
   return mhlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
-def _fft_transpose_rule(x, operand, fft_type, pdims, global_shape):
+def _fft_transpose_rule(x, operand, fft_type, pdims, global_shape, adjoint):
   assert fft_type in [FftType.FFT, FftType.IFFT]
-
   if fft_type == FftType.FFT:
-    result = pfft(x, FftType.IFFT, pdims, global_shape)
+    result = pfft(x, FftType.IFFT, pdims, global_shape, ~adjoint)
+  elif fft_type == FftType.IFFT:
+    result = pfft(x, FftType.FFT, pdims, global_shape, ~adjoint)
   else:
-    result = pfft(x, FftType.FFT, pdims, global_shape)
-    
+    raise NotImplementedError
+
   return (result,)
 
 pfft_p = Primitive("pfft")

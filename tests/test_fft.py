@@ -29,6 +29,7 @@ array = x + rank
 global_array = jnp.concatenate([x + i for i in range(size)], axis=0)
 # Compute global FFT locally, and account for the transpose 
 global_karray = jnp.fft.fftn(global_array).transpose([1,2,0])
+global_karray_slice = global_karray[rank*global_shape[1]//pdims[1]:(rank+1)*global_shape[1]//pdims[1]]
 
 def test_fft():
 
@@ -39,10 +40,8 @@ def test_fft():
     rec_array = jaxdecomp.fft.pifft3d(karray, pdims=pdims, global_shape=global_shape)
 
     # Check the forward FFT
-    assert_allclose(global_karray[rank*global_shape[1]//pdims[1]:(rank+1)*global_shape[1]//pdims[1]].real, 
-                        karray.real, atol=1e-10)
-    assert_allclose(global_karray[rank*global_shape[1]//pdims[1]:(rank+1)*global_shape[1]//pdims[1]].imag, 
-                        karray.imag, atol=1e-10)
+    assert_allclose(global_karray_slice.real, karray.real, atol=1e-10)
+    assert_allclose(global_karray_slice.imag, karray.imag, atol=1e-10)
     # Check the reverse FFT
     assert_allclose(array, rec_array, rtol=1e-10, atol=1e-10)
 
@@ -70,7 +69,7 @@ def test_wrong_array_size():
 
     assert "Only array dimensions divisible" in str(excinfo.value)
 
-def test_grad():
+def test_grad_fwd():
     from mpi4jax import allreduce
 
     # Perform distributed FFT
@@ -83,15 +82,39 @@ def test_grad():
     print("Here is the gradient I'm getting", array_grad.shape)
 
     # Perform local FFT
+    @jax.grad
     def ref_fun(arr):
         y = jnp.fft.fftn(arr).transpose([1,2,0])
         return (y * jnp.conjugate(y)).real.sum()
-    ref_grad = jax.grad(ref_fun)(global_array)
-
+    ref_grad = ref_fun(global_array)
     ref_grad = ref_grad[rank*global_shape[0]//pdims[1]:(rank+1)*global_shape[0]//pdims[1]]
 
-    # Check the reverse FFT
+    # Check the gradients
     assert_allclose(ref_grad, array_grad, rtol=1e-10, atol=1e-10)
+
+def test_grad_bwd():
+    from mpi4jax import allreduce
+
+    # Perform distributed FFT
+    def fun(arr):
+        y = jaxdecomp.fft.pifft3d(arr, pdims=pdims, global_shape=global_shape)
+        y =  (y * jnp.conjugate(y)).real.sum()
+        return allreduce(y, op=MPI.SUM)[0].sum()
+
+    array_grad = jax.grad(fun)(global_karray_slice)
+    print("Here is the gradient I'm getting", array_grad.shape)
+
+    # Perform local FFT
+    @jax.grad
+    def ref_fun(arr):
+        y = jnp.fft.ifftn(arr).transpose([2,0,1])
+        return (y * jnp.conjugate(y)).real.sum()
+    ref_grad = ref_fun(global_karray)
+    ref_grad = ref_grad[rank*global_shape[0]//pdims[1]:(rank+1)*global_shape[0]//pdims[1]]
+
+    # Check the gradients
+    assert_allclose(ref_grad, array_grad, rtol=1e-10, atol=1e-10)
+
 
 @pytest.mark.skip(reason="vmap is not yet implemented for the 3D FFT")
 def test_vmap():
