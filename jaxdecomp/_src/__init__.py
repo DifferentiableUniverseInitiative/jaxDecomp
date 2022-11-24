@@ -6,7 +6,7 @@ finalize = _jaxdecomp.finalize
 get_pencil_info = _jaxdecomp.get_pencil_info
 make_config = _jaxdecomp.GridConfig
 
-from .transpose import transposeXtoY
+from .transpose import transposeXtoY, transposeYtoX, transposeYtoZ, transposeZtoY
 from .fft import pfft
 
 # Registering ops for XLA
