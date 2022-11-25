@@ -80,7 +80,7 @@ Note that there are configuration files in `third_party/cuDecomp/configs` for pa
 For instance, on NERSC's Perlmutter do the following:
 ```bash
 $ cd third_party/cuDecomp
-$ make -j CONFIGFILE=configs/nvhpcsdk_pm.conf
+$ make -j CONFIGFILE=configs/nvhpcsdk_pm.conf lib
 ```
 
 ### Step II: Building jaxDecomp
