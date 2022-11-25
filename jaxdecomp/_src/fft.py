@@ -5,6 +5,7 @@ from functools import partial
 from jax.core import Primitive
 from jax.interpreters import xla
 from jax.interpreters import mlir
+import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
 from jax import jit
 from jax.lib import xla_client
@@ -60,8 +61,8 @@ def pfft_abstract_eval(x, fft_type, pdims, global_shape, adjoint):
   config.pdims = pdims
   # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
   config.gdims = out_global_shape[::-1]
-  config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
-  config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
+  config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
+  config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
   pencil = _jaxdecomp.get_pencil_info(config, axis)
   # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
   shape = pencil.shape[::-1]
@@ -87,8 +88,8 @@ def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   config = _jaxdecomp.GridConfig()
   config.pdims = pdims
   config.gdims = global_shape[::-1]
-  config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
-  config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
+  config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
+  config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
   workspace_size, opaque = _jaxdecomp.build_fft_descriptor(config, forward, is_double, adjoint)
   layout = tuple(range(n - 1, -1, -1))
 

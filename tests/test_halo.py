@@ -12,7 +12,6 @@ from numpy.testing import assert_allclose
 import jax
 import jax.numpy as jnp
 import jaxdecomp
-import pytest
 
 # Initialize cuDecomp
 jaxdecomp.init()
@@ -27,23 +26,6 @@ x = jax.random.normal(shape=[global_shape[0]//pdims[1],
 array = x + rank
 # Global array 
 global_array = jnp.concatenate([x + i for i in range(size)], axis=0)
-
-def test_empty_halo():
-    padded_array = jnp.pad(array,[(32,32),(32,32),(32,32)])
-
-    # perform halo exchange
-    exchanged_array = jaxdecomp.halo_exchange(padded_array, 
-                                              halo_extents=(32,32,32),
-                                              halo_periods=(True,True,True),
-                                              pdims=pdims,
-                                              global_shape=global_shape)
-    
-    # Remove the padding
-    exchanged_array = exchanged_array[32:-32,32:-32,32:-32]
-
-    assert_allclose(array, 
-                    exchanged_array,
-                    rtol=1e-10, atol=1e-10)
 
 def test_empty_halo():
     padded_array = jnp.pad(array,[(32,32),(32,32),(32,32)])

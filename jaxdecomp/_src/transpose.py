@@ -7,7 +7,7 @@ from jax import abstract_arrays
 from jax.interpreters import xla
 from jax.interpreters import mlir
 from jax._src.lib.mlir.dialects import mhlo
-
+import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
 
 _out_axes = {'x_y': 1, 'y_z': 2, 'z_y': 1, 'y_x': 0}
@@ -17,8 +17,8 @@ def transpose_abstract_eval(x, *, kind, pdims, global_shape):
   config = _jaxdecomp.GridConfig()
   config.pdims = pdims
   config.gdims = global_shape[::-1]
-  config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
-  config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
+  config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
+  config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
 
   pencil = _jaxdecomp.get_pencil_info(config, _out_axes[kind])
   shape = pencil.shape[::-1]
@@ -34,8 +34,8 @@ def transpose_lowering(ctx, x, *, kind, pdims, global_shape):
   config = _jaxdecomp.GridConfig()
   config.pdims = pdims
   config.gdims = global_shape[::-1]
-  config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
-  config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
+  config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
+  config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
 
   opaque = _jaxdecomp.build_transpose_descriptor(config)
 

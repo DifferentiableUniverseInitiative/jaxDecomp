@@ -5,12 +5,18 @@ from functools import partial
 from jax.core import Primitive
 from jax.interpreters import xla
 from jax.interpreters import mlir
+import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
 import jax
 from jax.interpreters import ad
 
+from typing import Tuple
 
-def halo_exchange(x, *, halo_extents, halo_periods, pdims, global_shape):
+def halo_exchange(x, *, 
+                  halo_extents: Tuple[int, int, int], 
+                  halo_periods: Tuple[bool, bool, bool], 
+                  pdims: Tuple[int, int], 
+                  global_shape: Tuple[int,int,int]):
     # TODO: check float or real
     return halo_p.bind(x, halo_extents=halo_extents, halo_periods=halo_periods, pdims=pdims, global_shape=global_shape)
 
@@ -29,8 +35,8 @@ def halo_lowering(ctx, x, *, halo_extents, halo_periods, pdims, global_shape):
     config = _jaxdecomp.GridConfig()
     config.pdims = pdims
     config.gdims = global_shape[::-1]
-    config.halo_comm_backend = _jaxdecomp.HALO_COMM_MPI
-    config.transpose_comm_backend = _jaxdecomp.TRANSPOSE_COMM_MPI_P2P
+    config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
+    config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
 
     workspace_size, opaque = _jaxdecomp.build_halo_descriptor(config, is_double,
                                     halo_extents[::-1], halo_periods[::-1], 0)
