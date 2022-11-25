@@ -5,8 +5,6 @@ https://nvidia.github.io/cuDecomp/index.html
 
 The idea of this project is to provide a few additional JAX ops, that will allow for efficient 3D FFTs and halo operations, directly through cuDecomp instead of letting JAX handles them. This is particularly important because NCCL is not necessarily well supported on all machines, and that JAX is currently not able to natively perform 3D FFTs without replicating the data on all processes.
 
-:warning: it works :smile: but really hasn't been tested.
-
 ## Usage
 
 The API is still under development, so it doesn't look very streamlined, but you
@@ -21,8 +19,10 @@ import jax
 import jax.numpy as jnp
 import jaxdecomp
 
-# Initialise the library
+# Initialise the library, and optionally selects a communication backend (defaults to NCCL)
 jaxdecomp.init()
+jaxdecomp.config.update('halo_comm_backend', jaxdecomp.HALO_COMM_MPI)
+jaxdecomp.config.update('transpose_comm_backend', jaxdecomp.TRANSPOSE_COMM_MPI_A2A)
 
 # Setup a processor mesh (should be same size as "size")
 pdims= [2,4]
@@ -34,14 +34,24 @@ array = jax.random.normal(shape=[1024//pdims[1],
                                  1024], 
             key=jax.random.PRNGKey(rank)).astype('complex64')
 
-# Forward FFT
-karray = jaxdecomp.fft.pfft3d(array, 
+# Forward FFT, note that the output FFT is transposed
+karray = jaxdecomp.pfft3d(array, 
                 global_shape=global_shape, pdims=pdims)
 
 # Reverse FFT
-recarray = jaxdecomp.fft.ipfft3d(karray, 
+recarray = jaxdecomp.ipfft3d(karray, 
         global_shape=global_shape, pdims=pdims)
+        
+# Add halo regions to our array
+padded_array = jnp.pad(array, [(32,32),(32,32),(32,32)])
+# Perform a halo exchange
+padded_array = jaxdecomp.halo_exchange(padded_array,
+                                       halo_extents=(32,32,32),
+                                       halo_periods=(True,True,True),
+                                       pdims=pdims,
+                                       global_shape=global_shape)
 ```
+*Note*: All these functions are jittable and have well defined derivatives
 
 This script would have to be run on 8 GPUs in total with something like
 ```bash
