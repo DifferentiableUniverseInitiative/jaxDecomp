@@ -47,12 +47,16 @@ padded_array = jaxdecomp.halo_exchange(padded_array,
                                        pdims=pdims,
                                        global_shape=global_shape)
 ```
-*Note*: All these functions are jittable and have well defined derivatives
+**Note**: All these functions are jittable and have well defined derivatives!
 
 This script would have to be run on 8 GPUs in total with something like
 ```bash
 $ mpirun -n 8 python demo.py
 ```
+
+### Caveats
+
+The code presented above should work, but there are a few caveats mentioned in [this issue](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/issues/1). If you need a functionality that is not currently implemented, feel free to mention it on that issue. 
 
 ## Install
 
