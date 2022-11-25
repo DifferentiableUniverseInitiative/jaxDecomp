@@ -1,18 +1,14 @@
 from mpi4py import MPI
-import os
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
-# Manually set the GPU to use
-os.environ["CUDA_VISIBLE_DEVICES"] = "%d" % (rank + 1)
 
 import jaxdecomp
 
-# Can we remove this?
 jaxdecomp.init()
 pdims= (0,0)
-global_shape=(512,512,512)
+global_shape=(1024,1024,1024)
 
 config = jaxdecomp.make_config()
 config.pdims = pdims
