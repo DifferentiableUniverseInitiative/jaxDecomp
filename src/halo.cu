@@ -12,6 +12,7 @@ namespace jaxdecomp
 
     std::pair<int64_t, haloDescriptor_t> get_halo_descriptor(cudecompHandle_t handle,
                                                              cudecompGridDescConfig_t config,
+                                                             std::array<int32_t, 3> halo_extents,
                                                              std::array<bool, 3> halo_periods,
                                                              int axis, bool double_precision)
     {
@@ -21,6 +22,7 @@ namespace jaxdecomp
         desc.config = config;
         desc.axis = axis;
         desc.halo_periods = halo_periods;
+        desc.halo_extents = halo_extents;
 
         /* Setting up cuDecomp grid specifications
          */
@@ -29,7 +31,7 @@ namespace jaxdecomp
 
         // Get pencil information for the specified axis
         cudecompPencilInfo_t pinfo;
-        CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, grid_desc, &pinfo, axis, nullptr));
+        CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, grid_desc, &pinfo, axis, halo_extents.data()));
 
         // Get workspace size
         int64_t workspace_num_elements;
@@ -64,7 +66,7 @@ namespace jaxdecomp
 
         // Get pencil information for the specified axis
         cudecompPencilInfo_t pinfo;
-        CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, grid_desc, &pinfo, desc.axis, nullptr));
+        CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, grid_desc, &pinfo, desc.axis, desc.halo_extents.data()));
 
         // Perform halo exchange along the three dimensions
         for (int i = 0; i < 3; ++i)

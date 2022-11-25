@@ -272,13 +272,13 @@ PYBIND11_MODULE(_jaxdecomp, m)
           });
 
     m.def("build_halo_descriptor",
-          [](jd::decompGridDescConfig_t config, bool double_precision, std::array<bool, 3> halo_periods = {true, true, true}, int axis = 0)
+          [](jd::decompGridDescConfig_t config, bool double_precision, std::array<int32_t, 3> halo_extents, std::array<bool, 3> halo_periods, int axis = 0)
           {
               // Create a real cuDecomp grid descriptor
               cudecompGridDescConfig_t cuconfig;
               cudecompGridDescConfigSet(&cuconfig, &config);
 
-              std::pair<int64_t, jd::haloDescriptor_t> foo = jd::get_halo_descriptor(jd::handle, cuconfig, halo_periods, axis, double_precision);
+              std::pair<int64_t, jd::haloDescriptor_t> foo = jd::get_halo_descriptor(jd::handle, cuconfig, halo_extents, halo_periods, axis, double_precision);
 
               return std::pair<int64_t, pybind11::bytes>(foo.first, PackDescriptor(foo.second));
           });
