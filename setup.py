@@ -81,12 +81,13 @@ class CMakeBuild(build_ext):
 
 setup(
     name='jaxDecomp',
-    version='0.0.1',
     url='https://github.com/DifferentiableUniverseInitiative/jaxDecomp',
     author='Francois Lanusse',
     description='JAX bindings for the cuDecomp library',
     ext_modules=[CMakeExtension("jaxdecomp/_src/_jaxdecomp")],
     cmdclass={"build_ext": CMakeBuild},
     packages=find_packages(),
-    include_package_data=True
+    include_package_data=True,
+    use_scm_version=True,
+    setup_requires=["setuptools_scm"]
 )

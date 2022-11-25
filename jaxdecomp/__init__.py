@@ -4,6 +4,14 @@ from ._src import _jaxdecomp
 import jaxdecomp.fft as fft
 from jaxdecomp.fft import pfft3d, pifft3d
 
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("jaxDecomp")
+except PackageNotFoundError:
+    # package is not installed
+    pass
+
 __all__ = [
     "config",
     "init",
