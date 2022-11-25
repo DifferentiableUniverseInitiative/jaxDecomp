@@ -5,6 +5,7 @@ import jaxdecomp.fft as fft
 from jaxdecomp.fft import pfft3d, pifft3d
 
 __all__ = [
+    "config",
     "init",
     "finalize",
     "get_pencil_info",
@@ -18,12 +19,15 @@ __all__ = [
     "transposeYtoX",
 ]
 
+# Loading the comm configuration flags at the top level
+from ._src._jaxdecomp import HALO_COMM_MPI, HALO_COMM_MPI_BLOCKING, HALO_COMM_NCCL, HALO_COMM_NVSHMEM, HALO_COMM_NVSHMEM_BLOCKING 
+from ._src._jaxdecomp import TRANSPOSE_COMM_MPI_A2A, TRANSPOSE_COMM_MPI_P2P, TRANSPOSE_COMM_MPI_P2P_PL,TRANSPOSE_COMM_NCCL, TRANSPOSE_COMM_NCCL_PL, TRANSPOSE_COMM_NVSHMEM, TRANSPOSE_COMM_NVSHMEM_PL
 
 @dataclass
 class JAXDecompConfig:
     """Class for storing the configuration state of the library."""
-    halo_comm_backend: _jaxdecomp.HaloCommBackend = _jaxdecomp.HALO_COMM_NCCL
-    transpose_comm_backend: _jaxdecomp.TransposeCommBackend = _jaxdecomp.TRANSPOSE_COMM_NCCL
+    halo_comm_backend: _jaxdecomp.HaloCommBackend = HALO_COMM_NCCL
+    transpose_comm_backend: _jaxdecomp.TransposeCommBackend = TRANSPOSE_COMM_NCCL
     
     def update(self, key, value):
       if hasattr(self, key):
