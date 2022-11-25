@@ -49,7 +49,80 @@ namespace jaxdecomp
         CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, grid_desc, &pencil_info, axis, nullptr));
         decompPencilInfo_t result;
         decompPencilInfoSet(&result, &pencil_info);
+
+        CHECK_CUDECOMP_EXIT(cudecompGridDescDestroy(handle, grid_desc));
+
         return result;
+    };
+
+    /**
+     * @brief Get the Autotuned Grid Config object
+     *
+     * @param grid_config
+     * @param double_precision
+     * @param disable_nccl_backends
+     * @param disable_nvshmem_backends
+     * @param tune_with_transpose
+     * @param halo_extents
+     * @param halo_periods
+     * @return decompGridDescConfig_t
+     */
+    decompGridDescConfig_t getAutotunedGridConfig(decompGridDescConfig_t grid_config,
+                                                  bool double_precision,
+                                                  bool disable_nccl_backends,
+                                                  bool disable_nvshmem_backends,
+                                                  bool tune_with_transpose,
+                                                  std::array<int32_t, 3> halo_extents,
+                                                  std::array<bool, 3> halo_periods)
+    {
+        // Create cuDecomp grid descriptor
+        cudecompGridDescConfig_t config;
+        cudecompGridDescConfigSet(&config, &grid_config);
+
+        // Set up autotune options structure
+        cudecompGridDescAutotuneOptions_t options;
+        CHECK_CUDECOMP_EXIT(cudecompGridDescAutotuneOptionsSetDefaults(&options));
+
+        // General options
+        options.dtype = double_precision ? CUDECOMP_DOUBLE : CUDECOMP_FLOAT;
+        options.disable_nccl_backends = disable_nccl_backends;
+        options.disable_nvshmem_backends = disable_nvshmem_backends;
+
+        // Process grid autotuning options
+        options.grid_mode = tune_with_transpose ? CUDECOMP_AUTOTUNE_GRID_TRANSPOSE : CUDECOMP_AUTOTUNE_GRID_HALO;
+        options.allow_uneven_decompositions = false;
+
+        // Transpose communication backend autotuning options
+        options.autotune_transpose_backend = true;
+        options.transpose_use_inplace_buffers = true;
+
+        // Halo communication backend autotuning options
+        options.autotune_halo_backend = true;
+
+        options.halo_axis = 0;
+
+        options.halo_extents[0] = halo_extents[0];
+        options.halo_extents[1] = halo_extents[1];
+        options.halo_extents[2] = halo_extents[2];
+
+        options.halo_periods[0] = halo_periods[0];
+        options.halo_periods[1] = halo_periods[1];
+        options.halo_periods[2] = halo_periods[2];
+
+        cudecompGridDesc_t grid_desc;
+        CHECK_CUDECOMP_EXIT(cudecompGridDescCreate(handle, &grid_desc, &config, &options));
+
+        decompGridDescConfig_t output_config;
+        output_config.halo_comm_backend = config.halo_comm_backend;
+        output_config.transpose_comm_backend = config.transpose_comm_backend;
+        for (int i = 0; i < 3; i++)
+            output_config.gdims[i] = config.gdims[i];
+        for (int i = 0; i < 2; i++)
+            output_config.pdims[i] = config.pdims[i];
+
+        CHECK_CUDECOMP_EXIT(cudecompGridDescDestroy(handle, grid_desc));
+
+        return output_config;
     };
 
     /// XLA interface ops
@@ -241,6 +314,7 @@ PYBIND11_MODULE(_jaxdecomp, m)
     m.def("init", &jd::init);
     m.def("finalize", &jd::finalize);
     m.def("get_pencil_info", &jd::getPencilInfo);
+    m.def("get_autotuned_config", &jd::getAutotunedGridConfig);
 
     // Function registering the custom ops
     m.def("registrations", &jd::Registrations);
