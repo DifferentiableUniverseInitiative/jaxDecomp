@@ -1,6 +1,7 @@
 #ifndef _JAX_DECOMP_HALO_H_
 #define _JAX_DECOMP_HALO_H_
 
+#include <array>
 #include <cudecomp.h>
 
 namespace jaxdecomp
