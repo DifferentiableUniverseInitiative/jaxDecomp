@@ -96,6 +96,24 @@ $ export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:$NVCOMPILERS/$NVARCH/22.9/cmake
 $ pip install --user .
 ```
 
+### Specific Install Notes for Specific Machines
+
+#### IDRIS [Jean Zay](http://www.idris.fr/eng/jean-zay/cpu/jean-zay-cpu-hw-eng.html) HPE SGI 8600 supercomputer
+
+As of Nov. 2022, the following works:
+```bash
+$ module load openmpi/4.1.1-cuda nvidia-compilers/22.5 nccl/2.9.6-1-cuda python/3.10.4
+$ CFLAGS=-noswitcherror pip install mpi4py
+$ pip install --upgrade "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+$ cd third_party/cuDecomp
+$ make -j CONFIGFILE=../../configs/nvhpcsdk_jz.conf lib
+$ cd ../..
+$ export CMAKE_PREFIX_PATH=/gpfslocalsys/nvhpc/22.5/Linux_x86_64/22.5/cmake
+$ pip install .
+```
+
+
+
 ## Design (still aspirational)
 
 Ideally we will want to make high-level JAX primitives compatible with the `jax.Array` API of JAX v0.4 (documented [here](https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.array.html)) making it completely transparent to the user.
