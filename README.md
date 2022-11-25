@@ -1,5 +1,5 @@
-# jaxDecomp - JAX Library for Domain Decomposition based on NVIDIA's [cuDecomp](https://nvidia.github.io/cuDecomp/index.html)
-JAX bindings for the cuDecomp NVIDIA library, to allow for efficient parallel FFTs and halo exchanges directly in low level NCCL/CUDA-Aware MPI from your JAX code :-)
+# jaxDecomp: JAX Library for 3D Domain Decomposition <br> Powered by NVIDIA's [cuDecomp](https://nvidia.github.io/cuDecomp/index.html)
+JAX bindings for the cuDecomp NVIDIA library, to allow for efficient parallel FFTs and halo exchanges directly in low level NCCL/CUDA-Aware MPI from your JAX code :tada:
 
 https://nvidia.github.io/cuDecomp/index.html
 
