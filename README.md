@@ -103,11 +103,15 @@ $ pip install --user .
 As of Nov. 2022, the following works:
 ```bash
 module load openmpi/4.1.1-cuda nvidia-compilers/22.5 nccl/2.9.6-1-cuda python/3.10.4 cmake
+# Installing mpi4py
 CFLAGS=-noswitcherror pip install mpi4py
+# Installing jax
 pip install --upgrade "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+# Compiling cuDecomp
 cd third_party/cuDecomp
 make -j CONFIGFILE=../../configs/nvhpcsdk_jz.conf lib
 cd ../..
+# Installing jaxdecomp
 export CMAKE_PREFIX_PATH=/gpfslocalsys/nvhpc/22.5/Linux_x86_64/22.5/cmake
 pip install .
 ```
