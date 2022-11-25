@@ -12,6 +12,7 @@ __all__ = [
     "pifft3d",
 ]
 
+
 def _fft_norm(s: Array, func_name: str, norm: str) -> Array:
   if norm == "backward":
     return 1 / jnp.prod(s) if func_name.startswith("i") else jnp.array(1)
