@@ -102,7 +102,7 @@ $ pip install --user .
 
 As of Nov. 2022, the following works:
 ```bash
-$ module load openmpi/4.1.1-cuda nvidia-compilers/22.5 nccl/2.9.6-1-cuda python/3.10.4
+$ module load openmpi/4.1.1-cuda nvidia-compilers/22.5 nccl/2.9.6-1-cuda python/3.10.4 cmake
 $ CFLAGS=-noswitcherror pip install mpi4py
 $ pip install --upgrade "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 $ cd third_party/cuDecomp
