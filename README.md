@@ -100,9 +100,9 @@ $ pip install --user .
 
 #### IDRIS [Jean Zay](http://www.idris.fr/eng/jean-zay/cpu/jean-zay-cpu-hw-eng.html) HPE SGI 8600 supercomputer
 
-As of Nov. 2022, the following works:
+As of Jan. 2023, the following works:
 ```bash
-module load openmpi/4.1.1-cuda nvidia-compilers/22.5 nccl/2.9.6-1-cuda python/3.10.4 cmake
+module load openmpi/4.1.1-cuda nvidia-compilers/22.9 nccl/2.9.6-1-cuda python/3.10.4 cmake
 # Installing mpi4py
 CFLAGS=-noswitcherror pip install mpi4py
 # Installing jax
@@ -112,7 +112,7 @@ cd third_party/cuDecomp
 make -j CONFIGFILE=../../configs/nvhpcsdk_jz.conf lib
 cd ../..
 # Installing jaxdecomp
-export CMAKE_PREFIX_PATH=/gpfslocalsys/nvhpc/22.5/Linux_x86_64/22.5/cmake
+export CMAKE_PREFIX_PATH=/gpfslocalsys/nvhpc/22.9/Linux_x86_64/22.9/cmake
 pip install .
 ```
 
