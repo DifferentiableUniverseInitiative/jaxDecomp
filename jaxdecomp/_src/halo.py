@@ -1,6 +1,6 @@
 import numpy as np
 import jaxlib.mlir.ir as ir
-from jaxlib.mhlo_helpers import custom_call
+from jaxlib.hlo_helpers import custom_call
 from functools import partial
 from jax.core import Primitive
 from jax.interpreters import xla
@@ -47,7 +47,7 @@ def halo_lowering(ctx, x, *, halo_extents, halo_periods, pdims, global_shape):
       config, is_double, halo_extents[::-1], halo_periods[::-1], 0)
   layout = tuple(range(n - 1, -1, -1))
 
-  workspace = mlir.full_like_aval(
+  workspace = mlir.full_like_aval(ctx, 
       0, jax.core.ShapedArray(shape=[workspace_size], dtype=np.byte))
   return [
       custom_call(

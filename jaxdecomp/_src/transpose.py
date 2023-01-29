@@ -1,12 +1,12 @@
 import numpy as np
 import jaxlib.mlir.ir as ir
-from jaxlib.mhlo_helpers import custom_call
+from jaxlib.hlo_helpers import custom_call
 from functools import partial
 from jax.core import Primitive
 from jax import abstract_arrays
 from jax.interpreters import xla
 from jax.interpreters import mlir
-from jax._src.lib.mlir.dialects import mhlo
+from jax._src.lib.mlir.dialects import hlo
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
 
@@ -54,7 +54,7 @@ def transpose_lowering(ctx, x, *, kind, pdims, global_shape):
       backend_config=opaque,
   )
   # Finally we reshape the arry to the expected shape.
-  return mhlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
+  return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
 
 def transposeXtoY(x, *, pdims, global_shape):

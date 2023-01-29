@@ -1,6 +1,6 @@
 import numpy as np
 import jaxlib.mlir.ir as ir
-from jaxlib.mhlo_helpers import custom_call
+from jaxlib.hlo_helpers import custom_call
 from functools import partial
 from jax.core import Primitive
 from jax.interpreters import xla
@@ -10,7 +10,7 @@ from jaxdecomp._src import _jaxdecomp
 from jax import jit
 from jax.lib import xla_client
 
-from jax._src.lib.mlir.dialects import mhlo
+from jax._src.lib.mlir.dialects import hlo
 import jax
 from jax.interpreters import ad
 
@@ -107,7 +107,7 @@ def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
 
   # We ask XLA to allocate a workspace for this operation.
   # TODO: check that the memory is not used all the time, just when needed
-  workspace = mlir.full_like_aval(
+  workspace = mlir.full_like_aval(ctx, 
       0, jax.core.ShapedArray(shape=[workspace_size], dtype=np.byte))
 
   # Run the custom op with same input and output shape, so that we can perform operations
@@ -124,7 +124,7 @@ def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   )
 
   # Finally we reshape the arry to the expected shape.
-  return mhlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
+  return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
 
 def _fft_transpose_rule(x, operand, fft_type, pdims, global_shape, adjoint):

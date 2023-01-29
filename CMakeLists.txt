@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.4...3.18)
 
 project(jaxdecomp LANGUAGES CXX CUDA)
 
+set(NVHPC_CUDA_VERSION 11.7)
 find_package(NVHPC REQUIRED COMPONENTS MATH MPI)
 
 add_subdirectory(pybind11)
