@@ -1,6 +1,6 @@
 import numpy as np
 import jaxlib.mlir.ir as ir
-from jaxlib.mhlo_helpers import custom_call
+from jaxlib.hlo_helpers import custom_call
 from functools import partial
 from jax.core import Primitive
 from jax.interpreters import xla
