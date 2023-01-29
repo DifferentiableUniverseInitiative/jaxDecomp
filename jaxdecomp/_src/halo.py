@@ -47,7 +47,7 @@ def halo_lowering(ctx, x, *, halo_extents, halo_periods, pdims, global_shape):
       config, is_double, halo_extents[::-1], halo_periods[::-1], 0)
   layout = tuple(range(n - 1, -1, -1))
 
-  workspace = mlir.full_like_aval(
+  workspace = mlir.full_like_aval(ctx, 
       0, jax.core.ShapedArray(shape=[workspace_size], dtype=np.byte))
   return [
       custom_call(
