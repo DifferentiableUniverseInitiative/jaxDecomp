@@ -9,10 +9,10 @@ from jaxdecomp.fft import pfft3d, pifft3d
 from importlib.metadata import version, PackageNotFoundError
 
 try:
-    __version__ = version("jaxDecomp")
+  __version__ = version("jaxDecomp")
 except PackageNotFoundError:
-    # package is not installed
-    pass
+  # package is not installed
+  pass
 
 __all__ = [
     "config",
@@ -29,6 +29,7 @@ __all__ = [
     "transposeZtoY",
     "transposeYtoX",
 ]
+
 
 @dataclass
 class JAXDecompConfig:
