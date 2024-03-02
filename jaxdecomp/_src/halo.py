@@ -14,14 +14,15 @@ from typing import Tuple
 
 
 def halo_exchange(x, *, halo_extents: Tuple[int, int, int],
-                  halo_periods: Tuple[bool, bool, bool],
-                  pdims: Tuple[int, int], global_shape: Tuple[int, int, int]):
+                  halo_periods: Tuple[bool, bool, bool], pdims: Tuple[int, int],
+                  global_shape: Tuple[int, int, int]):
   # TODO: check float or real
-  return halo_p.bind(x,
-                     halo_extents=halo_extents,
-                     halo_periods=halo_periods,
-                     pdims=pdims,
-                     global_shape=global_shape)
+  return halo_p.bind(
+      x,
+      halo_extents=halo_extents,
+      halo_periods=halo_periods,
+      pdims=pdims,
+      global_shape=global_shape)
 
 
 def halo_abstract_eval(x, halo_extents, halo_periods, pdims, global_shape):
@@ -29,7 +30,7 @@ def halo_abstract_eval(x, halo_extents, halo_periods, pdims, global_shape):
 
 
 def halo_lowering(ctx, x, *, halo_extents, halo_periods, pdims, global_shape):
-  (x_aval, ) = ctx.avals_in
+  (x_aval,) = ctx.avals_in
   x_type = ir.RankedTensorType(x.type)
   n = len(x_type.shape)
 
@@ -53,7 +54,7 @@ def halo_lowering(ctx, x, *, halo_extents, halo_periods, pdims, global_shape):
           "halo",
           [x_type],
           operands=[x, workspace],
-          operand_layouts=[layout, (0, )],
+          operand_layouts=[layout, (0,)],
           result_layouts=[layout],
           has_side_effect=True,
           operand_output_aliases={0: 0},
@@ -65,7 +66,7 @@ def halo_lowering(ctx, x, *, halo_extents, halo_periods, pdims, global_shape):
 def halo_transpose_rule(x, operand, halo_extents, halo_periods, pdims,
                         global_shape):
   result = halo_exchange(x, halo_extents, halo_periods, pdims, global_shape)
-  return (result, )
+  return (result,)
 
 
 halo_p = Primitive("halo_exchange")

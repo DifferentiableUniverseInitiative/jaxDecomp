@@ -21,11 +21,13 @@ jaxdecomp.init()
 
 pdims = (1, size)
 global_shape = (29 * size, 19 * size, 17 * size
-                )  # These sizes are prime numbers x size of the pmesh
-x = jax.random.normal(shape=[
-    global_shape[0] // pdims[1], global_shape[1] // pdims[0], global_shape[2]
-],
-                      key=jax.random.PRNGKey(0))
+               )  # These sizes are prime numbers x size of the pmesh
+x = jax.random.normal(
+    shape=[
+        global_shape[0] // pdims[1], global_shape[1] // pdims[0],
+        global_shape[2]
+    ],
+    key=jax.random.PRNGKey(0))
 # Local value of the array
 array = x + rank
 # Global array
@@ -43,9 +45,8 @@ def test_fft():
   karray = jaxdecomp.fft.pfft3d(array, pdims=pdims, global_shape=global_shape)
 
   # Perform inverse FFT
-  rec_array = jaxdecomp.fft.pifft3d(karray,
-                                    pdims=pdims,
-                                    global_shape=global_shape)
+  rec_array = jaxdecomp.fft.pifft3d(
+      karray, pdims=pdims, global_shape=global_shape)
 
   # Check the forward FFT
   assert_allclose(global_karray_slice.real, karray.real, atol=1e-10)
@@ -57,21 +58,25 @@ def test_fft():
 def test_jit():
   # Perform distributed FFT
   karray = jax.jit(lambda x: jaxdecomp.fft.pfft3d(
-      x, pdims=pdims, global_shape=global_shape))(array)
+      x, pdims=pdims, global_shape=global_shape))(
+          array)
 
   # Perform inverse FFT
   rec_array = jax.jit(lambda x: jaxdecomp.fft.pifft3d(
-      x, pdims=pdims, global_shape=global_shape))(karray)
+      x, pdims=pdims, global_shape=global_shape))(
+          karray)
 
   # Check the forward FFT
-  assert_allclose(global_karray[rank * global_shape[1] // pdims[1]:(rank + 1) *
-                                global_shape[1] // pdims[1]].real,
-                  karray.real,
-                  atol=1e-10)
-  assert_allclose(global_karray[rank * global_shape[1] // pdims[1]:(rank + 1) *
-                                global_shape[1] // pdims[1]].imag,
-                  karray.imag,
-                  atol=1e-10)
+  assert_allclose(
+      global_karray[rank * global_shape[1] // pdims[1]:(rank + 1) *
+                    global_shape[1] // pdims[1]].real,
+      karray.real,
+      atol=1e-10)
+  assert_allclose(
+      global_karray[rank * global_shape[1] // pdims[1]:(rank + 1) *
+                    global_shape[1] // pdims[1]].imag,
+      karray.imag,
+      atol=1e-10)
   # Check the reverse FFT
   assert_allclose(array, rec_array, rtol=1e-10, atol=1e-10)
 
@@ -81,9 +86,7 @@ def test_wrong_array_size():
   array = jnp.ones([16, 16, 16])
 
   with pytest.raises(AssertionError) as excinfo:
-    karray = jaxdecomp.fft.pfft3d(array,
-                                  pdims=pdims,
-                                  global_shape=global_shape)
+    karray = jaxdecomp.fft.pfft3d(array, pdims=pdims, global_shape=global_shape)
 
   assert "Only array dimensions divisible" in str(excinfo.value)
 
@@ -142,11 +145,12 @@ def test_grad_bwd():
 
 @pytest.mark.skip(reason="vmap is not yet implemented for the 3D FFT")
 def test_vmap():
-  x = jax.random.normal(shape=[
-      128, global_shape[0] // pdims[1], global_shape[1] // pdims[0],
-      global_shape[2]
-  ],
-                        key=jax.random.PRNGKey(0))
+  x = jax.random.normal(
+      shape=[
+          128, global_shape[0] // pdims[1], global_shape[1] // pdims[0],
+          global_shape[2]
+      ],
+      key=jax.random.PRNGKey(0))
   # Local value of the array
   array = x + rank
   # Global array
@@ -156,22 +160,24 @@ def test_vmap():
 
   # Perform distributed FFT
   karray = jax.vmap(lambda x: jaxdecomp.fft.pfft3d(
-      x, pdims=pdims, global_shape=global_shape))(array)
+      x, pdims=pdims, global_shape=global_shape))(
+          array)
 
   # Perform inverse FFT
   rec_array = jax.vmap(lambda x: jaxdecomp.fft.pifft3d(
-      x, pdims=pdims, global_shape=global_shape))(karray)
+      x, pdims=pdims, global_shape=global_shape))(
+          karray)
 
   # Check the forward FFT
-  assert_allclose(global_karray[:,
-                                rank * global_shape[1] // pdims[1]:(rank + 1) *
-                                global_shape[1] // pdims[1]].real,
-                  karray.real,
-                  atol=1e-10)
-  assert_allclose(global_karray[:,
-                                rank * global_shape[1] // pdims[1]:(rank + 1) *
-                                global_shape[1] // pdims[1]].imag,
-                  karray.imag,
-                  atol=1e-10)
+  assert_allclose(
+      global_karray[:, rank * global_shape[1] // pdims[1]:(rank + 1) *
+                    global_shape[1] // pdims[1]].real,
+      karray.real,
+      atol=1e-10)
+  assert_allclose(
+      global_karray[:, rank * global_shape[1] // pdims[1]:(rank + 1) *
+                    global_shape[1] // pdims[1]].imag,
+      karray.imag,
+      atol=1e-10)
   # Check the reverse FFT
   assert_allclose(array, rec_array, rtol=1e-10, atol=1e-10)

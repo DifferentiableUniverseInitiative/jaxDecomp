@@ -20,11 +20,13 @@ jaxdecomp.init()
 
 pdims = (1, size)
 global_shape = (29 * size, 19 * size, 17 * size
-                )  # These sizes are prime numbers x size of the pmesh
-x = jax.random.normal(shape=[
-    global_shape[0] // pdims[1], global_shape[1] // pdims[0], global_shape[2]
-],
-                      key=jax.random.PRNGKey(0))
+               )  # These sizes are prime numbers x size of the pmesh
+x = jax.random.normal(
+    shape=[
+        global_shape[0] // pdims[1], global_shape[1] // pdims[0],
+        global_shape[2]
+    ],
+    key=jax.random.PRNGKey(0))
 # Local value of the array
 array = x + rank
 # Global array
@@ -35,11 +37,12 @@ def test_empty_halo():
   padded_array = jnp.pad(array, [(32, 32), (32, 32), (32, 32)])
 
   # perform halo exchange
-  exchanged_array = jaxdecomp.halo_exchange(padded_array,
-                                            halo_extents=(32, 32, 32),
-                                            halo_periods=(True, True, True),
-                                            pdims=pdims,
-                                            global_shape=global_shape)
+  exchanged_array = jaxdecomp.halo_exchange(
+      padded_array,
+      halo_extents=(32, 32, 32),
+      halo_periods=(True, True, True),
+      pdims=pdims,
+      global_shape=global_shape)
 
   # Remove the padding
   exchanged_array = exchanged_array[32:-32, 32:-32, 32:-32]
@@ -53,12 +56,12 @@ def test_full_halo():
               (0, 0), (0, 0)])
 
   # perform halo exchange
-  exchanged_array = jaxdecomp.halo_exchange(padded_array,
-                                            halo_extents=(global_shape[0] //
-                                                          pdims[1], 0, 0),
-                                            halo_periods=(True, True, True),
-                                            pdims=pdims,
-                                            global_shape=global_shape)
+  exchanged_array = jaxdecomp.halo_exchange(
+      padded_array,
+      halo_extents=(global_shape[0] // pdims[1], 0, 0),
+      halo_periods=(True, True, True),
+      pdims=pdims,
+      global_shape=global_shape)
 
   # Remove the padding
   upper_slice = exchanged_array[-global_shape[0] // pdims[1]:]

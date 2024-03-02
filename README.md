@@ -27,19 +27,19 @@ pdims= [2,4]
 global_shape=[1024,1024,1024]
 
 # Initialize an array with the expected gobal size
-array = jax.random.normal(shape=[1024//pdims[1], 
-                                 1024//pdims[0], 
-                                 1024], 
+array = jax.random.normal(shape=[1024//pdims[1],
+                                 1024//pdims[0],
+                                 1024],
             key=jax.random.PRNGKey(rank)).astype('complex64')
 
 # Forward FFT, note that the output FFT is transposed
-karray = jaxdecomp.pfft3d(array, 
+karray = jaxdecomp.pfft3d(array,
                 global_shape=global_shape, pdims=pdims)
 
 # Reverse FFT
-recarray = jaxdecomp.ipfft3d(karray, 
+recarray = jaxdecomp.ipfft3d(karray,
         global_shape=global_shape, pdims=pdims)
-        
+
 # Add halo regions to our array
 padded_array = jnp.pad(array, [(32,32),(32,32),(32,32)])
 # Perform a halo exchange
@@ -58,7 +58,7 @@ $ mpirun -n 8 python demo.py
 
 ### Caveats
 
-The code presented above should work, but there are a few caveats mentioned in [this issue](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/issues/1). If you need a functionality that is not currently implemented, feel free to mention it on that issue. 
+The code presented above should work, but there are a few caveats mentioned in [this issue](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/issues/1). If you need a functionality that is not currently implemented, feel free to mention it on that issue.
 
 ## Install
 
@@ -75,8 +75,8 @@ Make sure all environment variables relative to the SDK are properly set.
 
 ### Step I: Building cuDecomp
 
-Start by following the instructions in the `third_party/cuDecomp/README.md` to compile 
-cuDecomp for your environment/machine. 
+Start by following the instructions in the `third_party/cuDecomp/README.md` to compile
+cuDecomp for your environment/machine.
 Note that there are configuration files in `third_party/cuDecomp/configs` for particular systems.
 
 For instance, on NERSC's Perlmutter do the following:
@@ -186,7 +186,7 @@ jaxdecomp.config.update('transpose_comm_backend', 'NCCL')
 # We could for instance time how long it takes to execute in this mode
 %timeit pfft3(y)
 
-# And then update the backend 
+# And then update the backend
 jaxdecomp.config.update('transpose_comm_backend', 'MPI')
 # And measure again
 %timeit pfft3(y)
@@ -196,8 +196,8 @@ jaxdecomp.config.update('transpose_comm_backend', 'MPI')
 
 We can also make things fancier, since cuDecomp is able to autotune, we could use it to tell us what is the best way to partition the data given the available GPUs, something like this:
 ```python
-automesh = jaxdecomp.autotune(shape=[512,512,512]) 
-# This is a JAX Sharding spec object, optimized for the given GPUs 
+automesh = jaxdecomp.autotune(shape=[512,512,512])
+# This is a JAX Sharding spec object, optimized for the given GPUs
 # and shape of the tensor
 sharding = PositionalSharding(automesh)
 ```

@@ -9,7 +9,7 @@
 * Deprecations
   * Some things that are getting deprecated
 * Bugs
-  * Bug 1 
+  * Bug 1
 -->
 
 

@@ -60,9 +60,7 @@ class CMakeBuild(build_ext):
 
     # Multi-config generators have a different way to specify configs
     if not single_config:
-      cmake_args += [
-          f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{cfg.upper()}={extdir}"
-      ]
+      cmake_args += [f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{cfg.upper()}={extdir}"]
       build_args += ["--config", cfg]
 
     # Set CMAKE_BUILD_PARALLEL_LEVEL to control the parallel build level
@@ -78,22 +76,21 @@ class CMakeBuild(build_ext):
     if not build_temp.exists():
       build_temp.mkdir(parents=True)
 
-    subprocess.run(["cmake", ext.sourcedir] + cmake_args,
-                   cwd=build_temp,
-                   check=True)
+    subprocess.run(
+        ["cmake", ext.sourcedir] + cmake_args, cwd=build_temp, check=True)
 
-    subprocess.run(["cmake", "--build", "."] + build_args,
-                   cwd=build_temp,
-                   check=True)
+    subprocess.run(
+        ["cmake", "--build", "."] + build_args, cwd=build_temp, check=True)
 
 
-setup(name='jaxDecomp',
-      url='https://github.com/DifferentiableUniverseInitiative/jaxDecomp',
-      author='Francois Lanusse',
-      description='JAX bindings for the cuDecomp library',
-      ext_modules=[CMakeExtension("jaxdecomp/_src/_jaxdecomp")],
-      cmdclass={"build_ext": CMakeBuild},
-      packages=find_packages(),
-      include_package_data=True,
-      use_scm_version=True,
-      setup_requires=["setuptools_scm"])
+setup(
+    name='jaxDecomp',
+    url='https://github.com/DifferentiableUniverseInitiative/jaxDecomp',
+    author='Francois Lanusse',
+    description='JAX bindings for the cuDecomp library',
+    ext_modules=[CMakeExtension("jaxdecomp/_src/_jaxdecomp")],
+    cmdclass={"build_ext": CMakeBuild},
+    packages=find_packages(),
+    include_package_data=True,
+    use_scm_version=True,
+    setup_requires=["setuptools_scm"])

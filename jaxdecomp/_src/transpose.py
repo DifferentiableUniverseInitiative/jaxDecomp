@@ -31,7 +31,7 @@ def transpose_abstract_eval(x, *, kind, pdims, global_shape):
 
 def transpose_lowering(ctx, x, *, kind, pdims, global_shape):
   assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
-  (aval_out, ) = ctx.avals_out
+  (aval_out,) = ctx.avals_out
   x_type = ir.RankedTensorType(x.type)
   layout = tuple(range(len(x_type.shape) - 1, -1, -1))
 
@@ -59,10 +59,8 @@ def transpose_lowering(ctx, x, *, kind, pdims, global_shape):
 
 def transposeXtoY(x, *, pdims, global_shape):
   """Transposes distributed array"""
-  return transposeXtoY_p.bind(x,
-                              kind="x_y",
-                              pdims=pdims,
-                              global_shape=global_shape)
+  return transposeXtoY_p.bind(
+      x, kind="x_y", pdims=pdims, global_shape=global_shape)
 
 
 transposeXtoY_p = Primitive("transposeXtoY")
@@ -73,10 +71,8 @@ mlir.register_lowering(transposeXtoY_p, transpose_lowering, platform="gpu")
 
 def transposeYtoZ(x, *, pdims, global_shape):
   """Transposes distributed array"""
-  return transposeYtoZ_p.bind(x,
-                              kind="y_z",
-                              pdims=pdims,
-                              global_shape=global_shape)
+  return transposeYtoZ_p.bind(
+      x, kind="y_z", pdims=pdims, global_shape=global_shape)
 
 
 transposeYtoZ_p = Primitive("transposeYtoZ")
@@ -87,10 +83,8 @@ mlir.register_lowering(transposeYtoZ_p, transpose_lowering, platform="gpu")
 
 def transposeZtoY(x, *, pdims, global_shape):
   """Transposes distributed array"""
-  return transposeZtoY_p.bind(x,
-                              kind="z_y",
-                              pdims=pdims,
-                              global_shape=global_shape)
+  return transposeZtoY_p.bind(
+      x, kind="z_y", pdims=pdims, global_shape=global_shape)
 
 
 transposeZtoY_p = Primitive("transposeZtoY")
@@ -101,10 +95,8 @@ mlir.register_lowering(transposeZtoY_p, transpose_lowering, platform="gpu")
 
 def transposeYtoX(x, *, pdims, global_shape):
   """Transposes distributed array"""
-  return transposeYtoX_p.bind(x,
-                              kind="y_x",
-                              pdims=pdims,
-                              global_shape=global_shape)
+  return transposeYtoX_p.bind(
+      x, kind="y_x", pdims=pdims, global_shape=global_shape)
 
 
 transposeYtoX_p = Primitive("transposeYtoX")

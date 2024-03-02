@@ -50,13 +50,10 @@ def pfft(x,
   if typ in [xla_client.FftType.RFFT, xla_client.FftType.IRFFT]:
     raise TypeError("only complex FFTs are currently supported through pfft.")
 
-  (x, ) = _promote_dtypes_complex(x)
+  (x,) = _promote_dtypes_complex(x)
 
-  return pfft_p.bind(x,
-                     fft_type=typ,
-                     pdims=pdims,
-                     global_shape=global_shape,
-                     adjoint=adjoint)
+  return pfft_p.bind(
+      x, fft_type=typ, pdims=pdims, global_shape=global_shape, adjoint=adjoint)
 
 
 def pfft_abstract_eval(x, fft_type, pdims, global_shape, adjoint):
@@ -84,18 +81,18 @@ def pfft_abstract_eval(x, fft_type, pdims, global_shape, adjoint):
 
 
 def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
-  (x_aval, ) = ctx.avals_in
-  (aval_out, ) = ctx.avals_out
+  (x_aval,) = ctx.avals_in
+  (aval_out,) = ctx.avals_out
   dtype = x_aval.dtype
   a_type = ir.RankedTensorType(a.type)
   n = len(a_type.shape)
 
   # We currently only support complex FFTs through this interface, so let's check the fft type
-  assert fft_type in (
-      FftType.FFT, FftType.IFFT), "Only complex FFTs are currently supported"
+  assert fft_type in (FftType.FFT,
+                      FftType.IFFT), "Only complex FFTs are currently supported"
 
   # Figure out which fft we want
-  forward = fft_type in (FftType.FFT, )
+  forward = fft_type in (FftType.FFT,)
   is_double = np.finfo(dtype).dtype == np.float64
 
   # Compute the descriptor for our FFT
@@ -119,7 +116,7 @@ def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
       "pfft3d",
       [a_type],
       operands=[a, workspace],
-      operand_layouts=[layout, (0, )],
+      operand_layouts=[layout, (0,)],
       result_layouts=[layout],
       has_side_effect=True,
       operand_output_aliases={0: 0},
@@ -139,7 +136,7 @@ def _fft_transpose_rule(x, operand, fft_type, pdims, global_shape, adjoint):
   else:
     raise NotImplementedError
 
-  return (result, )
+  return (result,)
 
 
 pfft_p = Primitive("pfft")

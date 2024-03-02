@@ -35,8 +35,8 @@ def _do_pfft(
 ) -> Array:
   arr = jnp.asarray(a)
   transformed = _pfft(arr, fft_type, pdims=pdims, global_shape=global_shape)
-  transformed *= _fft_norm(jnp.array(global_shape, dtype=transformed.dtype),
-                           func_name, norm)
+  transformed *= _fft_norm(
+      jnp.array(global_shape, dtype=transformed.dtype), func_name, norm)
   return transformed
 
 
