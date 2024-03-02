@@ -107,8 +107,8 @@ def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
 
   # We ask XLA to allocate a workspace for this operation.
   # TODO: check that the memory is not used all the time, just when needed
-  workspace = mlir.full_like_aval(ctx, 
-      0, jax.core.ShapedArray(shape=[workspace_size], dtype=np.byte))
+  workspace = mlir.full_like_aval(
+      ctx, 0, jax.core.ShapedArray(shape=[workspace_size], dtype=np.byte))
 
   # Run the custom op with same input and output shape, so that we can perform operations
   # inplace.

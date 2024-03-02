@@ -7,7 +7,6 @@ get_pencil_info = _jaxdecomp.get_pencil_info
 get_autotuned_config = _jaxdecomp.get_autotuned_config
 make_config = _jaxdecomp.GridConfig
 
-
 # Loading the comm configuration flags at the top level
 from ._jaxdecomp import HALO_COMM_MPI, HALO_COMM_MPI_BLOCKING, HALO_COMM_NCCL, HALO_COMM_NVSHMEM, HALO_COMM_NVSHMEM_BLOCKING
 from ._jaxdecomp import TRANSPOSE_COMM_MPI_A2A, TRANSPOSE_COMM_MPI_P2P, TRANSPOSE_COMM_MPI_P2P_PL, TRANSPOSE_COMM_NCCL, TRANSPOSE_COMM_NCCL_PL, TRANSPOSE_COMM_NVSHMEM, TRANSPOSE_COMM_NVSHMEM_PL
