@@ -131,3 +131,6 @@ dmypy.json
 .vscode/
 
 scripts/experimental
+compile_commands.json
+CMakeFiles
+traces*
