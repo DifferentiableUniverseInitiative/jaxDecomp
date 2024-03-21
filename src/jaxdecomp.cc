@@ -1,12 +1,15 @@
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <cudecomp.h>
+#include <mpi.h>
+#include "checks.h"
+#include "helpers.h"
 #include "jaxdecomp.h"
+#include "logger.hpp"
+#include "grid_descriptor_mgr.h"
 #include "checks.h"
 #include "fft.h"
 #include "halo.h"
-#include "helpers.h"
-#include <cudecomp.h>
-#include <mpi.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 
 namespace py = pybind11;
 namespace jd = jaxdecomp;
@@ -15,23 +18,19 @@ namespace jaxdecomp {
 
 // Global cuDecomp handle, initialized once from Python when the
 // library is imported, and then implicitly reused in all functions
-cudecompHandle_t handle;
-
-/**
- * @brief Initializes the global handle
- */
-void init() { CHECK_CUDECOMP_EXIT(cudecompInit(&handle, MPI_COMM_WORLD)); };
+// cudecompHandle_t handle;
 
 /**
  * @brief Finalizes the cuDecomp library
  */
-void finalize() { CHECK_CUDECOMP_EXIT(cudecompFinalize(handle)); };
+void finalize(){jd::GridDescriptorManager::getInstance().finalize();};
 
 /**
  * @brief Returns Pencil information for a given grid
  */
 decompPencilInfo_t getPencilInfo(decompGridDescConfig_t grid_config,
                                  int32_t axis) {
+  cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
   // Create cuDecomp grid descriptor
   cudecompGridDescConfig_t config;
   cudecompGridDescConfigSet(&config, &grid_config);
@@ -69,6 +68,7 @@ getAutotunedGridConfig(decompGridDescConfig_t grid_config,
                        std::array<int32_t, 3> halo_extents,
                        std::array<bool, 3> halo_periods) {
   // Create cuDecomp grid descriptor
+  cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
   cudecompGridDescConfig_t config;
   cudecompGridDescConfigSet(&config, &grid_config);
 
@@ -88,7 +88,11 @@ getAutotunedGridConfig(decompGridDescConfig_t grid_config,
 
   // Transpose communication backend autotuning options
   options.autotune_transpose_backend = true;
-  options.transpose_use_inplace_buffers = true;
+  // TODO(wassim) this was updated in cuDecomp check if autotuning works
+  options.transpose_use_inplace_buffers[0] = true;
+  options.transpose_use_inplace_buffers[1] = true;
+  options.transpose_use_inplace_buffers[2] = true;
+  options.transpose_use_inplace_buffers[3] = true;
 
   // Halo communication backend autotuning options
   options.autotune_halo_backend = true;
@@ -124,6 +128,7 @@ getAutotunedGridConfig(decompGridDescConfig_t grid_config,
 void transposeXtoY(cudaStream_t stream, void **buffers, const char *opaque,
                    size_t opaque_len) {
 
+  cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
   void *data_d = buffers[0]; // In place operations, so only one buffer
 
   // Create cuDecomp grid descriptor
@@ -159,6 +164,7 @@ void transposeXtoY(cudaStream_t stream, void **buffers, const char *opaque,
 
 void transposeYtoZ(cudaStream_t stream, void **buffers, const char *opaque,
                    size_t opaque_len) {
+  cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
 
   void *data_d = buffers[0]; // In place operations, so only one buffer
 
@@ -195,6 +201,7 @@ void transposeYtoZ(cudaStream_t stream, void **buffers, const char *opaque,
 
 void transposeZtoY(cudaStream_t stream, void **buffers, const char *opaque,
                    size_t opaque_len) {
+  cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
 
   void *data_d = buffers[0]; // In place operations, so only one buffer
 
@@ -231,6 +238,7 @@ void transposeZtoY(cudaStream_t stream, void **buffers, const char *opaque,
 
 void transposeYtoX(cudaStream_t stream, void **buffers, const char *opaque,
                    size_t opaque_len) {
+  cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
 
   void *data_d = buffers[0]; // In place operations, so only one buffer
 
@@ -271,14 +279,33 @@ void transposeYtoX(cudaStream_t stream, void **buffers, const char *opaque,
 void pfft3d(cudaStream_t stream, void **buffers, const char *opaque,
             size_t opaque_len) {
 
-  fftDescriptor_t descriptor =
-      *UnpackDescriptor<fftDescriptor_t>(opaque, opaque_len);
+  fftDescriptor descriptor =
+      *UnpackDescriptor<fftDescriptor>(opaque, opaque_len);
 
+  size_t work_size;
+  cudecompHandle_t my_handle(
+      jd::GridDescriptorManager::getInstance().getHandle());
   // Execute the correct version of the FFT
   if (descriptor.double_precision) {
-    fft3d<double>(handle, descriptor, stream, buffers);
+
+    auto executor = std::make_shared<jd::FourierExecutor<double>>();
+    jd::GridDescriptorManager::getInstance().createFFTExecutor(
+        descriptor, work_size, executor);
+
+    if (descriptor.forward)
+      executor->forward(my_handle, descriptor, stream, buffers);
+    else
+      executor->backward(my_handle, descriptor, stream, buffers);
   } else {
-    fft3d<float>(handle, descriptor, stream, buffers);
+
+    auto executor = std::make_shared<jd::FourierExecutor<float>>();
+    jd::GridDescriptorManager::getInstance().createFFTExecutor(
+        descriptor, work_size, executor);
+
+    if (descriptor.forward)
+      executor->forward(my_handle, descriptor, stream, buffers);
+    else
+      executor->backward(my_handle, descriptor, stream, buffers);
   }
 }
 
@@ -288,6 +315,8 @@ void pfft3d(cudaStream_t stream, void **buffers, const char *opaque,
  */
 void halo(cudaStream_t stream, void **buffers, const char *opaque,
           size_t opaque_len) {
+  cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
+
   haloDescriptor_t descriptor =
       *UnpackDescriptor<haloDescriptor_t>(opaque, opaque_len);
 
@@ -314,7 +343,6 @@ py::dict Registrations() {
 
 PYBIND11_MODULE(_jaxdecomp, m) {
   // Utilities
-  m.def("init", &jd::init);
   m.def("finalize", &jd::finalize);
   m.def("get_pencil_info", &jd::getPencilInfo);
   m.def("get_autotuned_config", &jd::getAutotunedGridConfig);
@@ -336,16 +364,27 @@ PYBIND11_MODULE(_jaxdecomp, m) {
     cudecompGridDescConfig_t cuconfig;
     cudecompGridDescConfigSet(&cuconfig, &config);
 
-    std::pair<int64_t, jd::fftDescriptor_t> foo;
+    size_t work_size;
+    jd::fftDescriptor fftdesc(cuconfig, double_precision, forward, adjoint);
     if (double_precision) {
-      foo = jd::get_fft3d_descriptor<double>(jd::handle, cuconfig, forward,
-                                             adjoint);
+
+      auto executor = std::make_shared<jd::FourierExecutor<double>>();
+
+      HRESULT hr = jd::GridDescriptorManager::getInstance().createFFTExecutor(
+          fftdesc, work_size, executor);
+
+      return std::pair<int64_t, pybind11::bytes>(work_size,
+                                                 PackDescriptor(fftdesc));
+
     } else {
-      foo = jd::get_fft3d_descriptor<float>(jd::handle, cuconfig, forward,
-                                            adjoint);
+      auto executor = std::make_shared<jd::FourierExecutor<float>>();
+
+      HRESULT hr = jd::GridDescriptorManager::getInstance().createFFTExecutor(
+          fftdesc, work_size, executor);
+
+      return std::pair<int64_t, pybind11::bytes>(work_size,
+                                                 PackDescriptor(fftdesc));
     }
-    return std::pair<int64_t, pybind11::bytes>(foo.first,
-                                               PackDescriptor(foo.second));
   });
 
   m.def("build_halo_descriptor",
@@ -355,9 +394,11 @@ PYBIND11_MODULE(_jaxdecomp, m) {
           // Create a real cuDecomp grid descriptor
           cudecompGridDescConfig_t cuconfig;
           cudecompGridDescConfigSet(&cuconfig, &config);
+          cudecompHandle_t handle(
+              jd::GridDescriptorManager::getInstance().getHandle());
 
           std::pair<int64_t, jd::haloDescriptor_t> foo =
-              jd::get_halo_descriptor(jd::handle, cuconfig, halo_extents,
+              jd::get_halo_descriptor(handle, cuconfig, halo_extents,
                                       halo_periods, axis, double_precision);
 
           return std::pair<int64_t, pybind11::bytes>(
