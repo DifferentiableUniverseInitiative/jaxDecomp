@@ -1,4 +1,5 @@
 #include "logger.hpp"
+#include "perfostep.hpp"
 #include "checks.h"
 #include "fft.h"
 #include <cstddef>
@@ -15,6 +16,9 @@ HRESULT FourierExecutor<real_t>::Initialize(cudecompHandle_t handle,
                                             cudecompGridDescConfig_t config,
                                             size_t &work_size,
                                             fftDescriptor &fft_descriptor) {
+  Perfostep profiler;
+  profiler.Start("CreateGridDesc");
+
   m_GridDescConfig = config;
 
   CHECK_CUDECOMP_EXIT(
@@ -36,6 +40,7 @@ HRESULT FourierExecutor<real_t>::Initialize(cudecompHandle_t handle,
   CHECK_CUDECOMP_EXIT(cudecompGetTransposeWorkspaceSize(handle, m_GridConfig,
                                                         &num_elements_work_c));
 
+  profiler.Stop();
   // Set up the FFT plan
 
   // Note: 0 is the Z axis here due to the fact the cudecomp is column-major
@@ -56,14 +61,17 @@ HRESULT FourierExecutor<real_t>::Initialize(cudecompHandle_t handle,
   HRESULT hr(E_FAIL);
   switch (GetDecomposition(config.pdims)) {
   case Decomposition::slab_XY:
+    profiler.Start("InitializeSlabXY");
     hr = InitializeSlabXY(config, pinfo_x_c, pinfo_y_c, pinfo_z_c,
                           work_sz_cufft, is_contiguous);
     break;
   case Decomposition::slab_YZ:
+    profiler.Start("InitializeSlabYZ");
     hr = InitializeSlabYZ(config, pinfo_x_c, pinfo_y_c, pinfo_z_c,
                           work_sz_cufft, is_contiguous);
     break;
   case Decomposition::pencil:
+    profiler.Start("InitializePencils");
     hr = InitializePencils(config, pinfo_x_c, pinfo_y_c, pinfo_z_c,
                            work_sz_cufft, is_contiguous);
     break;
@@ -71,6 +79,7 @@ HRESULT FourierExecutor<real_t>::Initialize(cudecompHandle_t handle,
     hr = E_FAIL;
     break;
   }
+  profiler.Stop();
 
   // Note: we can also allocat the workspace here rather than
   // requesting XLA to do it so it can be cleaned it up easily in the finalize
@@ -245,6 +254,9 @@ template <typename real_t>
 HRESULT FourierExecutor<real_t>::forward(cudecompHandle_t handle,
                                          fftDescriptor desc,
                                          cudaStream_t stream, void **buffers) {
+  Perfostep profiler;
+  profiler.Start("forward");
+
   HRESULT hr(E_FAIL);
   void *data_d = buffers[0];
   void *work_d = buffers[1];
@@ -256,17 +268,21 @@ HRESULT FourierExecutor<real_t>::forward(cudecompHandle_t handle,
   complex_t *work_c_d = static_cast<complex_t *>(work_d);
   switch (desc.decomposition) {
   case Decomposition::slab_XY:
+    profiler.Start("forwardXY");
     hr = forwardXY(handle, desc, stream, input, output, work_c_d);
     break;
   case Decomposition::slab_YZ:
+    profiler.Start("forwardYZ");
     hr = forwardYZ(handle, desc, stream, input, output, work_c_d);
     break;
   case Decomposition::pencil:
+    profiler.Start("forwardPencil");
     hr = forwardPencil(handle, desc, stream, input, output, work_c_d);
     break;
   case Decomposition::unknown:
     hr = E_FAIL;
   }
+  profiler.Stop();
   return hr;
 }
 
@@ -274,6 +290,9 @@ template <typename real_t>
 HRESULT FourierExecutor<real_t>::backward(cudecompHandle_t handle,
                                           fftDescriptor desc,
                                           cudaStream_t stream, void **buffers) {
+  Perfostep profiler;
+  profiler.Start("backward");
+
   HRESULT hr(E_FAIL);
   void *data_d = buffers[0];
   void *work_d = buffers[1];
@@ -284,17 +303,21 @@ HRESULT FourierExecutor<real_t>::backward(cudecompHandle_t handle,
   complex_t *work_c_d = static_cast<complex_t *>(work_d);
   switch (desc.decomposition) {
   case Decomposition::slab_XY:
+    profiler.Start("backwardXY");
     hr = backwardXY(handle, desc, stream, input, output, work_c_d);
     break;
   case Decomposition::slab_YZ:
+    profiler.Start("backwardYZ");
     hr = backwardYZ(handle, desc, stream, input, output, work_c_d);
     break;
   case Decomposition::pencil:
+    profiler.Start("backwardPencil");
     hr = backwardPencil(handle, desc, stream, input, output, work_c_d);
     break;
   case Decomposition::unknown:
     hr = E_FAIL;
   }
+  profiler.Stop();
   return hr;
 }
 
