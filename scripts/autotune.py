@@ -6,7 +6,6 @@ size = comm.Get_size()
 
 import jaxdecomp
 
-jaxdecomp.init()
 pdims = (0, 0)
 global_shape = (1024, 1024, 1024)
 
