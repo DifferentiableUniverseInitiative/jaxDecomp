@@ -2,8 +2,7 @@ import numpy as np
 import jaxlib.mlir.ir as ir
 from jaxlib.hlo_helpers import custom_call
 from functools import partial
-from jax.core import Primitive
-from jax import abstract_arrays
+from jax.core import Primitive, ShapedArray
 from jax.interpreters import xla
 from jax.interpreters import mlir
 from jax._src.lib.mlir.dialects import hlo
@@ -26,7 +25,7 @@ def transpose_abstract_eval(x, *, kind, pdims, global_shape):
   assert np.prod(shape) == np.prod(
       x.shape
   ), "Only array dimensions divisible by the process mesh size are currently supported. The current configuration leads to local slices of varying sizes between forward and reverse FFT."
-  return abstract_arrays.ShapedArray(shape, x.dtype)
+  return ShapedArray(shape, x.dtype)
 
 
 def transpose_lowering(ctx, x, *, kind, pdims, global_shape):
@@ -45,7 +44,7 @@ def transpose_lowering(ctx, x, *, kind, pdims, global_shape):
 
   result = custom_call(
       "transpose_" + kind,
-      [x_type],
+      result_types=[x_type],
       operands=[x],
       operand_layouts=[layout],
       result_layouts=[layout],
