@@ -16,7 +16,6 @@ import jaxdecomp
 import pytest
 
 # Initialize cuDecomp
-jaxdecomp.init()
 
 pdims = (1, size)
 global_shape = (29 * size, 19 * size, 17 * size
