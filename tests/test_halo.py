@@ -15,26 +15,30 @@ import jax
 import jax.numpy as jnp
 import jaxdecomp
 
+# Initialize jax distributed to instruct jax local process which GPU to use
+jax.distributed.initialize()
 # Initialize cuDecomp
-jaxdecomp.init()
 
 pdims = (1, size)
 global_shape = (29 * size, 19 * size, 17 * size
                )  # These sizes are prime numbers x size of the pmesh
-x = jax.random.normal(
-    shape=[
-        global_shape[0] // pdims[1], global_shape[1] // pdims[0],
-        global_shape[2]
-    ],
-    key=jax.random.PRNGKey(0))
-# Local value of the array
-array = x + rank
-# Global array
-global_array = jnp.concatenate([x + i for i in range(size)], axis=0)
+local_array = jax.random.normal(
+      shape=[
+          global_shape[0] // pdims[0], global_shape[1] // pdims[1],
+          global_shape[2]
+      ],
+      key=jax.random.PRNGKey(rank))
+# Remap to the global array from the local slice
+devices = mesh_utils.create_device_mesh(pdims)
+mesh = Mesh(devices, axis_names=('z', 'y'))
+global_array = multihost_utils.host_local_array_to_global_array(
+      array, mesh, P('z', 'y'))
 
 
 def test_empty_halo():
-  padded_array = jnp.pad(array, [(32, 32), (32, 32), (32, 32)])
+  jitted_pad = jax.jit(jnp.pad)
+
+  padded_array = jitted_pad(x_global, [(32, 32), (32, 32), (32, 32)])
 
   # perform halo exchange
   exchanged_array = jaxdecomp.halo_exchange(
