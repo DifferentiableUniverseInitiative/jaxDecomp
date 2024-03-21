@@ -15,46 +15,80 @@ size = comm.Get_size()
 
 import jax
 import jax.numpy as jnp
+from jax import jit
+from jax import mesh_utils, multihost_utils
 import jaxdecomp
-
+from jaxdecomp.fft import pfft3d,ipfft3d
+from jaxdecomp import slice_pad, slice_unpad , halo_exchange
 # Initialise the library, and optionally selects a communication backend (defaults to NCCL)
-jaxdecomp.init()
 jaxdecomp.config.update('halo_comm_backend', jaxdecomp.HALO_COMM_MPI)
 jaxdecomp.config.update('transpose_comm_backend', jaxdecomp.TRANSPOSE_COMM_MPI_A2A)
 
+# Initialize jax distributed to instruct jax local process which GPU to use
+jax.distributed.initialize()
+
 # Setup a processor mesh (should be same size as "size")
-pdims= [2,4]
+pdims= (2,4)
 global_shape=[1024,1024,1024]
 
 # Initialize an array with the expected gobal size
-array = jax.random.normal(shape=[1024//pdims[1],
-                                 1024//pdims[0],
-                                 1024],
+local_slice = jax.random.normal(shape=[1024//pdims[1],
+                                1024//pdims[0],
+                                1024],
             key=jax.random.PRNGKey(rank)).astype('complex64')
 
+ # Remap to the global array from the local slice
+devices = mesh_utils.create_device_mesh(pdims[::-1])
+mesh = Mesh(devices, axis_names=('z', 'y'))
+global_array = multihost_utils.host_local_array_to_global_array(
+    local_array, mesh, P('z', 'y'))
+
 # Forward FFT, note that the output FFT is transposed
-karray = jaxdecomp.pfft3d(array,
-                global_shape=global_shape, pdims=pdims)
+@jit
+def modify_array(array):
+    return 2 * array + 1
 
-# Reverse FFT
-recarray = jaxdecomp.ipfft3d(karray,
-        global_shape=global_shape, pdims=pdims)
+with mesh:
+    
+    # Forward FFT
+    karray = pfft3d(global_array)
+    # Do some operation on your array
+    karray = modify_array(karray)
+    # Reverse FFT
+    recarray = ipfft3d(karray)
+    # Add halo regions to our array
+    padding_width = ((32,32),(32,32),(32,32)) # Has to a tuple of tuples
+    padded_array = slice_pad(recarray, padding_width , pdims)
+    # Perform a halo exchange + reduce
+    exchanged_reduced = halo_exchange(padded_array,
+                                           halo_extents=(32,32,32),
+                                           halo_periods=(True,True,True),
+                                           reduce_halo=True)
+    # Remove the halo regions
+    recarray = slice_unpad(exchanged_reduced, padding_width, pdims)
 
-# Add halo regions to our array
-padded_array = jnp.pad(array, [(32,32),(32,32),(32,32)])
-# Perform a halo exchange
-padded_array = jaxdecomp.halo_exchange(padded_array,
-                                       halo_extents=(32,32,32),
-                                       halo_periods=(True,True,True),
-                                       pdims=pdims,
-                                       global_shape=global_shape)
+# Gather the results (only if it fits on CPU memory)
+gathered_array = multihost_utils.process_allgather(recarray, tiled=True)
+
+# Finalize the library
+jaxdecomp.finalize()
+jax.distributed.shutdown()
 ```
 **Note**: All these functions are jittable and have well defined derivatives!
 
 This script would have to be run on 8 GPUs in total with something like
+
 ```bash
 $ mpirun -n 8 python demo.py
 ```
+
+On an HPC cluster like Jean Zay you should do this
+
+```bash
+$ srun python demo.py
+```
+
+Check the slurm [README](slurms/README.md) and [template](slurms/template.slurm) for more information on how to run on a Jean Zay.
 
 ### Caveats
 
@@ -73,21 +107,9 @@ This install procedure assumes that the [NVIDIA HPC SDK](https://developer.nvidi
 
 Make sure all environment variables relative to the SDK are properly set.
 
-### Step I: Building cuDecomp
+### Building jaxDecomp
 
-Start by following the instructions in the `third_party/cuDecomp/README.md` to compile
-cuDecomp for your environment/machine.
-Note that there are configuration files in `third_party/cuDecomp/configs` for particular systems.
-
-For instance, on NERSC's Perlmutter do the following:
-```bash
-$ cd third_party/cuDecomp
-$ make -j CONFIGFILE=configs/nvhpcsdk_pm.conf lib
-```
-
-### Step II: Building jaxDecomp
-
-This step is easier :-) From this directory, just run the following
+From this directory, install & build jaxDecomp via pip
 ```bash
 $ pip install --user .
 ```
@@ -102,19 +124,18 @@ $ pip install --user .
 
 #### IDRIS [Jean Zay](http://www.idris.fr/eng/jean-zay/cpu/jean-zay-cpu-hw-eng.html) HPE SGI 8600 supercomputer
 
-As of Jan. 2023, the following works:
+As of April. 2024, the following works:
+
+You need to load modules in that order exactly.
 ```bash
-module load openmpi/4.1.1-cuda nvidia-compilers/22.9 nccl/2.9.6-1-cuda python/3.10.4 cmake
+# Load NVHPC 23.9 because it has cuda 12.2
+module load nvidia-compilers/23.9 cuda/12.2.0 cudnn/8.9.7.29-cuda  openmpi/4.1.5-cuda nccl/2.18.5-1-cuda cmake
 # Installing mpi4py
 CFLAGS=-noswitcherror pip install mpi4py
 # Installing jax
-pip install --upgrade "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-# Compiling cuDecomp
-cd third_party/cuDecomp
-make -j CONFIGFILE=../../configs/nvhpcsdk_jz.conf lib
-cd ../..
+pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 # Installing jaxdecomp
-export CMAKE_PREFIX_PATH=/gpfslocalsys/nvhpc/22.9/Linux_x86_64/22.9/cmake
+export CMAKE_PREFIX_PATH=$NVHPC_ROOT/cmake
 pip install .
 ```
 
@@ -127,53 +148,58 @@ export CRAY_ACCEL_TARGET=nvidia80
 # Installing mpi4py
 MPICC="cc -target-accel=nvidia80 -shared" CC=nvc CFLAGS="-noswitcherror" pip install --force --no-cache-dir --no-binary=mpi4py mpi4py
 # Installing jax
-pip install --upgrade "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-# Compiling cuDecomp
-cd third_party/cuDecomp
-make -j CONFIGFILE=configs/nvhpcsdk_pm.conf lib
-cd ../..
+pip install --upgrade "jax[cuda11_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 # Installing jaxdecomp
 export CMAKE_PREFIX_PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/22.5/cmake
 pip install .
 ```
 
-## Design (still aspirational)
+## Design
 
-Ideally we will want to make high-level JAX primitives compatible with the `jax.Array` API of JAX v0.4 (documented [here](https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.array.html)) making it completely transparent to the user.
+Here is  what works now :
 
-
-Here is a prototype of what we are aiming for (still aspirational):
 ```python
 # We need to initialize MPI as it is required by cuDecomp
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
-from jaxdecomp import pfft3
+
+from jaxdecomp.fft import pfft3, ipfft3
 
 import jax
 import jax.numpy as jnp
+from jax.experimental import mesh_utils, multihost_utils
 
-# For now, the Array API needs to be explicitely activated
-jax.config.update('jax_array', True)
+# Initialize jax distributed to instruct jax local process which GPU to use
+jax.distributed.initialize()
 
-from jax.experimental import mesh_utils
-from jax.sharding import PositionalSharding
+pdims = (2 , 4)
+global_shape = (512 , 512 , 512 )
 
-# Let's create a Sharding object which we will use to distribute
-# a value across devices.
-sharding = PositionalSharding(mesh_utils.create_device_mesh((2,4,1)))
+local_array = jax.random.normal(shape=[global_shape[0]//pdims[0],
+                                        global_shape[1]//pdims[1],
+                                        global_shape[2]], key=jax.random.PRNGKey(0))
 
-# Create a global array
-def local_array_init(index):
-    return 2*index + 1 # Or whatever code that knows how to compute the array's global value at 'index'
-y = jax.make_array_from_single_device_arrays(shape=[512,512,512],
-                                             sharding=sharding,
-                                             data_callback=local_array_init)
-# If we could inspect the distribution of y, we would see that it is sliced in 2 along x, and 4 along y
+# remap to global array (this is a free call no communications are happening)
 
-# This could also be part of a jitted function, no problem
-z = pfft3(y)
+devices = mesh_utils.create_device_mesh(pdims)
+mesh = Mesh(devices, axis_names=('z', 'y'))
+global_array = multihost_utils.host_local_array_to_global_array(
+    array, mesh, P('z', 'y'))
+
+
+with mesh
+    z = pfft3(global_array)
+
+    # If we could inspect the distribution of y, we would see that it is sliced in 2 along x, and 4 along y
+
+    # This could also be part of a jitted function, no problem
+    z_rec = ipfft3(z)
 
 # And z remains at all times distributed.
+
+jaxdecomp.finalize()
+jax.distributed.shutdown()
+
 ```
 
 #### Backend configuration
