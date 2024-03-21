@@ -52,7 +52,7 @@ def halo_lowering(ctx, x, *, halo_extents, halo_periods, pdims, global_shape):
   return [
       custom_call(
           "halo",
-          [x_type],
+          result_types=[x_type],
           operands=[x, workspace],
           operand_layouts=[layout, (0,)],
           result_layouts=[layout],
