@@ -83,6 +83,52 @@ HRESULT GridDescriptorManager::createFFTExecutor(
   return hr;
 }
 
+HRESULT GridDescriptorManager::createHaloExecutor(
+    haloDescriptor_t &descriptor, size_t &work_size,
+    std::shared_ptr<HaloExchange<float>> &executor) {
+
+  HRESULT hr(E_FAIL);
+
+  auto it = m_HaloDescriptors32.find(descriptor);
+  if (it != m_HaloDescriptors32.end()) {
+    work_size = it->second->m_WorkSize;
+    executor = it->second;
+    hr = S_FALSE;
+  }
+
+  if (hr == E_FAIL) {
+    executor = std::make_shared<HaloExchange<float>>();
+    hr = executor->get_halo_descriptor(m_Handle, work_size, descriptor);
+    if (SUCCEEDED(hr)) {
+      m_HaloDescriptors32[descriptor] = executor;
+    }
+  }
+  return hr;
+}
+
+HRESULT GridDescriptorManager::createHaloExecutor(
+    haloDescriptor_t &descriptor, size_t &work_size,
+    std::shared_ptr<HaloExchange<double>> &executor) {
+
+  HRESULT hr(E_FAIL);
+
+  auto it = m_HaloDescriptors64.find(descriptor);
+  if (it != m_HaloDescriptors64.end()) {
+    work_size = it->second->m_WorkSize;
+    executor = it->second;
+    hr = S_FALSE;
+  }
+
+  if (hr == E_FAIL) {
+    executor = std::make_shared<HaloExchange<double>>();
+    hr = executor->get_halo_descriptor(m_Handle, work_size, descriptor);
+    if (SUCCEEDED(hr)) {
+      m_HaloDescriptors64[descriptor] = executor;
+    }
+  }
+  return hr;
+}
+
 void GridDescriptorManager::finalize() {
   if (!isInitialized)
     return;

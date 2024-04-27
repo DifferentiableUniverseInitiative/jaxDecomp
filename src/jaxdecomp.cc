@@ -320,11 +320,22 @@ void halo(cudaStream_t stream, void **buffers, const char *opaque,
   haloDescriptor_t descriptor =
       *UnpackDescriptor<haloDescriptor_t>(opaque, opaque_len);
 
-  // Execute the correct version of the FFT
+  size_t work_size;
+  // Execute the correct version of the halo exchange
   if (descriptor.double_precision) {
-    halo_exchange<double>(handle, descriptor, stream, buffers);
+
+    auto executor = std::make_shared<jd::HaloExchange<double>>();
+    jd::GridDescriptorManager::getInstance().createHaloExecutor(
+        descriptor, work_size, executor);
+
+    executor->halo_exchange(handle, descriptor, stream, buffers);
   } else {
-    halo_exchange<float>(handle, descriptor, stream, buffers);
+
+    auto executor = std::make_shared<jd::HaloExchange<float>>();
+    jd::GridDescriptorManager::getInstance().createHaloExecutor(
+        descriptor, work_size, executor);
+
+    executor->halo_exchange(handle, descriptor, stream, buffers);
   }
 }
 
@@ -387,23 +398,38 @@ PYBIND11_MODULE(_jaxdecomp, m) {
     }
   });
 
-  m.def("build_halo_descriptor",
-        [](jd::decompGridDescConfig_t config, bool double_precision,
-           std::array<int32_t, 3> halo_extents,
-           std::array<bool, 3> halo_periods, int axis = 0) {
-          // Create a real cuDecomp grid descriptor
-          cudecompGridDescConfig_t cuconfig;
-          cudecompGridDescConfigSet(&cuconfig, &config);
-          cudecompHandle_t handle(
-              jd::GridDescriptorManager::getInstance().getHandle());
+  m.def("build_halo_descriptor", [](jd::decompGridDescConfig_t config,
+                                    bool double_precision,
+                                    std::array<int32_t, 3> halo_extents,
+                                    std::array<bool, 3> halo_periods,
+                                    int axis = 0) {
+    // Create a real cuDecomp grid descriptor
+    cudecompGridDescConfig_t cuconfig;
+    cudecompGridDescConfigSet(&cuconfig, &config);
+    cudecompHandle_t handle(
+        jd::GridDescriptorManager::getInstance().getHandle());
 
-          std::pair<int64_t, jd::haloDescriptor_t> foo =
-              jd::get_halo_descriptor(handle, cuconfig, halo_extents,
-                                      halo_periods, axis, double_precision);
+    size_t work_size;
+    jd::haloDescriptor_t halo_desc;
+    halo_desc.double_precision = double_precision;
+    halo_desc.halo_extents = halo_extents;
+    halo_desc.halo_periods = halo_periods;
+    halo_desc.axis = axis;
+    halo_desc.config = cuconfig;
 
-          return std::pair<int64_t, pybind11::bytes>(
-              foo.first, PackDescriptor(foo.second));
-        });
+    if (double_precision) {
+      auto executor = std::make_shared<jd::HaloExchange<double>>();
+      HRESULT hr = jd::GridDescriptorManager::getInstance().createHaloExecutor(
+          halo_desc, work_size, executor);
+    } else {
+      auto executor = std::make_shared<jd::HaloExchange<float>>();
+      HRESULT hr = jd::GridDescriptorManager::getInstance().createHaloExecutor(
+          halo_desc, work_size, executor);
+    }
+
+    return std::pair<int64_t, pybind11::bytes>(work_size,
+                                               PackDescriptor(halo_desc));
+  });
 
   // Exported types
   py::enum_<cudecompTransposeCommBackend_t>(m, "TransposeCommBackend")
