@@ -1,5 +1,4 @@
 ---
-AllowShortIfStatementsOnASingleLine: true
 BasedOnStyle: LLVM
 ColumnLimit: 120
 CommentPragmas:  '^\\.+'

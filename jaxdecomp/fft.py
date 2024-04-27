@@ -1,10 +1,12 @@
-import jax.numpy as jnp
-from jaxdecomp._src import pfft as _pfft
+from functools import partial
 from typing import Optional, Sequence
+
+import jax.numpy as jnp
+from jax import jit
 from jax._src.typing import Array, ArrayLike
 from jax.lib import xla_client
-from functools import partial
-from jax import jit
+
+from jaxdecomp._src import pfft as _pfft
 
 Shape = Sequence[int]
 
@@ -25,9 +27,10 @@ def _fft_norm(s: Array, func_name: str, norm: str) -> Array:
   raise ValueError(f'Invalid norm value {norm}; should be "backward",'
                    '"ortho" or "forward".')
 
+
 # Has to be jitted here because _fft_norm will act on non fully addressable global array
 # Which means this should be jit wrapped
-@partial(jit, static_argnums=(0,1,3))
+@partial(jit, static_argnums=(0, 1, 3))
 def _do_pfft(
     func_name: str,
     fft_type: xla_client.FftType,

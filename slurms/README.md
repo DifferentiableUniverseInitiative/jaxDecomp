@@ -30,7 +30,7 @@ pip install .
 
 For an interactive use
 
-on a100 
+on a100
 
 ```bash
 salloc --account=xyz@a100 --nodes=1  --ntasks-per-node=4 --gres=gpu:4 -C a100 --hint=nomultithread --qos=qos_gpu-dev

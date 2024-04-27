@@ -1,10 +1,10 @@
-from numpy.testing import assert_allclose
 import jax
 import jax.numpy as jnp
-import jaxdecomp
 import pytest
-
 from jax._src.distributed import global_state  # This may break in the future
+from numpy.testing import assert_allclose
+
+import jaxdecomp
 
 jax.distributed.initialize()
 rank = global_state.process_id
@@ -23,6 +23,7 @@ x = jax.random.normal(
 array = x + rank
 # Global array
 global_array = jnp.concatenate([x + i for i in range(size)], axis=0)
+
 
 @pytest.mark.skip(reason="transpose functions are still in development")
 def test_x_y():

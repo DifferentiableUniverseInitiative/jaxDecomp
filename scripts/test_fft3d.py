@@ -1,10 +1,13 @@
+import time
+
 import jax
 import jax.numpy as jnp
-import jaxdecomp
-import time
-from jax.experimental import mesh_utils, multihost_utils
-from jax.sharding import Mesh, PartitionSpec as P
 from jax._src.distributed import global_state  # This may break in the future
+from jax.experimental import mesh_utils, multihost_utils
+from jax.sharding import Mesh
+from jax.sharding import PartitionSpec as P
+
+import jaxdecomp
 
 # Initialize jax distributed to instruct jax local process which GPU to use
 jax.distributed.initialize()
@@ -28,27 +31,27 @@ mesh = Mesh(devices, axis_names=('z', 'y'))
 global_array = multihost_utils.host_local_array_to_global_array(
     array, mesh, P('z', 'y'))
 
+
 @jax.jit
 def do_fft(x):
   return jaxdecomp.fft.pfft3d(x)
 
+
 with mesh:
-    do_fft(global_array)
-    before = time.time()
-    karray = do_fft(global_array).block_until_ready()
-    after = time.time()
-    print(rank, 'took', after - before, 's')
-    
-    # And now, let's do the inverse FFT
-    rec_array = jaxdecomp.fft.pifft3d(
-        karray)
+  do_fft(global_array)
+  before = time.time()
+  karray = do_fft(global_array).block_until_ready()
+  after = time.time()
+  print(rank, 'took', after - before, 's')
 
-    diff =jax.jit(lambda x,y: abs(x-y).max())(rec_array, global_array)
+  # And now, let's do the inverse FFT
+  rec_array = jaxdecomp.fft.pifft3d(karray)
 
+  diff = jax.jit(lambda x, y: abs(x - y).max())(rec_array, global_array)
 
 # Let's test if things are like we expect
 if rank == 0:
-    print('maximum reconstruction difference', diff)
+  print('maximum reconstruction difference', diff)
 
 jaxdecomp.finalize()
 jax.distributed.shutdown()

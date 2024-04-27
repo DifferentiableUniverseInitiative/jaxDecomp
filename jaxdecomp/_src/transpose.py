@@ -1,11 +1,12 @@
-import numpy as np
-import jaxlib.mlir.ir as ir
-from jaxlib.hlo_helpers import custom_call
 from functools import partial
-from jax.core import Primitive, ShapedArray
-from jax.interpreters import xla
-from jax.interpreters import mlir
+
+import jaxlib.mlir.ir as ir
+import numpy as np
 from jax._src.lib.mlir.dialects import hlo
+from jax.core import Primitive, ShapedArray
+from jax.interpreters import mlir, xla
+from jaxlib.hlo_helpers import custom_call
+
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
 

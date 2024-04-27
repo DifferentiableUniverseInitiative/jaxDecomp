@@ -40,11 +40,11 @@ message(STATUS "NVHPC NCCL lib dir: ${NVHPC_NCCL_LIBRARY_DIR}")
 message(STATUS "NCCL include dir: ${NCCL_INCLUDE_DIR}")
 
 # Add _jaxdecomp modulei
-pybind11_add_module(_jaxdecomp 
-                      src/halo.cu 
+pybind11_add_module(_jaxdecomp
+                      src/halo.cu
                       src/jaxdecomp.cc
-                      src/grid_descriptor_mgr.cc 
-                      src/fft.cu 
+                      src/grid_descriptor_mgr.cc
+                      src/fft.cu
 )
 
 set_target_properties(_jaxdecomp PROPERTIES CUDA_ARCHITECTURES "${CUDECOMP_CUDA_CC_LIST}")

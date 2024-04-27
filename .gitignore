@@ -134,3 +134,4 @@ scripts/experimental
 compile_commands.json
 CMakeFiles
 traces*
+notes.txt

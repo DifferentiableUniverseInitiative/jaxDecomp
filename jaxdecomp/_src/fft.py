@@ -1,22 +1,21 @@
-import numpy as np
-import jaxlib.mlir.ir as ir
-from jaxlib.hlo_helpers import custom_call
 from functools import partial
-from jax.core import Primitive
-from jax.interpreters import xla
+from typing import Union
+
+import jax
+import jaxlib.mlir.ir as ir
+import numpy as np
+from jax import jit
+from jax._src.api import jit
 from jax._src.interpreters import mlir
+from jax._src.lib.mlir.dialects import hlo
+from jax._src.numpy.util import promote_dtypes_complex
+from jax.core import Primitive
+from jax.interpreters import ad, xla
+from jax.lib import xla_client
+from jaxlib.hlo_helpers import custom_call
+
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
-from jax import jit
-from jax.lib import xla_client
-
-from jax._src.lib.mlir.dialects import hlo
-import jax
-from jax.interpreters import ad
-
-from typing import Union
-from jax._src.api import jit
-from jax._src.numpy.util import promote_dtypes_complex
 
 FftType = xla_client.FftType
 from jax.experimental.custom_partitioning import custom_partitioning
@@ -78,11 +77,11 @@ def sfft_abstract_eval(x, fft_type, pdims, global_shape, adjoint):
   output_shape = None
 
   expected_slice_shape = (global_shape[0] // pdims[1],
-                            global_shape[1] // pdims[0], global_shape[2])
+                          global_shape[1] // pdims[0], global_shape[2])
   # Are we operating on the global array?
   # This is called when the abstract_eval of the custom partitioning is called _custom_partitioning_abstract_eval in  https://github.com/google/jax/blob/main/jax/experimental/custom_partitioning.py#L223
   if x.shape == global_shape:
-    # only works for cubes 
+    # only works for cubes
     # TODO(wassim) The transpose has to be the same as the slices maybe?
     output_shape = x.shape
   # Or are we operating on a local slice?
@@ -177,17 +176,18 @@ def _fft_transpose_rule(x, operand, fft_type, pdims, global_shape, adjoint):
   return (result,)
 
 
-def get_axis_size(sharding , index):
+def get_axis_size(sharding, index):
   axis_name = sharding.spec[index]
   if axis_name == None:
     return 1
   else:
     return sharding.mesh.shape[sharding.spec[index]]
 
+
 # Only named sharding have a spec
 # this function is actually useless because positional sharding do not have a spec
 # in case the user does not use a context mesh this will fail
-# this is a placeholder function for the future 
+# this is a placeholder function for the future
 # the spec needs to be carried by a custom object that we create ourselfs
 # to get inspired : https://github.com/NVIDIA/CUDALibrarySamples/blob/master/cuFFTMp/JAX_FFT/src/xfft/xfft.py#L20
 def to_named_sharding(sharding):
@@ -221,13 +221,13 @@ def partition(fft_type, adjoint, mesh, arg_shapes, result_shape):
   def lower_fn(operand):
 
     # Operand is a local slice and arg_shapes contains the global shape
-    # No need to retranpose in the relowered function because abstract eval understands sliced input 
+    # No need to retranpose in the relowered function because abstract eval understands sliced input
     # and in the original lowering we use aval.out
     # it cannot work any other way because custom partition compares the output of the lower_fn with the abs eval (after comparing the global one)
     # this means that the abs eval should handle both global shapes and slice shape
 
     global_shape = arg_shapes[0].shape
-    pdims = (get_axis_size(input_sharding,1), get_axis_size(input_sharding,0))
+    pdims = (get_axis_size(input_sharding, 1), get_axis_size(input_sharding, 0))
 
     output = sfft(operand, fft_type, adjoint, pdims, global_shape)
     return output
@@ -235,6 +235,7 @@ def partition(fft_type, adjoint, mesh, arg_shapes, result_shape):
   return mesh, lower_fn,  \
       to_named_sharding(result_shape.sharding), \
       (to_named_sharding(arg_shapes[0].sharding),)
+
 
 def infer_sharding_from_operands(fft_type, adjoint, mesh, arg_shapes,
                                  result_shape):
@@ -283,7 +284,6 @@ pfft_p_lower.def_partition(
     partition=partition,
     infer_sharding_from_operands=infer_sharding_from_operands)
 
-
 # declaring a differentiable SPMD primitive
 # Inspired from
 # https://github.com/NVIDIA/TransformerEngine/blob/main/transformer_engine/jax/cpp_extensions.py#L188
@@ -293,16 +293,19 @@ pfft_p_lower.def_partition(
 # An inner which is represented here by sfft
 # And an outer which by analogy shoud be represented here by pfft
 
+
 # Do not jit this
 # the jit is happening in jaxdecomp/fft.py: _do_pfft
 @partial(jax.custom_vjp, nondiff_argnums=(1, 2))
 def pfft(x, fft_type, adjoint=False):
-  output , _ =  _pfft_fwd_rule(x, fft_type=fft_type, adjoint=adjoint)
+  output, _ = _pfft_fwd_rule(x, fft_type=fft_type, adjoint=adjoint)
   return output
+
 
 def _pfft_fwd_rule(x, fft_type: str, adjoint: bool = False):
   # Linear function has no residuals
   return pfft_p_lower(x, fft_type=fft_type, adjoint=adjoint), None
+
 
 def _pfft_bwd_rule(fft_type, adjoint, ctx, g):
 
@@ -314,7 +317,5 @@ def _pfft_bwd_rule(fft_type, adjoint, ctx, g):
 
   return pfft_p_lower(g, fft_type, ~adjoint),
 
-  
+
 pfft.defvjp(_pfft_fwd_rule, _pfft_bwd_rule)
-
-

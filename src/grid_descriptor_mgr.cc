@@ -25,7 +25,7 @@ GridDescriptorManager::GridDescriptorManager() : m_Tracer("JAXDECOMP") {
   if (!is_initialized) {
       CHECK_MPI_EXIT(MPI_Init(nullptr, nullptr));
   }
-  
+
   CHECK_MPI_EXIT(MPI_Comm_rank(mpi_comm, &rank));
   CHECK_MPI_EXIT(MPI_Comm_size(mpi_comm, &nranks));
 
