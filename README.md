@@ -3,8 +3,8 @@ JAX bindings for NVIDIA's [cuDecomp](https://nvidia.github.io/cuDecomp/index.htm
 
 ## Usage
 
-The API is still under development, so it doesn't look very streamlined, but you
-can already do the following:
+Here is an example of how to use `jaxDecomp` to perform a 3D FFT on a 3D array distributed across multiple GPUs. This example also includes a halo exchange operation, which is a common operation in many scientific computing applications.
+
 ```python
 import jax
 from jax.experimental import mesh_utils, multihost_utils
