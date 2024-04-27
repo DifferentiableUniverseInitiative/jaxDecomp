@@ -1,10 +1,5 @@
-from mpi4py import MPI
 import pytest
 from functools import partial
-
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
 
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -14,10 +9,13 @@ from numpy.testing import assert_array_equal,assert_allclose
 import jax.numpy as jnp
 import jaxdecomp
 from jax.experimental.shard_map import shard_map
+from jax._src.distributed import global_state  # This may break in the future
 from jaxdecomp import slice_pad, slice_unpad
 from math import prod
 # Initialize jax distributed to instruct jax local process which GPU to use
 jax.distributed.initialize()
+rank = global_state.process_id
+size = global_state.num_processes
 # Initialize cuDecomp
 
 # Helper function to create a 3D array and remap it to the global array

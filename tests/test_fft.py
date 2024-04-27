@@ -1,8 +1,3 @@
-from mpi4py import MPI
-
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
 import jax
 jax.config.update("jax_enable_x64", True)
 from numpy.testing import assert_allclose
@@ -14,9 +9,12 @@ from jax.sharding import Mesh, PartitionSpec as P
 from functools import partial
 from math import prod
 from jax.experimental.shard_map import shard_map
+from jax._src.distributed import global_state  # This may break in the future
 
 # Initialize cuDecomp
 jax.distributed.initialize()
+rank = global_state.process_id
+size = global_state.num_processes
 
 # Helper function to create a 3D array and remap it to the global array
 def create_spmd_array(global_shape, pdims):

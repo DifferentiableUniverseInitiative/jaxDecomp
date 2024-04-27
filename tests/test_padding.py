@@ -1,11 +1,6 @@
-from mpi4py import MPI
-import os
 import pytest
 from functools import partial
 
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
 
 from math import prod
 import jax
@@ -17,9 +12,12 @@ import jax.numpy as jnp
 import jaxdecomp
 from jax import lax
 from jax.experimental.shard_map import shard_map
+from jax._src.distributed import global_state  # This may break in the future
 from jaxdecomp._src.padding import slice_pad, slice_unpad
 # Initialize jax distributed to instruct jax local process which GPU to use
 jax.distributed.initialize()
+rank = global_state.process_id
+size = global_state.num_processes
 # Initialize cuDecomp
 
 # Helper function to create a 3D array and remap it to the global array

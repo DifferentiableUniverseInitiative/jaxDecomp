@@ -1,20 +1,17 @@
-from mpi4py import MPI
 from functools import partial
-
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
-
 import jax
 jax.config.update("jax_enable_x64", True)
 from jax.experimental import mesh_utils, multihost_utils
 from jax.sharding import Mesh, PartitionSpec as P
 from jax.experimental.shard_map import shard_map
+from jax._src.distributed import global_state  # This may break in the future
 from math import prod
 from numpy.testing import assert_array_equal
 import pytest
 # Initialize jax distributed to instruct jax local process which GPU to use
 jax.distributed.initialize()
+rank = global_state.process_id
+size = global_state.num_processes
 # Initialize cuDecomp
 
 

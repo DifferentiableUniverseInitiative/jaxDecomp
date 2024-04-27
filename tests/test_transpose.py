@@ -1,22 +1,13 @@
-from mpi4py import MPI
-import os
-
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
-# Manually set the GPU to use
-os.environ["CUDA_VISIBLE_DEVICES"] = "%d" % (rank + 1)
-
-# from jax.config import config
-# config.update("jax_enable_x64", True)
 from numpy.testing import assert_allclose
 import jax
 import jax.numpy as jnp
 import jaxdecomp
-import pytest
 
-# Initialize cuDecomp
-jaxdecomp.init()
+from jax._src.distributed import global_state  # This may break in the future
+
+jax.distributed.initialize()
+rank = global_state.process_id
+size = global_state.num_processes
 
 pdims = (1, size)
 global_shape = (29 * size, 19 * size, 17 * size
@@ -31,7 +22,6 @@ x = jax.random.normal(
 array = x + rank
 # Global array
 global_array = jnp.concatenate([x + i for i in range(size)], axis=0)
-
 
 def test_x_y():
   """ Goes from an array of shape [z,y,x] # What we call an x pencil
