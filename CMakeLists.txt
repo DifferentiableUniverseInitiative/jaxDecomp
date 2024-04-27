@@ -3,6 +3,11 @@ cmake_minimum_required(VERSION 3.19...3.25)
 # NVCC 12 does not support C++20
 set(CMAKE_CXX_STANDARD  17)
 set(CMAKE_CUDA_STANDARD 17)
+# Latest JAX v0.4.26 no longer supports cuda 11.8
+set(NVHPC_CUDA_VERSION 12.2)
+# Build debug
+# set(CMAKE_BUILD_TYPE Debug)
+add_subdirectory(third_party/cuDecomp)
 
 project(jaxdecomp LANGUAGES CXX CUDA)
 
@@ -16,11 +21,6 @@ set(CUDECOMP_CUDA_CC_LIST "70;80" CACHE STRING "List of CUDA compute capabilitie
 # Add pybind11 and cuDecomp subdirectories
 add_subdirectory(pybind11)
 
-# Latest JAX v0.4.26 no longer supports cuda 11.8
-set(NVHPC_CUDA_VERSION 12.2)
-# Build debug
-set(CMAKE_BUILD_TYPE Debug)
-add_subdirectory(third_party/cuDecomp)
 
 find_package(NVHPC REQUIRED COMPONENTS MATH MPI NCCL)
 
