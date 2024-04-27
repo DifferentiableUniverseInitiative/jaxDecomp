@@ -18,3 +18,4 @@ for name, fn in _jaxdecomp.registrations().items():
 from .transpose import transposeXtoY, transposeYtoX, transposeYtoZ, transposeZtoY
 from .fft import pfft
 from .halo import halo_exchange
+from .padding import slice_pad, slice_unpad
