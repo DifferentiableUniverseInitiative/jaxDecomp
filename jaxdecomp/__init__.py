@@ -5,6 +5,7 @@ from ._src import TRANSPOSE_COMM_MPI_A2A, TRANSPOSE_COMM_MPI_P2P, TRANSPOSE_COMM
 from ._src import HaloCommBackend, TransposeCommBackend
 import jaxdecomp.fft as fft
 from jaxdecomp.fft import pfft3d, pifft3d
+from jaxdecomp._src.padding import slice_pad, slice_unpad
 
 from importlib.metadata import version, PackageNotFoundError
 
@@ -21,6 +22,8 @@ __all__ = [
     "get_autotuned_config",
     "make_config",
     "halo_exchange",
+    "slice_pad",
+    "slice_unpad",
     "pfft3d",
     "pifft3d",
     "transposeXtoY",
