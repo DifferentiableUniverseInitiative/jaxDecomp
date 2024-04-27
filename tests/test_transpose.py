@@ -5,6 +5,7 @@ from numpy.testing import assert_allclose
 
 import jaxdecomp
 
+jaxdecomp.init()
 jax.distributed.initialize()
 rank = jax.process_index()
 size = jax.process_count()

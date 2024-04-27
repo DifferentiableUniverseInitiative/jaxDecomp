@@ -17,6 +17,7 @@ import jaxdecomp
 from jaxdecomp._src.padding import slice_pad, slice_unpad
 
 # Initialize jax distributed to instruct jax local process which GPU to use
+jaxdecomp.init()
 jax.distributed.initialize()
 rank = jax.process_index()
 size = jax.process_count()

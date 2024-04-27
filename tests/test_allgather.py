@@ -13,6 +13,7 @@ from jax.sharding import PartitionSpec as P
 from numpy.testing import assert_array_equal
 
 # Initialize jax distributed to instruct jax local process which GPU to use
+jaxdecomp.init()
 jax.distributed.initialize()
 rank = jax.process_index()
 size = jax.process_count()
