@@ -18,6 +18,7 @@ GridDescriptorManager::GridDescriptorManager() : m_Tracer("JAXDECOMP") {
   // Initialize MPI
   int rank, local_rank, nranks;
   MPI_Comm mpi_comm = MPI_COMM_WORLD, mpi_local_comm = MPI_COMM_WORLD;
+  CHECK_MPI_EXIT(MPI_Init(nullptr, nullptr));
   CHECK_MPI_EXIT(MPI_Comm_rank(mpi_comm, &rank));
   CHECK_MPI_EXIT(MPI_Comm_size(mpi_comm, &nranks));
 

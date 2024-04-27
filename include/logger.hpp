@@ -44,9 +44,9 @@
 #include <sstream>
 #include <filesystem>
 
-#ifdef MPI_VERSION
-#include <mpi.h>
-#endif
+// #ifdef MPI_VERSION
+// #include <mpi.h>
+// #endif
 
 class AsyncLogger {
 public:
@@ -96,9 +96,10 @@ public:
       nobuffer = true;
     }
 
-#ifdef MPI_VERSION
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-#endif
+// This requires MPI to be already initialized, which happens only later
+// #ifdef MPI_VERSION
+//     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+// #endif
   }
 
   AsyncLogger &startTraceInfo() {
