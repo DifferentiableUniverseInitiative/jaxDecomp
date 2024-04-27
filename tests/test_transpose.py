@@ -2,6 +2,7 @@ from numpy.testing import assert_allclose
 import jax
 import jax.numpy as jnp
 import jaxdecomp
+import pytest
 
 from jax._src.distributed import global_state  # This may break in the future
 
@@ -23,6 +24,7 @@ array = x + rank
 # Global array
 global_array = jnp.concatenate([x + i for i in range(size)], axis=0)
 
+@pytest.mark.skip(reason="transpose functions are still in development")
 def test_x_y():
   """ Goes from an array of shape [z,y,x] # What we call an x pencil
     to [x,z,y] # what we call a y pencil
@@ -39,6 +41,7 @@ def test_x_y():
       atol=1e-10)
 
 
+@pytest.mark.skip(reason="transpose functions are still in development")
 def test_y_z():
   """ Goes from an array of shape [x,z,y] # what we call a y pencil
     to [y,x,z] # what we call a z pencil
@@ -59,6 +62,7 @@ def test_y_z():
       atol=1e-10)
 
 
+@pytest.mark.skip(reason="transpose functions are still in development")
 def test_z_y():
   """ Goes from an array of shape [y,x,z] # what we call a z pencil
     to [x,z,y] # what we call a y pencil
@@ -81,6 +85,7 @@ def test_z_y():
       atol=1e-10)
 
 
+@pytest.mark.skip(reason="transpose functions are still in development")
 def test_y_x():
   """ Goes from an array of shape [x,z,y] # what we call a y pencil
     to [z,y,x] # What we call an x pencil

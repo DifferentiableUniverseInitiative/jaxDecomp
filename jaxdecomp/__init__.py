@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from ._src import finalize, get_pencil_info, get_autotuned_config, make_config, transposeXtoY, transposeYtoX, transposeYtoZ, transposeZtoY, halo_exchange
+from ._src import finalize, get_pencil_info, get_autotuned_config, make_config, halo_exchange #transposeXtoY, transposeYtoX, transposeYtoZ, transposeZtoY
 from ._src import HALO_COMM_MPI, HALO_COMM_MPI_BLOCKING, HALO_COMM_NCCL, HALO_COMM_NVSHMEM, HALO_COMM_NVSHMEM_BLOCKING
 from ._src import TRANSPOSE_COMM_MPI_A2A, TRANSPOSE_COMM_MPI_P2P, TRANSPOSE_COMM_MPI_P2P_PL, TRANSPOSE_COMM_NCCL, TRANSPOSE_COMM_NCCL_PL, TRANSPOSE_COMM_NVSHMEM, TRANSPOSE_COMM_NVSHMEM_PL
 from ._src import HaloCommBackend, TransposeCommBackend
@@ -26,10 +26,11 @@ __all__ = [
     "slice_unpad",
     "pfft3d",
     "pifft3d",
-    "transposeXtoY",
-    "transposeYtoZ",
-    "transposeZtoY",
-    "transposeYtoX",
+    # Transpose functions are still in development
+    # "transposeXtoY",
+    # "transposeYtoZ",
+    # "transposeZtoY",
+    # "transposeYtoX",
 ]
 
 
