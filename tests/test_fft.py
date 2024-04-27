@@ -6,7 +6,6 @@ from math import prod
 
 import jax.numpy as jnp
 import pytest
-from jax._src.distributed import global_state  # This may break in the future
 from jax.experimental import mesh_utils, multihost_utils
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh
@@ -17,8 +16,8 @@ import jaxdecomp
 
 # Initialize cuDecomp
 jax.distributed.initialize()
-rank = global_state.process_id
-size = global_state.num_processes
+rank = jax.process_index()
+size = jax.process_count()
 
 
 # Helper function to create a 3D array and remap it to the global array

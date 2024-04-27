@@ -1,14 +1,13 @@
 import jax
 import jax.numpy as jnp
 import pytest
-from jax._src.distributed import global_state  # This may break in the future
 from numpy.testing import assert_allclose
 
 import jaxdecomp
 
 jax.distributed.initialize()
-rank = global_state.process_id
-size = global_state.num_processes
+rank = jax.process_index()
+size = jax.process_count()
 
 pdims = (1, size)
 global_shape = (29 * size, 19 * size, 17 * size

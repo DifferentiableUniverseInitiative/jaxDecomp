@@ -1,11 +1,10 @@
 import jax
-from jax._src.distributed import global_state  # This may break in the future
 
 import jaxdecomp
 
 # Initialize jax distributed to instruct jax local process which GPU to use
 jax.distributed.initialize()
-rank = global_state.process_id
+rank = jax.process_index()
 
 pdims = (0, 0)
 global_shape = (1024, 1024, 1024)

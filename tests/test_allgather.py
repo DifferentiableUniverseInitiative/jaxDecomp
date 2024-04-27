@@ -6,7 +6,6 @@ jax.config.update("jax_enable_x64", True)
 from math import prod
 
 import pytest
-from jax._src.distributed import global_state  # This may break in the future
 from jax.experimental import mesh_utils, multihost_utils
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh
@@ -15,8 +14,8 @@ from numpy.testing import assert_array_equal
 
 # Initialize jax distributed to instruct jax local process which GPU to use
 jax.distributed.initialize()
-rank = global_state.process_id
-size = global_state.num_processes
+rank = jax.process_index()
+size = jax.process_count()
 
 # Initialize cuDecomp
 

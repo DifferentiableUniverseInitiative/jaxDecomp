@@ -9,7 +9,6 @@ Here is an example of how to use `jaxDecomp` to perform a 3D FFT on a 3D array d
 import jax
 from jax.experimental import mesh_utils, multihost_utils
 from jax.sharding import Mesh, PartitionSpec as P
-from jax._src.distributed import global_state  # This may break in the future
 import jaxdecomp
 
 # Initialise the library, and optionally selects a communication backend (defaults to NCCL)
@@ -18,7 +17,7 @@ jaxdecomp.config.update('transpose_comm_backend', jaxdecomp.TRANSPOSE_COMM_MPI_A
 
 # Initialize jax distributed to instruct jax local process which GPU to use
 jax.distributed.initialize()
-rank = global_state.process_id
+rank = jax.process_index()
 
 # Setup a processor mesh (should be same size as "size")
 pdims= (1,4)

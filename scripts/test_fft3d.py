@@ -2,7 +2,6 @@ import time
 
 import jax
 import jax.numpy as jnp
-from jax._src.distributed import global_state  # This may break in the future
 from jax.experimental import mesh_utils, multihost_utils
 from jax.sharding import Mesh
 from jax.sharding import PartitionSpec as P
@@ -11,7 +10,7 @@ import jaxdecomp
 
 # Initialize jax distributed to instruct jax local process which GPU to use
 jax.distributed.initialize()
-rank = global_state.process_id
+rank = jax.process_index()
 
 #jaxdecomp.config.update('transpose_comm_backend', jaxdecomp.TRANSPOSE_COMM_MPI_P2P_PL)
 pdims = (2, 2)
