@@ -1,41 +1,36 @@
 # jaxDecomp: JAX Library for 3D Domain Decomposition and Parallel FFTs
 JAX bindings for NVIDIA's [cuDecomp](https://nvidia.github.io/cuDecomp/index.html) library [(Romero et al. 2022)](https://dl.acm.org/doi/abs/10.1145/3539781.3539797), allowing for efficient **multi-node parallel FFTs and halo exchanges** directly in low level NCCL/CUDA-Aware MPI from your JAX code :tada:
 
-⚠️ **Note**: main branch currently only compatible with Jax v0.3.xx. An updated version for JAX v0.4.xx is under active development in branch `update-jax-array-api`
-
 ## Usage
 
 The API is still under development, so it doesn't look very streamlined, but you
 can already do the following:
 ```python
-from mpi4py import MPI
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
-
 import jax
-import jax.numpy as jnp
-from jax import jit
-from jax import mesh_utils, multihost_utils
+from jax.experimental import mesh_utils, multihost_utils
+from jax.sharding import Mesh, PartitionSpec as P
+from jax._src.distributed import global_state  # This may break in the future
 import jaxdecomp
-from jaxdecomp.fft import pfft3d,ipfft3d
-from jaxdecomp import slice_pad, slice_unpad , halo_exchange
+
 # Initialise the library, and optionally selects a communication backend (defaults to NCCL)
 jaxdecomp.config.update('halo_comm_backend', jaxdecomp.HALO_COMM_MPI)
 jaxdecomp.config.update('transpose_comm_backend', jaxdecomp.TRANSPOSE_COMM_MPI_A2A)
 
 # Initialize jax distributed to instruct jax local process which GPU to use
 jax.distributed.initialize()
+rank = global_state.process_id
 
 # Setup a processor mesh (should be same size as "size")
-pdims= (2,4)
+pdims= (1,4)
 global_shape=[1024,1024,1024]
 
 # Initialize an array with the expected gobal size
-local_slice = jax.random.normal(shape=[1024//pdims[1],
-                                1024//pdims[0],
-                                1024],
-            key=jax.random.PRNGKey(rank)).astype('complex64')
+local_array = jax.random.normal(
+    shape=[
+        global_shape[0] // pdims[1], global_shape[1] // pdims[0],
+        global_shape[2]
+    ],
+    key=jax.random.PRNGKey(rank))
 
  # Remap to the global array from the local slice
 devices = mesh_utils.create_device_mesh(pdims[::-1])
@@ -44,31 +39,30 @@ global_array = multihost_utils.host_local_array_to_global_array(
     local_array, mesh, P('z', 'y'))
 
 # Forward FFT, note that the output FFT is transposed
-@jit
+@jax.jit
 def modify_array(array):
     return 2 * array + 1
 
 with mesh:
-    
     # Forward FFT
-    karray = pfft3d(global_array)
+    karray = jaxdecomp.fft.pfft3d(global_array)
     # Do some operation on your array
     karray = modify_array(karray)
     # Reverse FFT
-    recarray = ipfft3d(karray)
+    recarray = jaxdecomp.fft.pifft3d(karray).astype('float32')
     # Add halo regions to our array
     padding_width = ((32,32),(32,32),(32,32)) # Has to a tuple of tuples
-    padded_array = slice_pad(recarray, padding_width , pdims)
+    padded_array = jaxdecomp.slice_pad(recarray, padding_width , pdims)
     # Perform a halo exchange + reduce
-    exchanged_reduced = halo_exchange(padded_array,
+    exchanged_reduced = jaxdecomp.halo_exchange(padded_array,
                                            halo_extents=(32,32,32),
                                            halo_periods=(True,True,True),
                                            reduce_halo=True)
     # Remove the halo regions
-    recarray = slice_unpad(exchanged_reduced, padding_width, pdims)
+    recarray = jaxdecomp.slice_unpad(exchanged_reduced, padding_width, pdims)
 
-# Gather the results (only if it fits on CPU memory)
-gathered_array = multihost_utils.process_allgather(recarray, tiled=True)
+    # Gather the results (only if it fits on CPU memory)
+    gathered_array = multihost_utils.process_allgather(recarray, tiled=True)
 
 # Finalize the library
 jaxdecomp.finalize()

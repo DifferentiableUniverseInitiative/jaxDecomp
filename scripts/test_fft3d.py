@@ -4,14 +4,11 @@ import jaxdecomp
 import time
 from jax.experimental import mesh_utils, multihost_utils
 from jax.sharding import Mesh, PartitionSpec as P
+from jax._src.distributed import global_state  # This may break in the future
 
 # Initialize jax distributed to instruct jax local process which GPU to use
 jax.distributed.initialize()
-
-from jax._src import distributed
-rank = distributed.global_state.process_id
-
-print("my rank", rank)
+rank = global_state.process_id
 
 #jaxdecomp.config.update('transpose_comm_backend', jaxdecomp.TRANSPOSE_COMM_MPI_P2P_PL)
 pdims = (2, 2)
@@ -50,7 +47,8 @@ with mesh:
 
 
 # Let's test if things are like we expect
-print('maximum reconstruction difference', diff)
+if rank == 0:
+    print('maximum reconstruction difference', diff)
 
 jaxdecomp.finalize()
 jax.distributed.shutdown()
