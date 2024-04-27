@@ -36,8 +36,8 @@ find_library(NCCL_LIBRARY
 
 
 message(STATUS "Using NCCL library: ${NCCL_LIBRARY}")
-message(STATUS "NCCL lib dir: ${NVHPC_NCCL_LIBRARY_DIR}")
-message(STATUS "NCCL lib dir: ${NCCL_INCLUDE_DIR}")
+message(STATUS "NVHPC NCCL lib dir: ${NVHPC_NCCL_LIBRARY_DIR}")
+message(STATUS "NCCL include dir: ${NCCL_INCLUDE_DIR}")
 
 # Add _jaxdecomp modulei
 pybind11_add_module(_jaxdecomp 

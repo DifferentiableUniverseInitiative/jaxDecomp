@@ -86,10 +86,11 @@ class CMakeBuild(build_ext):
 setup(
     name='jaxDecomp',
     url='https://github.com/DifferentiableUniverseInitiative/jaxDecomp',
-    author='Francois Lanusse',
+    author='Wassim Kabalan, Francois Lanusse',
     description='JAX bindings for the cuDecomp library',
     ext_modules=[CMakeExtension("jaxdecomp/_src/_jaxdecomp")],
     cmdclass={"build_ext": CMakeBuild},
+    install_requires=["mpi4py"],
     packages=find_packages(),
     include_package_data=True,
     use_scm_version=True,
