@@ -152,10 +152,6 @@ pip install .
 Here is  what works now :
 
 ```python
-# We need to initialize MPI as it is required by cuDecomp
-from mpi4py import MPI
-comm = MPI.COMM_WORLD
-
 from jaxdecomp.fft import pfft3, ipfft3
 
 import jax
