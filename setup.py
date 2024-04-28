@@ -3,7 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from setuptools import setup, find_packages, Extension
+from setuptools import Extension, find_packages, setup
 from setuptools.command.build_ext import build_ext
 
 
@@ -86,7 +86,7 @@ class CMakeBuild(build_ext):
 setup(
     name='jaxDecomp',
     url='https://github.com/DifferentiableUniverseInitiative/jaxDecomp',
-    author='Francois Lanusse',
+    author='Wassim Kabalan, Francois Lanusse',
     description='JAX bindings for the cuDecomp library',
     ext_modules=[CMakeExtension("jaxdecomp/_src/_jaxdecomp")],
     cmdclass={"build_ext": CMakeBuild},

@@ -1,24 +1,26 @@
-import numpy as np
-import jaxlib.mlir.ir as ir
-from jaxlib.hlo_helpers import custom_call
 from functools import partial
+from typing import Union
+
+import jax
+import jaxlib.mlir.ir as ir
+import numpy as np
+from jax import jit
+from jax._src.api import jit
+from jax._src.interpreters import mlir
+from jax._src.lib.mlir.dialects import hlo
+from jax._src.numpy.util import promote_dtypes_complex
 from jax.core import Primitive
-from jax.interpreters import xla
-from jax.interpreters import mlir
+from jax.interpreters import ad, xla
+from jax.lib import xla_client
+from jaxlib.hlo_helpers import custom_call
+
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
-from jax import jit
-from jax.lib import xla_client
-
-from jax._src.lib.mlir.dialects import hlo
-import jax
-from jax.interpreters import ad
-
-from typing import Union
-from jax._src.api import jit
-from jax._src.numpy.util import _promote_dtypes_complex
 
 FftType = xla_client.FftType
+from jax.experimental.custom_partitioning import custom_partitioning
+from jax.sharding import NamedSharding
+from jax.sharding import PartitionSpec as P
 
 
 def _str_to_fft_type(s: str) -> xla_client.FftType:
@@ -34,12 +36,18 @@ def _str_to_fft_type(s: str) -> xla_client.FftType:
     raise ValueError(f"Unknown FFT type '{s}'")
 
 
-@partial(jit, static_argnums=(1, 2, 3, 4))
-def pfft(x,
+# Note : This must no longer be jitted because it will have single device abstract shapes
+# The actual jit is done in the pfft function in lower_fn
+# This means that sfft should never be lowered as is and only be lowered in the context of pfft
+#@partial(jit, static_argnums=(1, 2, 3, 4))
+def sfft(x,
          fft_type: Union[xla_client.FftType, str],
-         pdims,
-         global_shape,
-         adjoint=False):
+         adjoint=False,
+         pdims=[1, 1],
+         global_shape=[1024, 1024, 1024]):
+
+  #TODO(wassim) : find a way to prevent user from using the primitive directly
+
   if isinstance(fft_type, str):
     typ = _str_to_fft_type(fft_type)
   elif isinstance(fft_type, xla_client.FftType):
@@ -50,37 +58,63 @@ def pfft(x,
   if typ in [xla_client.FftType.RFFT, xla_client.FftType.IRFFT]:
     raise TypeError("only complex FFTs are currently supported through pfft.")
 
-  (x,) = _promote_dtypes_complex(x)
+  (x,) = promote_dtypes_complex(x)
 
-  return pfft_p.bind(
+  return sfft_p.bind(
       x, fft_type=typ, pdims=pdims, global_shape=global_shape, adjoint=adjoint)
 
 
-def pfft_abstract_eval(x, fft_type, pdims, global_shape, adjoint):
+def sfft_abstract_eval(x, fft_type, pdims, global_shape, adjoint):
 
-  out_global_shape = global_shape
+  # TODO(Wassim) : this only handles cube shapes
+  # This function is called twice once with the global array and once with the local slice shape
 
   # Figure out what is the pencil decomposition at the output
   axis = 0
   if fft_type in [xla_client.FftType.RFFT, xla_client.FftType.FFT]:
     axis = 2
-  config = _jaxdecomp.GridConfig()
-  config.pdims = pdims
-  # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
-  config.gdims = out_global_shape[::-1]
-  config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
-  config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
-  pencil = _jaxdecomp.get_pencil_info(config, axis)
-  # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
-  shape = pencil.shape[::-1]
-  assert np.prod(shape) == np.prod(
-      x.shape
-  ), "Only array dimensions divisible by the process mesh size are currently supported. The current configuration leads to local slices of varying sizes between forward and reverse FFT."
 
-  return x.update(shape=shape, dtype=x.dtype)
+  output_shape = None
+
+  expected_slice_shape = (global_shape[0] // pdims[1],
+                          global_shape[1] // pdims[0], global_shape[2])
+  # Are we operating on the global array?
+  # This is called when the abstract_eval of the custom partitioning is called _custom_partitioning_abstract_eval in  https://github.com/google/jax/blob/main/jax/experimental/custom_partitioning.py#L223
+  if x.shape == global_shape:
+    # only works for cubes
+    # TODO(wassim) The transpose has to be the same as the slices maybe?
+    output_shape = x.shape
+  # Or are we operating on a local slice?
+  # this is called JAX calls make_jaxpr(lower_fn) in https://github.com/google/jax/blob/main/jax/experimental/custom_partitioning.py#L142C5-L142C35
+  elif x.shape == expected_slice_shape:
+
+    output_shape = expected_slice_shape
+
+    # why do this? there has to be an easier way to check validity of the shape
+    config = _jaxdecomp.GridConfig()
+
+    config.pdims = pdims
+    # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
+    config.gdims = global_shape[::-1]
+    config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
+    config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
+    # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
+    pencil = _jaxdecomp.get_pencil_info(config, axis)
+    shape = pencil.shape[::-1]
+    assert np.prod(shape) == np.prod(
+        x.shape
+    ), "Only array dimensions divisible by the process mesh size are currently supported. The current configuration leads to local slices of varying sizes between forward and reverse FFT."
+
+  # This should never happen
+  else:
+    assert False, f"Invalid shape for the input array Expected either the global shape : {global_shape} or the local slice shape : {expected_slice_shape} but got {x.shape}"
+
+  # Sanity check
+  assert (output_shape is not None)
+  return x.update(shape=output_shape, dtype=x.dtype)
 
 
-def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
+def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   (x_aval,) = ctx.avals_in
   (aval_out,) = ctx.avals_out
   dtype = x_aval.dtype
@@ -95,8 +129,11 @@ def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   forward = fft_type in (FftType.FFT,)
   is_double = np.finfo(dtype).dtype == np.float64
 
+  # global_shape pdims have been provided by the sharding in the custom partitioning definition
+  # TODO(wassim) maybe they should None by default which would discourage users from calling sfft directly
   # Compute the descriptor for our FFT
   config = _jaxdecomp.GridConfig()
+
   config.pdims = pdims
   config.gdims = global_shape[::-1]
   config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
@@ -114,7 +151,7 @@ def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   # inplace.
   result = custom_call(
       "pfft3d",
-      [a_type],
+      result_types=[a_type],
       operands=[a, workspace],
       operand_layouts=[layout, (0,)],
       result_layouts=[layout],
@@ -130,17 +167,155 @@ def pfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
 def _fft_transpose_rule(x, operand, fft_type, pdims, global_shape, adjoint):
   assert fft_type in [FftType.FFT, FftType.IFFT]
   if fft_type == FftType.FFT:
-    result = pfft(x, FftType.IFFT, pdims, global_shape, ~adjoint)
+    result = sfft(x, FftType.IFFT, pdims, global_shape, ~adjoint)
   elif fft_type == FftType.IFFT:
-    result = pfft(x, FftType.FFT, pdims, global_shape, ~adjoint)
+    result = sfft(x, FftType.FFT, pdims, global_shape, ~adjoint)
   else:
     raise NotImplementedError
 
   return (result,)
 
 
-pfft_p = Primitive("pfft")
-pfft_p.def_impl(partial(xla.apply_primitive, pfft_p))
-pfft_p.def_abstract_eval(pfft_abstract_eval)
-ad.deflinear2(pfft_p, _fft_transpose_rule)
-mlir.register_lowering(pfft_p, pfft_lowering, platform="gpu")
+def get_axis_size(sharding, index):
+  axis_name = sharding.spec[index]
+  if axis_name == None:
+    return 1
+  else:
+    return sharding.mesh.shape[sharding.spec[index]]
+
+
+# Only named sharding have a spec
+# this function is actually useless because positional sharding do not have a spec
+# in case the user does not use a context mesh this will fail
+# this is a placeholder function for the future
+# the spec needs to be carried by a custom object that we create ourselfs
+# to get inspired : https://github.com/NVIDIA/CUDALibrarySamples/blob/master/cuFFTMp/JAX_FFT/src/xfft/xfft.py#L20
+def to_named_sharding(sharding):
+  return NamedSharding(sharding.mesh, P(*sharding.spec))
+
+
+def partition(fft_type, adjoint, mesh, arg_shapes, result_shape):
+  """
+    Tells XLA how to partition the primitive
+
+    Args:
+        mesh (Mesh): The contextual mesh
+
+        arg_shapes (tuple): A tuple of ShapeDtypeStruct that contains the shape and the sharding of each input operand
+
+        result_shape (ShapeDtypeStruct) : a ShapeDtypeStruct reprsenting a single output
+
+    Returns:
+        Mesh (Mesh) : The mesh.
+
+        function: The lowered function, to allow the user to redefine how the primitive is called in a context of a specific sharding
+
+        result_sharding (XLACompatibleSharding): The sharding result for example a NamedSharding.
+
+        arg_shardings (tuple): a tuple of all XLACompatibleSharding of the input operands
+    """
+
+  # pfft only has one operand
+  input_sharding = arg_shapes[0].sharding
+
+  def lower_fn(operand):
+
+    # Operand is a local slice and arg_shapes contains the global shape
+    # No need to retranpose in the relowered function because abstract eval understands sliced input
+    # and in the original lowering we use aval.out
+    # it cannot work any other way because custom partition compares the output of the lower_fn with the abs eval (after comparing the global one)
+    # this means that the abs eval should handle both global shapes and slice shape
+
+    global_shape = arg_shapes[0].shape
+    pdims = (get_axis_size(input_sharding, 1), get_axis_size(input_sharding, 0))
+
+    output = sfft(operand, fft_type, adjoint, pdims, global_shape)
+    return output
+
+  return mesh, lower_fn,  \
+      to_named_sharding(result_shape.sharding), \
+      (to_named_sharding(arg_shapes[0].sharding),)
+
+
+def infer_sharding_from_operands(fft_type, adjoint, mesh, arg_shapes,
+                                 result_shape):
+  # Static arguments fft_type  adjoint are carried along
+  """
+    Tell XLA how to infer the sharding of the output from the input sharding.
+
+    Args:
+        mesh (Mesh): The contextual mesh
+
+        arg_shapes (tuple): A tuple of ShapeDtypeStruct that contains the shape and the sharding of each input operand
+
+        result_shape (ShapedArray) : a single ShapedArray reprsenting a single output without the sharding information
+
+    Returns:
+
+        result_sharding (XLACompatibleSharding): The sharding result for example a NamedSharding.
+
+    """
+  # only one operand is used in pfft
+  input_sharding = arg_shapes[0].sharding
+  return to_named_sharding(input_sharding)
+
+
+@partial(custom_partitioning, static_argnums=(1, 2))
+def pfft_p_lower(x, fft_type, adjoint=False):
+  # the product of the fake dim has to be equal to the product of the global shape
+  # Fake dims and shape values are irrelevant because they are never used as concrete values only as Traced values
+  # their shapes however are used in the abstract eval of the custom partitioning
+
+  size = jax.device_count()
+  # The pdims product must be equal to the number of devices because this is checked both in the abstract eval and in cudecomp
+  dummy_pdims = (1, size)
+  dummy_global = x.shape
+  return sfft(x, fft_type, adjoint, dummy_pdims, dummy_global)
+
+
+sfft_p = Primitive("pfft")
+sfft_p.def_impl(partial(xla.apply_primitive, sfft_p))
+sfft_p.def_abstract_eval(sfft_abstract_eval)
+ad.deflinear2(sfft_p, _fft_transpose_rule)
+mlir.register_lowering(sfft_p, sfft_lowering, platform="gpu")
+
+# Define the partitioning for the primitive
+pfft_p_lower.def_partition(
+    partition=partition,
+    infer_sharding_from_operands=infer_sharding_from_operands)
+
+# declaring a differentiable SPMD primitive
+# Inspired from
+# https://github.com/NVIDIA/TransformerEngine/blob/main/transformer_engine/jax/cpp_extensions.py#L188
+# https://github.com/NVIDIA/TransformerEngine/blob/main/transformer_engine/jax/cpp_extensions.py#L694
+# https://github.com/NVIDIA/TransformerEngine/blob/main/transformer_engine/jax/layernorm.py#L49
+# Note TE does a cleaner way of defining the primitive by using register_primitive(cls): that declares two primitives
+# An inner which is represented here by sfft
+# And an outer which by analogy shoud be represented here by pfft
+
+
+# Do not jit this
+# the jit is happening in jaxdecomp/fft.py: _do_pfft
+@partial(jax.custom_vjp, nondiff_argnums=(1, 2))
+def pfft(x, fft_type, adjoint=False):
+  output, _ = _pfft_fwd_rule(x, fft_type=fft_type, adjoint=adjoint)
+  return output
+
+
+def _pfft_fwd_rule(x, fft_type: str, adjoint: bool = False):
+  # Linear function has no residuals
+  return pfft_p_lower(x, fft_type=fft_type, adjoint=adjoint), None
+
+
+def _pfft_bwd_rule(fft_type, adjoint, ctx, g):
+
+  assert fft_type in [FftType.FFT, FftType.IFFT]
+  if fft_type == FftType.FFT:
+    fft_type = FftType.IFFT
+  elif fft_type == FftType.IFFT:
+    fft_type = FftType.FFT
+
+  return pfft_p_lower(g, fft_type, ~adjoint),
+
+
+pfft.defvjp(_pfft_fwd_rule, _pfft_bwd_rule)

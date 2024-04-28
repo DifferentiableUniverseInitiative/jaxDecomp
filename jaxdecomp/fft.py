@@ -1,9 +1,12 @@
+from functools import partial
+from typing import Optional, Sequence
+
 import jax.numpy as jnp
-from jax._src.numpy.fft import _fft_norm
-from jaxdecomp._src import pfft as _pfft
-from typing import Optional, Sequence, Union, List
+from jax import jit
 from jax._src.typing import Array, ArrayLike
 from jax.lib import xla_client
+
+from jaxdecomp._src import pfft as _pfft
 
 Shape = Sequence[int]
 
@@ -25,44 +28,36 @@ def _fft_norm(s: Array, func_name: str, norm: str) -> Array:
                    '"ortho" or "forward".')
 
 
+# Has to be jitted here because _fft_norm will act on non fully addressable global array
+# Which means this should be jit wrapped
+@partial(jit, static_argnums=(0, 1, 3))
 def _do_pfft(
     func_name: str,
     fft_type: xla_client.FftType,
-    a: ArrayLike,
-    pdims,
-    global_shape,
+    arr: ArrayLike,
     norm: Optional[str],
 ) -> Array:
-  arr = jnp.asarray(a)
-  transformed = _pfft(arr, fft_type, pdims=pdims, global_shape=global_shape)
+  # this is not allowed in a multi host setup
+  # arr = jnp.asarray(a)
+  transformed = _pfft(arr, fft_type)
   transformed *= _fft_norm(
-      jnp.array(global_shape, dtype=transformed.dtype), func_name, norm)
+      jnp.array(arr.shape, dtype=transformed.dtype), func_name, norm)
   return transformed
 
 
-def pfft3d(a: ArrayLike,
-           pdims,
-           global_shape,
-           norm: Optional[str] = "backward") -> Array:
+def pfft3d(a: ArrayLike, norm: Optional[str] = "backward") -> Array:
   return _do_pfft(
       "fft",
       xla_client.FftType.FFT,
       a,
-      pdims=pdims,
-      global_shape=global_shape,
       norm=norm,
   )
 
 
-def pifft3d(a: ArrayLike,
-            pdims,
-            global_shape,
-            norm: Optional[str] = "backward") -> Array:
+def pifft3d(a: ArrayLike, norm: Optional[str] = "backward") -> Array:
   return _do_pfft(
       "ifft",
       xla_client.FftType.IFFT,
       a,
-      pdims=pdims,
-      global_shape=global_shape,
       norm=norm,
   )
