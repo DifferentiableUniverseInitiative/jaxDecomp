@@ -16,8 +16,7 @@ GridDescriptorManager::GridDescriptorManager() : m_Tracer("JAXDECOMP") {
 
   StartTraceInfo(m_Tracer) << "JaxDecomp start up" << std::endl;
   // Initialize MPI
-  int rank, local_rank, nranks;
-  MPI_Comm mpi_comm = MPI_COMM_WORLD, mpi_local_comm = MPI_COMM_WORLD;
+  MPI_Comm mpi_comm = MPI_COMM_WORLD;
 
   // Check if MPI has already been initialized by the user (maybe with mpi4py)
   int is_initialized;
@@ -25,20 +24,6 @@ GridDescriptorManager::GridDescriptorManager() : m_Tracer("JAXDECOMP") {
   if (!is_initialized) {
       CHECK_MPI_EXIT(MPI_Init(nullptr, nullptr));
   }
-
-  CHECK_MPI_EXIT(MPI_Comm_rank(mpi_comm, &rank));
-  CHECK_MPI_EXIT(MPI_Comm_size(mpi_comm, &nranks));
-
-  CHECK_MPI_EXIT(MPI_Comm_split_type(mpi_comm, MPI_COMM_TYPE_SHARED, rank,
-                                     MPI_INFO_NULL, &mpi_local_comm));
-  CHECK_MPI_EXIT(MPI_Comm_rank(mpi_local_comm, &local_rank));
-  CHECK_CUDA_EXIT(cudaSetDevice(local_rank));
-
-  if (rank == 0)
-    StartTraceInfo(m_Tracer)
-        << "JaxDecomp start up on rank " << rank << " of " << nranks
-        << " with local rank " << local_rank << std::endl;
-
   // Initialize cuDecomp
   CHECK_CUDECOMP_EXIT(cudecompInit(&m_Handle, mpi_comm));
   isInitialized = true;
