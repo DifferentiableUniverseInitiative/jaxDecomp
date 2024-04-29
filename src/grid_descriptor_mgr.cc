@@ -106,6 +106,44 @@ HRESULT GridDescriptorManager::createHaloExecutor(haloDescriptor_t& descriptor, 
   return hr;
 }
 
+HRESULT GridDescriptorManager::createTransposeExecutor(transposeDescriptor& descriptor, size_t& work_size,
+                                                       std::shared_ptr<Transpose<double>>& executor) {
+  HRESULT hr(E_FAIL);
+
+  auto it = m_TransposeDescriptors64.find(descriptor);
+  if (it != m_TransposeDescriptors64.end()) {
+    work_size = it->second->m_WorkSize;
+    executor = it->second;
+    hr = S_FALSE;
+  }
+
+  if (hr == E_FAIL) {
+    executor = std::make_shared<Transpose<double>>();
+    hr = executor->get_transpose_descriptor(m_Handle, work_size, descriptor);
+    if (SUCCEEDED(hr)) { m_TransposeDescriptors64[descriptor] = executor; }
+  }
+  return hr;
+}
+
+HRESULT GridDescriptorManager::createTransposeExecutor(transposeDescriptor& descriptor, size_t& work_size,
+                                                       std::shared_ptr<Transpose<float>>& executor) {
+  HRESULT hr(E_FAIL);
+
+  auto it = m_TransposeDescriptors32.find(descriptor);
+  if (it != m_TransposeDescriptors32.end()) {
+    work_size = it->second->m_WorkSize;
+    executor = it->second;
+    hr = S_FALSE;
+  }
+
+  if (hr == E_FAIL) {
+    executor = std::make_shared<Transpose<float>>();
+    hr = executor->get_transpose_descriptor(m_Handle, work_size, descriptor);
+    if (SUCCEEDED(hr)) { m_TransposeDescriptors32[descriptor] = executor; }
+  }
+  return hr;
+}
+
 void GridDescriptorManager::finalize() {
   if (!isInitialized) return;
 
