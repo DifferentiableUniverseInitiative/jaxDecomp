@@ -1,105 +1,230 @@
 from functools import partial
+from os import name
+from typing import Tuple
 
+import jax
 import jaxlib.mlir.ir as ir
 import numpy as np
+from jax._src.api import ShapeDtypeStruct
+from jax._src.core import ShapedArray
+from jax._src.interpreters import mlir
 from jax._src.lib.mlir.dialects import hlo
+from jax._src.typing import Array, ArrayLike
 from jax.core import Primitive, ShapedArray
-from jax.interpreters import mlir, xla
+from jax.interpreters import ad, xla
+from jax.sharding import Mesh, NamedSharding
+from jax.sharding import PartitionSpec as P
 from jaxlib.hlo_helpers import custom_call
 
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
+from jaxdecomp._src.spmd_ops import (BasePrimitive, get_axis_size,
+                                     register_primitive)
 
 _out_axes = {'x_y': 1, 'y_z': 2, 'z_y': 1, 'y_x': 0}
 
-
-def transpose_abstract_eval(x, *, kind, pdims, global_shape):
-  assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
-  config = _jaxdecomp.GridConfig()
-  config.pdims = pdims
-  config.gdims = global_shape[::-1]
-  config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
-  config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
-
-  pencil = _jaxdecomp.get_pencil_info(config, _out_axes[kind])
-  shape = pencil.shape[::-1]
-  assert np.prod(shape) == np.prod(
-      x.shape
-  ), "Only array dimensions divisible by the process mesh size are currently supported. The current configuration leads to local slices of varying sizes between forward and reverse FFT."
-  return ShapedArray(shape, x.dtype)
+import traceback
 
 
-def transpose_lowering(ctx, x, *, kind, pdims, global_shape):
-  assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
-  (aval_out,) = ctx.avals_out
-  x_type = ir.RankedTensorType(x.type)
-  layout = tuple(range(len(x_type.shape) - 1, -1, -1))
+class TransposePrimitive(BasePrimitive):
 
-  config = _jaxdecomp.GridConfig()
-  config.pdims = pdims
-  config.gdims = global_shape[::-1]
-  config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
-  config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
+  name = "transpose"
+  multiple_results = False
+  impl_static_args = (1,)
+  inner_primitive = None
+  outer_primitive = None
 
-  opaque = _jaxdecomp.build_transpose_descriptor(config)
+  @staticmethod
+  def abstract(x, kind, pdims, global_shape):
 
-  result = custom_call(
-      "transpose_" + kind,
-      result_types=[x_type],
-      operands=[x],
-      operand_layouts=[layout],
-      result_layouts=[layout],
-      has_side_effect=True,
-      operand_output_aliases={0: 0},
-      backend_config=opaque,
-  )
-  # Finally we reshape the arry to the expected shape.
-  return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
+    if global_shape == x.shape:
+      return TransposePrimitive.outer_abstract(x, kind)
+    # Make sure that global_shape is divisible by pdims and equals to slice
+
+    assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
+    match kind:
+    # From X to Y the axis are rolled by 1 and pdims are swapped wrt to the input pdims
+      case 'x_y' | 'y_z':
+        transpose_shape = (2, 0, 1)
+      case 'y_x' | 'z_y':
+        transpose_shape = (1, 2, 0)
+
+    if 1 in pdims:
+      transpose_shape = (1, 2, 0)
+
+    shape = (global_shape[transpose_shape[0]] // pdims[1],
+             global_shape[transpose_shape[1]] // pdims[0],
+             global_shape[transpose_shape[2]])
+
+    return ShapedArray(shape, x.dtype)
+
+  @staticmethod
+  def outer_abstract(x, kind):
+
+    assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
+    match kind:
+    # From X to Y the axis are rolled by 1 and pdims are swapped wrt to the input pdims
+      case 'x_y' | 'y_z':
+        transpose_shape = (2, 0, 1)
+      case 'y_x' | 'z_y':
+        transpose_shape = (1, 2, 0)
+
+    shape = (x.shape[transpose_shape[0]], x.shape[transpose_shape[1]],
+             x.shape[transpose_shape[2]])
+
+    return ShapedArray(shape, x.dtype)
+
+  @staticmethod
+  def lowering(ctx, x, *, kind, pdims, global_shape):
+    assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
+    (aval_in,) = ctx.avals_in
+    (aval_out,) = ctx.avals_out
+    dtype = aval_in.dtype
+    x_type = ir.RankedTensorType(x.type)
+    is_double = dtype == np.float64
+
+    layout = tuple(range(len(x_type.shape) - 1, -1, -1))
+
+    config = _jaxdecomp.GridConfig()
+    config.pdims = pdims
+    config.gdims = global_shape[::-1]
+    config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
+    config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
+
+    match kind:
+      case 'x_y':
+        transpose_type = _jaxdecomp.TRANSPOSE_XY
+      case 'y_z':
+        transpose_type = _jaxdecomp.TRANSPOSE_YZ
+      case 'z_y':
+        transpose_type = _jaxdecomp.TRANSPOSE_ZY
+      case 'y_x':
+        transpose_type = _jaxdecomp.TRANSPOSE_YX
+      case _:
+        raise ValueError("Invalid kind")
+
+    workspace_size, opaque = _jaxdecomp.build_transpose_descriptor(
+        config, transpose_type, is_double)
+
+    workspace = mlir.full_like_aval(
+        ctx, 0, jax.core.ShapedArray(shape=[workspace_size], dtype=np.byte))
+
+    result = custom_call(
+        "transpose",
+        result_types=[x_type],
+        operands=[x, workspace],
+        operand_layouts=[layout, (0,)],
+        result_layouts=[layout],
+        has_side_effect=True,
+        operand_output_aliases={0: 0},
+        backend_config=opaque,
+    )
+    # Finally we reshape the arry to the expected shape.
+    return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
+
+  @staticmethod
+  def impl(x, kind):
+    size = jax.device_count()
+    # The pdims product must be equal to the number of devices because this is checked both in the abstract eval and in cudecomp
+    pdims = (size, 1)
+    global_shape = x.shape
+    return TransposePrimitive.inner_primitive.bind(
+        x, kind=kind, pdims=pdims, global_shape=global_shape)
+
+  @staticmethod
+  def per_shard_impl(x, kind, pdims, global_shape):
+    return TransposePrimitive.inner_primitive.bind(
+        x, kind=kind, pdims=pdims, global_shape=global_shape)
+
+  @staticmethod
+  def infer_sharding_from_operands(kind: str, mesh: Mesh,
+                                   arg_infos: Tuple[ShapeDtypeStruct],
+                                   result_infos: Tuple[ShapedArray]):
+    input_sharding = arg_infos[0].sharding
+    return NamedSharding(input_sharding.mesh, P(*input_sharding.spec))
+
+  @staticmethod
+  def partition(kind: str, mesh: Mesh, arg_infos: Tuple[ShapeDtypeStruct],
+                result_infos: Tuple[ShapedArray]):
+
+    input_sharding = NamedSharding(mesh, P(*arg_infos[0].sharding.spec))
+    output_sharding = NamedSharding(mesh, P(*result_infos.sharding.spec))
+    global_shape = arg_infos[0].shape
+    pdims = (get_axis_size(input_sharding, 0), get_axis_size(input_sharding, 1))
+    impl = partial(
+        TransposePrimitive.per_shard_impl,
+        kind=kind,
+        pdims=pdims,
+        global_shape=global_shape)
+
+    return mesh, impl, output_sharding, (input_sharding,)
 
 
-def transposeXtoY(x, *, pdims, global_shape):
-  """Transposes distributed array"""
-  return transposeXtoY_p.bind(
-      x, kind="x_y", pdims=pdims, global_shape=global_shape)
+register_primitive(TransposePrimitive)
 
 
-transposeXtoY_p = Primitive("transposeXtoY")
-transposeXtoY_p.def_impl(partial(xla.apply_primitive, transposeXtoY_p))
-transposeXtoY_p.def_abstract_eval(transpose_abstract_eval)
-mlir.register_lowering(transposeXtoY_p, transpose_lowering, platform="gpu")
+@partial(jax.jit, static_argnums=(1))
+def transpose(x, kind: str) -> Array:
+  return TransposePrimitive.outer_primitive.bind(x, kind=kind)
 
 
-def transposeYtoZ(x, *, pdims, global_shape):
-  """Transposes distributed array"""
-  return transposeYtoZ_p.bind(
-      x, kind="y_z", pdims=pdims, global_shape=global_shape)
+# X to Y
+@jax.custom_vjp
+def transposeXtoY(x: ArrayLike) -> Array:
+  return transpose(x, 'x_y')
 
 
-transposeYtoZ_p = Primitive("transposeYtoZ")
-transposeYtoZ_p.def_impl(partial(xla.apply_primitive, transposeYtoZ_p))
-transposeYtoZ_p.def_abstract_eval(transpose_abstract_eval)
-mlir.register_lowering(transposeYtoZ_p, transpose_lowering, platform="gpu")
+def transposeXtoY_fwd(x):
+  return transpose(x, 'x_y'), None
 
 
-def transposeZtoY(x, *, pdims, global_shape):
-  """Transposes distributed array"""
-  return transposeZtoY_p.bind(
-      x, kind="z_y", pdims=pdims, global_shape=global_shape)
+def transposeXtoY_bwd(_, g):
+  return transpose(g, 'y_x'),
 
 
-transposeZtoY_p = Primitive("transposeZtoY")
-transposeZtoY_p.def_impl(partial(xla.apply_primitive, transposeZtoY_p))
-transposeZtoY_p.def_abstract_eval(transpose_abstract_eval)
-mlir.register_lowering(transposeZtoY_p, transpose_lowering, platform="gpu")
+# Y to X
+@jax.custom_vjp
+def transposeYtoZ(x: ArrayLike) -> Array:
+  return transpose(x, 'y_z')
 
 
-def transposeYtoX(x, *, pdims, global_shape):
-  """Transposes distributed array"""
-  return transposeYtoX_p.bind(
-      x, kind="y_x", pdims=pdims, global_shape=global_shape)
+def transposeYtoZ_fwd(x):
+  return transpose(x, 'y_z'), None
 
 
-transposeYtoX_p = Primitive("transposeYtoX")
-transposeYtoX_p.def_impl(partial(xla.apply_primitive, transposeYtoX_p))
-transposeYtoX_p.def_abstract_eval(transpose_abstract_eval)
-mlir.register_lowering(transposeYtoX_p, transpose_lowering, platform="gpu")
+def transposeYtoZ_bwd(_, g):
+  return transpose(g, 'z_y'),
+
+
+# Z to Y
+@jax.custom_vjp
+def transposeZtoY(x: ArrayLike) -> Array:
+  return transpose(x, 'z_y')
+
+
+def transposeZtoY_fwd(x):
+  return transpose(x, 'z_y'), None
+
+
+def transposeZtoY_bwd(_, g):
+  return transpose(g, 'y_z'),
+
+
+# Y to X
+@jax.custom_vjp
+def transposeYtoX(x: ArrayLike) -> Array:
+  return transpose(x, 'y_x')
+
+
+def transposeYtoX_fwd(x):
+  return transpose(x, 'y_x'), None
+
+
+def transposeYtoX_bwd(_, g):
+  return transpose(g, 'x_y'),
+
+
+transposeXtoY.defvjp(transposeXtoY_fwd, transposeXtoY_bwd)
+transposeYtoZ.defvjp(transposeYtoZ_fwd, transposeYtoZ_bwd)
+transposeZtoY.defvjp(transposeZtoY_fwd, transposeZtoY_bwd)
+transposeYtoX.defvjp(transposeYtoX_fwd, transposeYtoX_bwd)
