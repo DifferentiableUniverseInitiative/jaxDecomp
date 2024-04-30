@@ -39,10 +39,10 @@
 #include <cstdlib>
 #include <cxxabi.h>
 #include <execinfo.h>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
-#include <filesystem>
 
 // #ifdef MPI_VERSION
 // #include <mpi.h>
@@ -50,19 +50,17 @@
 
 class AsyncLogger {
 public:
-  AsyncLogger(const std::string &name)
-      : name(name), bufferSize(10 * 1024 * 1024), buffer(""), traceInfo(false),
-        traceVerbose(false), traceToConsole(true) {
-    static const char *traceEnv = std::getenv("ASYNC_TRACE");
+  AsyncLogger(const std::string& name)
+      : name(name), bufferSize(10 * 1024 * 1024), buffer(""), traceInfo(false), traceVerbose(false),
+        traceToConsole(true) {
+    static const char* traceEnv = std::getenv("ASYNC_TRACE");
     if (traceEnv != nullptr) {
       std::string traceString = traceEnv;
       size_t pos = traceString.find(name);
-      if (pos != std::string::npos) {
-        traceInfo = true;
-      }
+      if (pos != std::string::npos) { traceInfo = true; }
     }
 
-    static const char *traceEnvVerb = std::getenv("ASYNC_TRACE_VERBOSE");
+    static const char* traceEnvVerb = std::getenv("ASYNC_TRACE_VERBOSE");
     if (traceEnvVerb != nullptr) {
       std::string traceString = traceEnvVerb;
       size_t pos = traceString.find(name);
@@ -72,12 +70,10 @@ public:
       }
     }
 
-    static const char *bufferSizeEnv = std::getenv("ASYNC_TRACE_MAX_BUFFER");
-    if (bufferSizeEnv != nullptr) {
-      bufferSize = std::atoi(bufferSizeEnv);
-    }
+    static const char* bufferSizeEnv = std::getenv("ASYNC_TRACE_MAX_BUFFER");
+    if (bufferSizeEnv != nullptr) { bufferSize = std::atoi(bufferSizeEnv); }
 
-    static const char *outputDirEnv = std::getenv("ASYNC_TRACE_OUTPUT_DIR");
+    static const char* outputDirEnv = std::getenv("ASYNC_TRACE_OUTPUT_DIR");
     if (outputDirEnv != nullptr) {
       outputDir = outputDirEnv;
       // Ensure the output directory exists
@@ -85,24 +81,24 @@ public:
       traceToConsole = false;
     }
 
-    static const char *traceToConsoleEnv = std::getenv("ASYNC_TRACE_CONSOLE");
+    static const char* traceToConsoleEnv = std::getenv("ASYNC_TRACE_CONSOLE");
     if (traceToConsoleEnv != nullptr) {
       traceToConsole = std::atoi(traceToConsoleEnv) != 0;
       traceToConsole = true;
     }
-    static const char *nobufferEnv = std::getenv("ASYNC_TRACE_NOBUFFER");
+    static const char* nobufferEnv = std::getenv("ASYNC_TRACE_NOBUFFER");
     if (nobufferEnv != nullptr) {
       nobuffer = std::atoi(nobufferEnv) != 0;
       nobuffer = true;
     }
 
-// This requires MPI to be already initialized, which happens only later
-// #ifdef MPI_VERSION
-//     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-// #endif
+    // This requires MPI to be already initialized, which happens only later
+    // #ifdef MPI_VERSION
+    //     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    // #endif
   }
 
-  AsyncLogger &startTraceInfo() {
+  AsyncLogger& startTraceInfo() {
     if (traceInfo || traceVerbose) {
       std::ostringstream ss;
       addTimestamp(ss);
@@ -113,7 +109,7 @@ public:
     return *this;
   }
 
-  AsyncLogger &startTraceVerbose() {
+  AsyncLogger& startTraceVerbose() {
     if (traceInfo || traceVerbose) {
       std::ostringstream ss;
       addTimestamp(ss);
@@ -124,48 +120,40 @@ public:
     return *this;
   }
 
-  template <typename T> AsyncLogger &operator<<(const T &value) {
+  template <typename T> AsyncLogger& operator<<(const T& value) {
     if (traceInfo || traceVerbose) {
       std::ostringstream ss;
       ss << value;
       buffer += ss.str();
-      if (buffer.size() >= bufferSize || nobuffer) {
-        flush();
-      }
+      if (buffer.size() >= bufferSize || nobuffer) { flush(); }
     }
     return *this;
   }
 
   // Specialization for bool
-  AsyncLogger &operator<<(bool value) {
+  AsyncLogger& operator<<(bool value) {
     if (traceInfo || traceVerbose) {
       std::ostringstream ss;
       ss << std::boolalpha << value;
       buffer += ss.str();
-      if (buffer.size() >= bufferSize || nobuffer) {
-        flush();
-      }
+      if (buffer.size() >= bufferSize || nobuffer) { flush(); }
     }
     return *this;
   }
 
   // Specialization for std::endl
-  AsyncLogger &operator<<(std::ostream &(*manipulator)(std::ostream &)) {
+  AsyncLogger& operator<<(std::ostream& (*manipulator)(std::ostream&)) {
     if (traceInfo || traceVerbose) {
       std::ostringstream ss;
       ss << manipulator;
       buffer += ss.str();
-      if (buffer.size() >= bufferSize || nobuffer) {
-        flush();
-      }
+      if (buffer.size() >= bufferSize || nobuffer) { flush(); }
     }
     return *this;
   }
 
   ~AsyncLogger() {
-    if (traceInfo || traceVerbose) {
-      flush();
-    }
+    if (traceInfo || traceVerbose) { flush(); }
   }
 
   bool getTraceInfo() const { return traceInfo; }
@@ -196,9 +184,9 @@ public:
       ss << "Call stack:" << std::endl;
 
       const int max_frames = 64;
-      void *frame_ptrs[max_frames];
+      void* frame_ptrs[max_frames];
       int num_frames = backtrace(frame_ptrs, max_frames);
-      char **symbols = backtrace_symbols(frame_ptrs, num_frames);
+      char** symbols = backtrace_symbols(frame_ptrs, num_frames);
 
       if (symbols == nullptr) {
         buffer += "Error retrieving backtrace symbols." + std::string("\n");
@@ -209,8 +197,7 @@ public:
         // Demangle the C++ function name
         size_t size;
         int status;
-        char *demangled =
-            abi::__cxa_demangle(symbols[i], nullptr, &size, &status);
+        char* demangled = abi::__cxa_demangle(symbols[i], nullptr, &size, &status);
 
         if (status == 0) {
           ss << demangled << std::endl;
@@ -225,19 +212,15 @@ public:
 
       buffer += ss.str();
 
-      if (buffer.size() >= bufferSize || nobuffer) {
-        flush();
-      }
+      if (buffer.size() >= bufferSize || nobuffer) { flush(); }
     }
   }
 
 private:
-  void addTimestamp(std::ostringstream &stream) {
+  void addTimestamp(std::ostringstream& stream) {
     auto now = std::chrono::system_clock::now();
     auto timePoint = std::chrono::system_clock::to_time_t(now);
-    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            now.time_since_epoch()) %
-                        1000;
+    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
     std::tm tm;
 #ifdef _WIN32
@@ -246,9 +229,8 @@ private:
     localtime_r(&timePoint, &tm);
 #endif
 
-    stream << "[" << tm.tm_year + 1900 << "/" << tm.tm_mon + 1 << "/"
-           << tm.tm_mday << " " << tm.tm_hour << ":" << tm.tm_min << ":"
-           << tm.tm_sec << ":" << milliseconds.count() << "] ";
+    stream << "[" << tm.tm_year + 1900 << "/" << tm.tm_mon + 1 << "/" << tm.tm_mday << " " << tm.tm_hour << ":"
+           << tm.tm_min << ":" << tm.tm_sec << ":" << milliseconds.count() << "] ";
   }
 
   std::string name;
@@ -262,25 +244,20 @@ private:
   int rank = -1;
 };
 
-#define StartTraceInfo(logger)                                                 \
-  if (logger.getTraceInfo())                                                   \
-  logger.startTraceInfo()
+#define StartTraceInfo(logger)                                                                                         \
+  if (logger.getTraceInfo()) logger.startTraceInfo()
 
-#define TraceInfo(logger)                                                      \
-  if (logger.getTraceInfo())                                                   \
-  logger
+#define TraceInfo(logger)                                                                                              \
+  if (logger.getTraceInfo()) logger
 
-#define PrintStack(logger)                                                     \
-  if (logger.getTraceInfo())                                                   \
-  logger.addStackTrace()
+#define PrintStack(logger)                                                                                             \
+  if (logger.getTraceInfo()) logger.addStackTrace()
 
-#define StartTraceVerbose(logger)                                              \
-  if (logger.getTraceVerbose())                                                \
-  logger.startTraceVerbose()
+#define StartTraceVerbose(logger)                                                                                      \
+  if (logger.getTraceVerbose()) logger.startTraceVerbose()
 
-#define TraceVerbose(logger)                                                   \
-  if (logger.getTraceVerbose())                                                \
-  logger
+#define TraceVerbose(logger)                                                                                           \
+  if (logger.getTraceVerbose()) logger
 
 #endif // ASYNC_LOGGER_HPP
 

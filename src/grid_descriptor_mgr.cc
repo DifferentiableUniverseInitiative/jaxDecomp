@@ -1,8 +1,8 @@
 
 #include "grid_descriptor_mgr.h"
-#include "logger.hpp"
-#include "fft.h"
 #include "checks.h"
+#include "fft.h"
+#include "logger.hpp"
 #include <cudecomp.h>
 #include <ios>
 #include <memory>
@@ -21,17 +21,14 @@ GridDescriptorManager::GridDescriptorManager() : m_Tracer("JAXDECOMP") {
   // Check if MPI has already been initialized by the user (maybe with mpi4py)
   int is_initialized;
   CHECK_MPI_EXIT(MPI_Initialized(&is_initialized));
-  if (!is_initialized) {
-      CHECK_MPI_EXIT(MPI_Init(nullptr, nullptr));
-  }
+  if (!is_initialized) { CHECK_MPI_EXIT(MPI_Init(nullptr, nullptr)); }
   // Initialize cuDecomp
   CHECK_CUDECOMP_EXIT(cudecompInit(&m_Handle, mpi_comm));
   isInitialized = true;
 }
 
-HRESULT GridDescriptorManager::createFFTExecutor(
-    fftDescriptor &descriptor, size_t &work_size,
-    std::shared_ptr<FourierExecutor<double>> &executor) {
+HRESULT GridDescriptorManager::createFFTExecutor(fftDescriptor& descriptor, size_t& work_size,
+                                                 std::shared_ptr<FourierExecutor<double>>& executor) {
 
   HRESULT hr(E_FAIL);
 
@@ -44,18 +41,14 @@ HRESULT GridDescriptorManager::createFFTExecutor(
   }
 
   if (hr == E_FAIL) {
-    hr = executor->Initialize(m_Handle, descriptor.config, work_size,
-                              descriptor);
-    if (SUCCEEDED(hr)) {
-      m_Descriptors64[descriptor] = executor;
-    }
+    hr = executor->Initialize(m_Handle, descriptor.config, work_size, descriptor);
+    if (SUCCEEDED(hr)) { m_Descriptors64[descriptor] = executor; }
   }
   return hr;
 }
 
-HRESULT GridDescriptorManager::createFFTExecutor(
-    fftDescriptor &descriptor, size_t &work_size,
-    std::shared_ptr<FourierExecutor<float>> &executor) {
+HRESULT GridDescriptorManager::createFFTExecutor(fftDescriptor& descriptor, size_t& work_size,
+                                                 std::shared_ptr<FourierExecutor<float>>& executor) {
 
   HRESULT hr(E_FAIL);
 
@@ -67,18 +60,14 @@ HRESULT GridDescriptorManager::createFFTExecutor(
   }
 
   if (hr == E_FAIL) {
-    hr = executor->Initialize(m_Handle, descriptor.config, work_size,
-                              descriptor);
-    if (SUCCEEDED(hr)) {
-      m_Descriptors32[descriptor] = executor;
-    }
+    hr = executor->Initialize(m_Handle, descriptor.config, work_size, descriptor);
+    if (SUCCEEDED(hr)) { m_Descriptors32[descriptor] = executor; }
   }
   return hr;
 }
 
-HRESULT GridDescriptorManager::createHaloExecutor(
-    haloDescriptor_t &descriptor, size_t &work_size,
-    std::shared_ptr<HaloExchange<float>> &executor) {
+HRESULT GridDescriptorManager::createHaloExecutor(haloDescriptor_t& descriptor, size_t& work_size,
+                                                  std::shared_ptr<HaloExchange<float>>& executor) {
 
   HRESULT hr(E_FAIL);
 
@@ -92,16 +81,13 @@ HRESULT GridDescriptorManager::createHaloExecutor(
   if (hr == E_FAIL) {
     executor = std::make_shared<HaloExchange<float>>();
     hr = executor->get_halo_descriptor(m_Handle, work_size, descriptor);
-    if (SUCCEEDED(hr)) {
-      m_HaloDescriptors32[descriptor] = executor;
-    }
+    if (SUCCEEDED(hr)) { m_HaloDescriptors32[descriptor] = executor; }
   }
   return hr;
 }
 
-HRESULT GridDescriptorManager::createHaloExecutor(
-    haloDescriptor_t &descriptor, size_t &work_size,
-    std::shared_ptr<HaloExchange<double>> &executor) {
+HRESULT GridDescriptorManager::createHaloExecutor(haloDescriptor_t& descriptor, size_t& work_size,
+                                                  std::shared_ptr<HaloExchange<double>>& executor) {
 
   HRESULT hr(E_FAIL);
 
@@ -115,45 +101,38 @@ HRESULT GridDescriptorManager::createHaloExecutor(
   if (hr == E_FAIL) {
     executor = std::make_shared<HaloExchange<double>>();
     hr = executor->get_halo_descriptor(m_Handle, work_size, descriptor);
-    if (SUCCEEDED(hr)) {
-      m_HaloDescriptors64[descriptor] = executor;
-    }
+    if (SUCCEEDED(hr)) { m_HaloDescriptors64[descriptor] = executor; }
   }
   return hr;
 }
 
 void GridDescriptorManager::finalize() {
-  if (!isInitialized)
-    return;
+  if (!isInitialized) return;
 
   StartTraceInfo(m_Tracer) << "JaxDecomp shut down" << std::endl;
   // Destroy grid descriptors
-  for (auto &descriptor : m_Descriptors64) {
-    auto &executor = descriptor.second;
+  for (auto& descriptor : m_Descriptors64) {
+    auto& executor = descriptor.second;
     // TODO(wassim) : Cleanup cudecomp resources
     // CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc_c, work)); This can
     // be used instead of requesting XLA to allocate the memory
-    cudecompResult_t err =
-        cudecompGridDescDestroy(m_Handle, executor->m_GridConfig);
+    cudecompResult_t err = cudecompGridDescDestroy(m_Handle, executor->m_GridConfig);
     // Do not throw exceptioin here, this called when the library is being
     // unloaded we should not throw exceptions here
     if (CUDECOMP_RESULT_SUCCESS != err) {
-      StartTraceInfo(m_Tracer)
-          << "CUDECOMP error.at exit " << err << ")" << std::endl;
+      StartTraceInfo(m_Tracer) << "CUDECOMP error.at exit " << err << ")" << std::endl;
     }
     executor->clearPlans();
   }
 
-  for (auto &descriptor : m_Descriptors32) {
-    auto &executor = descriptor.second;
+  for (auto& descriptor : m_Descriptors32) {
+    auto& executor = descriptor.second;
     // Cleanup cudecomp resources
     // CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc_c, work)); This can
     // be used instead of requesting XLA to allocate the memory
-    cudecompResult_t err =
-        cudecompGridDescDestroy(m_Handle, executor->m_GridConfig);
+    cudecompResult_t err = cudecompGridDescDestroy(m_Handle, executor->m_GridConfig);
     if (CUDECOMP_RESULT_SUCCESS != err) {
-      StartTraceInfo(m_Tracer)
-          << "CUDECOMP error.at exit " << err << ")" << std::endl;
+      StartTraceInfo(m_Tracer) << "CUDECOMP error.at exit " << err << ")" << std::endl;
     }
     executor->clearPlans();
   }
@@ -164,13 +143,11 @@ void GridDescriptorManager::finalize() {
   // Clean finish
   CHECK_CUDA_EXIT(cudaDeviceSynchronize());
   // MPI is finalized by the mpi4py runtime (I wish it wasn't)
-  //CHECK_MPI_EXIT(MPI_Finalize());
+  // CHECK_MPI_EXIT(MPI_Finalize());
   isInitialized = false;
 }
 
 GridDescriptorManager::~GridDescriptorManager() {
-    if (isInitialized) {
-        finalize();
-    }
+  if (isInitialized) { finalize(); }
 }
 } // namespace jaxdecomp
