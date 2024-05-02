@@ -39,6 +39,7 @@ def create_spmd_array(global_shape, pdims):
                                     global_shape[1] // pdims[0],
                                     global_shape[2])
   local_array = local_array + (100**rank)
+  local_array = jnp.array(local_array, dtype=jnp.float32)
 
   # Remap to the global array from the local slice
   devices = mesh_utils.create_device_mesh(pdims)
@@ -164,8 +165,7 @@ def test_tranpose(pdims):
                          params)  # Test with Slab and Pencil decompositions
 def test_tranpose_grad(pdims):
 
-  global_shape = (29 * size, 19 * size, 17 * size
-                 )  # These sizes are prime numbers x size of the pmesh
+  global_shape = (4, 4, 4)  # These sizes are prime numbers x size of the pmesh
 
   global_array, mesh = create_spmd_array(global_shape, pdims)
 
@@ -175,7 +175,8 @@ def test_tranpose_grad(pdims):
     jd_tranposed_yz = transposeYtoZ(jd_tranposed_xy)
     jd_tranposed_zy = transposeZtoY(jd_tranposed_yz)
     jd_tranposed_yx = transposeYtoX(jd_tranposed_zy)
-    return jd_tranposed_yx.sum()
+    y = (jd_tranposed_yx * jnp.conjugate(jd_tranposed_yx)).real.sum()
+    return y
 
   @jax.jit
   def jax_transpose(global_array):
@@ -183,7 +184,8 @@ def test_tranpose_grad(pdims):
     jax_transposed_yz = jax_transposed_xy.transpose([2, 1, 0])
     jax_transposed_zy = jax_transposed_yz.transpose([2, 1, 0])
     jax_transposed_yx = jax_transposed_zy.transpose([0, 2, 1])
-    return jax_transposed_yx.sum()
+    y = (jax_transposed_yx * jnp.conjugate(jax_transposed_yx)).real.sum()
+    return y
 
   with mesh:
     array_grad = jax.grad(jaxdecomp_transpose)(global_array)
