@@ -44,16 +44,21 @@ class TransposePrimitive(BasePrimitive):
     assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
     match kind:
     # From X to Y the axis are rolled by 1 and pdims are swapped wrt to the input pdims
-      case 'x_y' | 'y_z':
+      case 'x_y':
         transpose_shape = (2, 0, 1)
-      case 'y_x' | 'z_y':
+        transpose_pdims = pdims[::-1]
+      case 'y_z':
+        transpose_shape = (2, 0, 1)
+        transpose_pdims = pdims
+      case 'z_y':
         transpose_shape = (1, 2, 0)
+        transpose_pdims = pdims[::-1]
+      case 'y_x':
+        transpose_shape = (1, 2, 0)
+        transpose_pdims = pdims
 
-    if 1 in pdims:
-      transpose_shape = (1, 2, 0)
-
-    shape = (global_shape[transpose_shape[0]] // pdims[1],
-             global_shape[transpose_shape[1]] // pdims[0],
+    shape = (global_shape[transpose_shape[0]] // transpose_pdims[1],
+             global_shape[transpose_shape[1]] // transpose_pdims[0],
              global_shape[transpose_shape[2]])
 
     return ShapedArray(shape, x.dtype)
@@ -85,23 +90,31 @@ class TransposePrimitive(BasePrimitive):
 
     layout = tuple(range(len(x_type.shape) - 1, -1, -1))
 
+    # Recover original global shape
+    match kind:
+      case 'x_y':
+        transpose_shape = (0, 1, 2)
+        transpose_type = _jaxdecomp.TRANSPOSE_XY
+      case 'y_z':
+        transpose_shape = (1, 2, 0)
+        transpose_type = _jaxdecomp.TRANSPOSE_YZ
+      case 'z_y':
+        transpose_shape = (2, 0, 1)
+        transpose_type = _jaxdecomp.TRANSPOSE_ZY
+      case 'y_x':
+        transpose_shape = (1, 2, 0)
+        transpose_type = _jaxdecomp.TRANSPOSE_YX
+      case _:
+        raise ValueError("Invalid kind")
+
+    # Make sure to get back the original shape of the X-Pencil
+    global_shape = tuple([global_shape[i] for i in transpose_shape])
+
     config = _jaxdecomp.GridConfig()
     config.pdims = pdims
     config.gdims = global_shape[::-1]
     config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
     config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
-
-    match kind:
-      case 'x_y':
-        transpose_type = _jaxdecomp.TRANSPOSE_XY
-      case 'y_z':
-        transpose_type = _jaxdecomp.TRANSPOSE_YZ
-      case 'z_y':
-        transpose_type = _jaxdecomp.TRANSPOSE_ZY
-      case 'y_x':
-        transpose_type = _jaxdecomp.TRANSPOSE_YX
-      case _:
-        raise ValueError("Invalid kind")
 
     workspace_size, opaque = _jaxdecomp.build_transpose_descriptor(
         config, transpose_type, is_double)
@@ -141,7 +154,10 @@ class TransposePrimitive(BasePrimitive):
                                    arg_infos: Tuple[ShapeDtypeStruct],
                                    result_infos: Tuple[ShapedArray]):
     input_sharding = arg_infos[0].sharding
-    return NamedSharding(input_sharding.mesh, P(*input_sharding.spec))
+
+    tranposed_pdims = (input_sharding.spec[1], input_sharding.spec[0], None)
+
+    return NamedSharding(input_sharding.mesh, P(*tranposed_pdims))
 
   @staticmethod
   def partition(kind: str, mesh: Mesh, arg_infos: Tuple[ShapeDtypeStruct],
@@ -150,7 +166,14 @@ class TransposePrimitive(BasePrimitive):
     input_sharding = NamedSharding(mesh, P(*arg_infos[0].sharding.spec))
     output_sharding = NamedSharding(mesh, P(*result_infos.sharding.spec))
     global_shape = arg_infos[0].shape
-    pdims = (get_axis_size(input_sharding, 0), get_axis_size(input_sharding, 1))
+    match kind:
+      case 'x_y' | 'z_y':
+        pdims = (get_axis_size(input_sharding,
+                               1), get_axis_size(input_sharding, 0))
+      case 'y_z' | 'y_x':
+        pdims = (get_axis_size(input_sharding,
+                               0), get_axis_size(input_sharding, 1))
+
     impl = partial(
         TransposePrimitive.per_shard_impl,
         kind=kind,
