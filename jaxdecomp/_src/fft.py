@@ -42,6 +42,7 @@ def _str_to_fft_type(s: str) -> xla_client.FftType:
 #@partial(jit, static_argnums=(1, 2, 3, 4))
 def sfft(x,
          fft_type: Union[xla_client.FftType, str],
+         yz_slab=False,
          adjoint=False,
          pdims=[1, 1],
          global_shape=[1024, 1024, 1024]):
@@ -61,10 +62,15 @@ def sfft(x,
   (x,) = promote_dtypes_complex(x)
 
   return sfft_p.bind(
-      x, fft_type=typ, pdims=pdims, global_shape=global_shape, adjoint=adjoint)
+      x,
+      fft_type=typ,
+      pdims=pdims,
+      global_shape=global_shape,
+      adjoint=adjoint,
+      yz_slab=yz_slab)
 
 
-def sfft_abstract_eval(x, fft_type, pdims, global_shape, adjoint):
+def sfft_abstract_eval(x, fft_type, pdims, global_shape, yz_slab, adjoint):
 
   # TODO(Wassim) : this only handles cube shapes
   # This function is called twice once with the global array and once with the local slice shape
@@ -75,46 +81,38 @@ def sfft_abstract_eval(x, fft_type, pdims, global_shape, adjoint):
     axis = 2
 
   output_shape = None
+  match fft_type:
+    case xla_client.FftType.FFT:
+      # FFT is X to Y to Z so Z-Pencil is returned
+      # Except if we are doing a YZ slab in which case we return a Y-Pencil
+      transpose_shape = (1, 2, 0) if not yz_slab else (2, 0, 1)
+      transposed_pdims = pdims if not yz_slab else pdims[::-1]
+    case xla_client.FftType.IFFT:
+      # IFFT is Z to X to Y so X-Pencil is returned
+      # In YZ slab case we only need one transposition back to get the X-Pencil
+      transpose_shape = (2, 0, 1) if not yz_slab else (1, 2, 0)
+      transposed_pdims = pdims
+    case _:
+      raise TypeError("only complex FFTs are currently supported through pfft.")
 
-  expected_slice_shape = (global_shape[0] // pdims[1],
-                          global_shape[1] // pdims[0], global_shape[2])
   # Are we operating on the global array?
   # This is called when the abstract_eval of the custom partitioning is called _custom_partitioning_abstract_eval in  https://github.com/google/jax/blob/main/jax/experimental/custom_partitioning.py#L223
   if x.shape == global_shape:
-    # only works for cubes
-    # TODO(wassim) The transpose has to be the same as the slices maybe?
-    output_shape = x.shape
+    shape = tuple([global_shape[i] for i in transpose_shape])
+    output_shape = shape
   # Or are we operating on a local slice?
   # this is called JAX calls make_jaxpr(lower_fn) in https://github.com/google/jax/blob/main/jax/experimental/custom_partitioning.py#L142C5-L142C35
-  elif x.shape == expected_slice_shape:
-
-    output_shape = expected_slice_shape
-
-    # why do this? there has to be an easier way to check validity of the shape
-    config = _jaxdecomp.GridConfig()
-
-    config.pdims = pdims
-    # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
-    config.gdims = global_shape[::-1]
-    config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
-    config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
-    # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
-    pencil = _jaxdecomp.get_pencil_info(config, axis)
-    shape = pencil.shape[::-1]
-    assert np.prod(shape) == np.prod(
-        x.shape
-    ), "Only array dimensions divisible by the process mesh size are currently supported. The current configuration leads to local slices of varying sizes between forward and reverse FFT."
-
-  # This should never happen
   else:
-    assert False, f"Invalid shape for the input array Expected either the global shape : {global_shape} or the local slice shape : {expected_slice_shape} but got {x.shape}"
+    output_shape = (global_shape[transpose_shape[0]] // transposed_pdims[1],
+                    global_shape[transpose_shape[1]] // transposed_pdims[0],
+                    global_shape[transpose_shape[2]])
 
   # Sanity check
   assert (output_shape is not None)
   return x.update(shape=output_shape, dtype=x.dtype)
 
 
-def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
+def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, yz_slab, adjoint):
   (x_aval,) = ctx.avals_in
   (aval_out,) = ctx.avals_out
   dtype = x_aval.dtype
@@ -129,8 +127,17 @@ def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   forward = fft_type in (FftType.FFT,)
   is_double = np.finfo(dtype).dtype == np.float64
 
-  # global_shape pdims have been provided by the sharding in the custom partitioning definition
-  # TODO(wassim) maybe they should None by default which would discourage users from calling sfft directly
+  # Get original global shape
+  match fft_type:
+    case xla_client.FftType.FFT:
+      transpose_back_shape = (0, 1, 2)
+    case xla_client.FftType.IFFT:
+      transpose_back_shape = (2, 0, 1) if not yz_slab else (1, 2, 0)
+    case _:
+      raise TypeError("only complex FFTs are currently supported through pfft.")
+  # Make sure to get back the original shape of the X-Pencil
+  old = global_shape
+  global_shape = tuple([global_shape[i] for i in transpose_back_shape])
   # Compute the descriptor for our FFT
   config = _jaxdecomp.GridConfig()
 
@@ -164,12 +171,13 @@ def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
 
-def _fft_transpose_rule(x, operand, fft_type, pdims, global_shape, adjoint):
+def _fft_transpose_rule(x, operand, fft_type, pdims, global_shape, yz_slab,
+                        adjoint):
   assert fft_type in [FftType.FFT, FftType.IFFT]
   if fft_type == FftType.FFT:
-    result = sfft(x, FftType.IFFT, pdims, global_shape, ~adjoint)
+    result = sfft(x, FftType.IFFT, yz_slab, ~adjoint, pdims, global_shape)
   elif fft_type == FftType.IFFT:
-    result = sfft(x, FftType.FFT, pdims, global_shape, ~adjoint)
+    result = sfft(x, FftType.FFT, yz_slab, ~adjoint, pdims, global_shape)
   else:
     raise NotImplementedError
 
@@ -194,7 +202,7 @@ def to_named_sharding(sharding):
   return NamedSharding(sharding.mesh, P(*sharding.spec))
 
 
-def partition(fft_type, adjoint, mesh, arg_shapes, result_shape):
+def partition(fft_type, yz_slab, adjoint, mesh, arg_shapes, result_shape):
   """
     Tells XLA how to partition the primitive
 
@@ -219,7 +227,6 @@ def partition(fft_type, adjoint, mesh, arg_shapes, result_shape):
   input_sharding = arg_shapes[0].sharding
 
   def lower_fn(operand):
-
     # Operand is a local slice and arg_shapes contains the global shape
     # No need to retranpose in the relowered function because abstract eval understands sliced input
     # and in the original lowering we use aval.out
@@ -228,8 +235,11 @@ def partition(fft_type, adjoint, mesh, arg_shapes, result_shape):
 
     global_shape = arg_shapes[0].shape
     pdims = (get_axis_size(input_sharding, 1), get_axis_size(input_sharding, 0))
+    if yz_slab and fft_type == xla_client.FftType.IFFT:
+      pdims = (get_axis_size(input_sharding,
+                             0), get_axis_size(input_sharding, 1))
 
-    output = sfft(operand, fft_type, adjoint, pdims, global_shape)
+    output = sfft(operand, fft_type, yz_slab, adjoint, pdims, global_shape)
     return output
 
   return mesh, lower_fn,  \
@@ -237,7 +247,7 @@ def partition(fft_type, adjoint, mesh, arg_shapes, result_shape):
       (to_named_sharding(arg_shapes[0].sharding),)
 
 
-def infer_sharding_from_operands(fft_type, adjoint, mesh, arg_shapes,
+def infer_sharding_from_operands(fft_type, yz_slab, adjoint, mesh, arg_shapes,
                                  result_shape):
   # Static arguments fft_type  adjoint are carried along
   """
@@ -257,11 +267,20 @@ def infer_sharding_from_operands(fft_type, adjoint, mesh, arg_shapes,
     """
   # only one operand is used in pfft
   input_sharding = arg_shapes[0].sharding
-  return to_named_sharding(input_sharding)
+  if get_axis_size(input_sharding, 0) == 1 and fft_type == FftType.FFT:
+    assert (yz_slab),\
+            "If the first dimension is 1, the yz_slab flag must be set"
+
+  if yz_slab:
+    inferred_spec = (input_sharding.spec[1], input_sharding.spec[0], None)
+  else:
+    inferred_spec = input_sharding.spec
+
+  return NamedSharding(mesh, P(*inferred_spec))
 
 
-@partial(custom_partitioning, static_argnums=(1, 2))
-def pfft_p_lower(x, fft_type, adjoint=False):
+@partial(custom_partitioning, static_argnums=(1, 2, 3))
+def pfft_p_lower(x, fft_type, yz_slab, adjoint=False):
   # the product of the fake dim has to be equal to the product of the global shape
   # Fake dims and shape values are irrelevant because they are never used as concrete values only as Traced values
   # their shapes however are used in the abstract eval of the custom partitioning
@@ -270,7 +289,7 @@ def pfft_p_lower(x, fft_type, adjoint=False):
   # The pdims product must be equal to the number of devices because this is checked both in the abstract eval and in cudecomp
   dummy_pdims = (1, size)
   dummy_global = x.shape
-  return sfft(x, fft_type, adjoint, dummy_pdims, dummy_global)
+  return sfft(x, fft_type, yz_slab, adjoint, dummy_pdims, dummy_global)
 
 
 sfft_p = Primitive("pfft")
@@ -296,18 +315,20 @@ pfft_p_lower.def_partition(
 
 # Do not jit this
 # the jit is happening in jaxdecomp/fft.py: _do_pfft
-@partial(jax.custom_vjp, nondiff_argnums=(1, 2))
-def pfft(x, fft_type, adjoint=False):
-  output, _ = _pfft_fwd_rule(x, fft_type=fft_type, adjoint=adjoint)
+@partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3))
+def pfft(x, fft_type, yz_slab=False, adjoint=False):
+  output, _ = _pfft_fwd_rule(
+      x, fft_type=fft_type, yz_slab=yz_slab, adjoint=adjoint)
   return output
 
 
-def _pfft_fwd_rule(x, fft_type: str, adjoint: bool = False):
+def _pfft_fwd_rule(x, fft_type: str, yz_slab: bool, adjoint: bool = False):
   # Linear function has no residuals
-  return pfft_p_lower(x, fft_type=fft_type, adjoint=adjoint), None
+  return pfft_p_lower(
+      x, fft_type=fft_type, yz_slab=yz_slab, adjoint=adjoint), None
 
 
-def _pfft_bwd_rule(fft_type, adjoint, ctx, g):
+def _pfft_bwd_rule(fft_type, yz_slab, adjoint, ctx, g):
 
   assert fft_type in [FftType.FFT, FftType.IFFT]
   if fft_type == FftType.FFT:
@@ -315,7 +336,7 @@ def _pfft_bwd_rule(fft_type, adjoint, ctx, g):
   elif fft_type == FftType.IFFT:
     fft_type = FftType.FFT
 
-  return pfft_p_lower(g, fft_type, ~adjoint),
+  return pfft_p_lower(g, fft_type, yz_slab, ~adjoint),
 
 
 pfft.defvjp(_pfft_fwd_rule, _pfft_bwd_rule)

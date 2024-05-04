@@ -22,7 +22,7 @@ namespace jaxdecomp {
 /**
  * @brief Initializes the global handle
  */
-void init(){jd::GridDescriptorManager::getInstance();};
+void init() { jd::GridDescriptorManager::getInstance(); };
 /**
  * @brief Finalizes the cuDecomp library
  */

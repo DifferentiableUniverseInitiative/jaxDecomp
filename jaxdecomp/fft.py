@@ -30,34 +30,30 @@ def _fft_norm(s: Array, func_name: str, norm: str) -> Array:
 
 # Has to be jitted here because _fft_norm will act on non fully addressable global array
 # Which means this should be jit wrapped
-@partial(jit, static_argnums=(0, 1, 3))
+@partial(jit, static_argnums=(0, 1, 3, 4))
 def _do_pfft(
     func_name: str,
     fft_type: xla_client.FftType,
     arr: ArrayLike,
     norm: Optional[str],
+    yz_slab: Optional[bool] = False,
 ) -> Array:
   # this is not allowed in a multi host setup
   # arr = jnp.asarray(a)
-  transformed = _pfft(arr, fft_type)
+  transformed = _pfft(arr, fft_type, yz_slab=yz_slab)
   transformed *= _fft_norm(
       jnp.array(arr.shape, dtype=transformed.dtype), func_name, norm)
   return transformed
 
 
-def pfft3d(a: ArrayLike, norm: Optional[str] = "backward") -> Array:
-  return _do_pfft(
-      "fft",
-      xla_client.FftType.FFT,
-      a,
-      norm=norm,
-  )
+def pfft3d(a: ArrayLike,
+           norm: Optional[str] = "backward",
+           yz_slab: Optional[bool] = False) -> Array:
+  return _do_pfft("fft", xla_client.FftType.FFT, a, norm=norm, yz_slab=yz_slab)
 
 
-def pifft3d(a: ArrayLike, norm: Optional[str] = "backward") -> Array:
+def pifft3d(a: ArrayLike,
+            norm: Optional[str] = "backward",
+            yz_slab: Optional[bool] = False) -> Array:
   return _do_pfft(
-      "ifft",
-      xla_client.FftType.IFFT,
-      a,
-      norm=norm,
-  )
+      "ifft", xla_client.FftType.IFFT, a, norm=norm, yz_slab=yz_slab)
