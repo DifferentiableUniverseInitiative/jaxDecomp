@@ -128,6 +128,9 @@ def test_yz_slab_flag(global_shape):
                          global_shapes)  # Test cubes, non-cubes and primes
 def test_grad(pdims, global_shape):
 
+  yz_slab = pdims[1] == 1
+  transpose_back = [2, 0, 1] if yz_slab else [1, 2, 0]
+
   print("*" * 80)
   print(f"Testing with pdims {pdims} and global shape {global_shape}")
 
@@ -138,14 +141,14 @@ def test_grad(pdims, global_shape):
 
   @jax.jit
   def spmd_grad(arr):
-    y = jaxdecomp.fft.pfft3d(arr)
+    y = jaxdecomp.fft.pfft3d(arr, yz_slab=yz_slab)
     y = (y * jnp.conjugate(y)).real.sum()
     return y
 
     # Perform local FFT
   @jax.jit
   def local_grad(arr):
-    y = jnp.fft.fftn(arr).transpose([1, 2, 0])
+    y = jnp.fft.fftn(arr).transpose(transpose_back)
     y = (y * jnp.conjugate(y)).real.sum()
     return y
 
@@ -167,7 +170,7 @@ def test_grad(pdims, global_shape):
 
   @jax.jit
   def inv_spmd_grad(arr):
-    y = jaxdecomp.fft.pifft3d(arr)
+    y = jaxdecomp.fft.pifft3d(arr, yz_slab=yz_slab)
     y = (y * jnp.conjugate(y)).real.sum()
     return y
 
