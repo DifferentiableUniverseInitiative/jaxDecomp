@@ -111,8 +111,6 @@ def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   (aval_out,) = ctx.avals_out
   dtype = x_aval.dtype
   a_type = ir.RankedTensorType(a.type)
-  n = len(a_type.shape)
-
   # We currently only support complex FFTs through this interface, so let's check the fft type
   assert fft_type in (FftType.FFT,
                       FftType.IFFT), "Only complex FFTs are currently supported"
@@ -130,7 +128,6 @@ def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
     case _:
       raise TypeError("only complex FFTs are currently supported through pfft.")
   # Make sure to get back the original shape of the X-Pencil
-  old = global_shape
   global_shape = tuple([global_shape[i] for i in transpose_back_shape])
   # Compute the descriptor for our FFT
   config = _jaxdecomp.GridConfig()
@@ -141,6 +138,8 @@ def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
   workspace_size, opaque = _jaxdecomp.build_fft_descriptor(
       config, forward, is_double, adjoint)
+
+  n = len(a_type.shape)
   layout = tuple(range(n - 1, -1, -1))
 
   # We ask XLA to allocate a workspace for this operation.
@@ -162,7 +161,8 @@ def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   )
 
   # Finally we reshape the arry to the expected shape.
-  return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
+  out_type = ir.RankedTensorType.get(aval_out.shape, a_type.element_type)
+  return hlo.ReshapeOp(out_type, result).results
 
 
 def _fft_transpose_rule(x, operand, fft_type, pdims, global_shape, adjoint):
@@ -231,14 +231,16 @@ def partition(fft_type, adjoint, mesh, arg_shapes, result_shape):
 
     output = sfft(operand, fft_type, adjoint, pdims, global_shape)
 
-    # In case of YZ slab the cuda code tranposes only once
-    # We transpose again to give back the Z-Pencil to the user in case of FFT and the X-Pencil in case of IFFT
-    # this transposition is supposed to compiled out by XLA when doing a gradient (forward followed by backward)
-    if get_axis_size(input_sharding, 0) == 1:
-      if fft_type == FftType.FFT:
-        output = output.transpose((1, 2, 0))
-      elif fft_type == FftType.IFFT:
-        output = output.transpose((2, 0, 1))
+    # This is supposed to let us avoid making an extra transpose in the YZ case
+    # it does not work
+    # # In case of YZ slab the cuda code tranposes only once
+    # # We transpose again to give back the Z-Pencil to the user in case of FFT and the X-Pencil in case of IFFT
+    # # this transposition is supposed to compiled out by XLA when doing a gradient (forward followed by backward)
+    # if get_axis_size(input_sharding, 0) == 1:
+    #   if fft_type == FftType.FFT:
+    #     output = output.transpose((1, 2, 0))
+    #   elif fft_type == FftType.IFFT:
+    #     output = output.transpose((2, 0, 1))
     return output
 
   return mesh, lower_fn,  \

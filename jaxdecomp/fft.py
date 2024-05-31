@@ -30,7 +30,7 @@ def _fft_norm(s: Array, func_name: str, norm: str) -> Array:
 
 # Has to be jitted here because _fft_norm will act on non fully addressable global array
 # Which means this should be jit wrapped
-@partial(jit, static_argnums=(0, 1, 3, 4))
+@partial(jit, static_argnums=(0, 1, 3))
 def _do_pfft(
     func_name: str,
     fft_type: xla_client.FftType,

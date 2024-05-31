@@ -361,6 +361,11 @@ HRESULT FourierExecutor<real_t>::forwardYZ(cudecompHandle_t handle, fftDescripto
   // FFT on the second slab
   CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_yz, output, output, DIRECTION));
 
+  // Extra Y to Z transpose to give back a Z pencil to the user
+
+  CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, m_GridConfig, output, output, work_d,
+                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+
   return S_OK;
 }
 
@@ -374,6 +379,10 @@ HRESULT FourierExecutor<real_t>::backwardYZ(cudecompHandle_t handle, fftDescript
   CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_yz, stream));
   CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_x, work_d));
   CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_yz, work_d));
+
+  // Input is Z pencil tranposed it back to Y pencil
+  CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, m_GridConfig, input, output, work_d,
+                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
 
   // FFT on the first slab
   CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_yz, input, output, DIRECTION));

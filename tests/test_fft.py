@@ -15,7 +15,6 @@ from numpy.testing import assert_allclose
 import jaxdecomp
 
 # Initialize cuDecomp
-jaxdecomp.init()
 jax.distributed.initialize()
 rank = jax.process_index()
 size = jax.process_count()
@@ -83,7 +82,7 @@ def test_fft(pdims, global_shape):
       gathered_array.imag, gathered_rec_array.imag, rtol=1e-7, atol=1e-7)
 
   # Check the forward FFT
-  transpose_back = [2, 0, 1]
+  transpose_back = [1, 2, 0]
   jax_karray_transposed = jax_karray.transpose(transpose_back)
   assert_allclose(
       gathered_karray.real, jax_karray_transposed.real, rtol=1e-7, atol=1e-7)
