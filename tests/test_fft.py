@@ -59,8 +59,6 @@ global_shapes = [(4, 8, 16), (4, 4, 4), (29 * size, 19 * size, 17 * size)
                          global_shapes)  # Test cubes, non-cubes and primes
 def test_fft(pdims, global_shape):
 
-  yz_slab = pdims[1] == 1
-
   print("*" * 80)
   print(f"Testing with pdims {pdims} and global shape {global_shape}")
 
@@ -68,9 +66,9 @@ def test_fft(pdims, global_shape):
 
   # Perform distributed FFT
   with mesh:
-    karray = jaxdecomp.fft.pfft3d(global_array, yz_slab=yz_slab)
+    karray = jaxdecomp.fft.pfft3d(global_array)
     # Perform inverse FFT
-    rec_array = jaxdecomp.fft.pifft3d(karray, yz_slab=yz_slab)
+    rec_array = jaxdecomp.fft.pifft3d(karray)
 
   # Check the forward FFT
   gathered_array = multihost_utils.process_allgather(global_array, tiled=True)
@@ -85,40 +83,12 @@ def test_fft(pdims, global_shape):
       gathered_array.imag, gathered_rec_array.imag, rtol=1e-7, atol=1e-7)
 
   # Check the forward FFT
-  transpose_back = [2, 0, 1] if yz_slab else [1, 2, 0]
+  transpose_back = [2, 0, 1]
   jax_karray_transposed = jax_karray.transpose(transpose_back)
   assert_allclose(
       gathered_karray.real, jax_karray_transposed.real, rtol=1e-7, atol=1e-7)
   assert_allclose(
       gathered_karray.imag, jax_karray_transposed.imag, rtol=1e-7, atol=1e-7)
-
-
-@pytest.mark.parametrize("global_shape",
-                         global_shapes)  # Test cubes, non-cubes and primes
-def test_yz_slab_flag(global_shape):
-
-  # When Y is distributed we have an XZ slab in input
-  # The routine is to have one 1D FFT on the contiguous X
-  # Then a single transpose from X to Y to get a YZ slab (thus the name YZ slab)
-  # In this case the routine containes only one transpose and one transpose back
-  # as apposed to the XY slab and the pencils
-  # A special flag is needed to get the right global output shape
-  # If the flag is not set, I will assert in infer_sharding_from_operands
-  # Beyond this step, it will be impossible to know if we are in a YZ slab or not
-
-  pdims = (size, 1)
-  print("*" * 80)
-  print(f"Testing with pdims {pdims} and global shape {global_shape}")
-
-  global_array, mesh = create_spmd_array(global_shape, pdims)
-
-  # Perform distributed FFT
-  try:
-    with mesh:
-      _ = jaxdecomp.fft.pfft3d(global_array, yz_slab=True)
-  except AssertionError as e:
-    assert "If the first dimension is 1, the yz_slab flag must be set" in str(e)
-    return
 
 
 # Cartesian product tests
@@ -128,8 +98,7 @@ def test_yz_slab_flag(global_shape):
                          global_shapes)  # Test cubes, non-cubes and primes
 def test_grad(pdims, global_shape):
 
-  yz_slab = pdims[1] == 1
-  transpose_back = [2, 0, 1] if yz_slab else [1, 2, 0]
+  transpose_back = [2, 0, 1]
 
   print("*" * 80)
   print(f"Testing with pdims {pdims} and global shape {global_shape}")
@@ -141,7 +110,7 @@ def test_grad(pdims, global_shape):
 
   @jax.jit
   def spmd_grad(arr):
-    y = jaxdecomp.fft.pfft3d(arr, yz_slab=yz_slab)
+    y = jaxdecomp.fft.pfft3d(arr)
     y = (y * jnp.conjugate(y)).real.sum()
     return y
 
@@ -170,7 +139,7 @@ def test_grad(pdims, global_shape):
 
   @jax.jit
   def inv_spmd_grad(arr):
-    y = jaxdecomp.fft.pifft3d(arr, yz_slab=yz_slab)
+    y = jaxdecomp.fft.pifft3d(arr)
     y = (y * jnp.conjugate(y)).real.sum()
     return y
 
