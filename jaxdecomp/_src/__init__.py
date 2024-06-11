@@ -14,7 +14,8 @@ from ._jaxdecomp import (HALO_COMM_MPI, HALO_COMM_MPI_BLOCKING, HALO_COMM_NCCL,
                          TRANSPOSE_COMM_MPI_A2A, TRANSPOSE_COMM_MPI_P2P,
                          TRANSPOSE_COMM_MPI_P2P_PL, TRANSPOSE_COMM_NCCL,
                          TRANSPOSE_COMM_NCCL_PL, TRANSPOSE_COMM_NVSHMEM,
-                         TRANSPOSE_COMM_NVSHMEM_PL, HaloCommBackend,
+                         TRANSPOSE_COMM_NVSHMEM_PL, TRANSPOSE_XY, TRANSPOSE_YX,
+                         TRANSPOSE_YZ, TRANSPOSE_ZY, HaloCommBackend,
                          TransposeCommBackend)
 
 # Registering ops for XLA

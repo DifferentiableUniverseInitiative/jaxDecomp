@@ -45,6 +45,7 @@ pybind11_add_module(_jaxdecomp
                       src/jaxdecomp.cc
                       src/grid_descriptor_mgr.cc
                       src/fft.cu
+                      src/transpose.cu
 )
 
 set_target_properties(_jaxdecomp PROPERTIES CUDA_ARCHITECTURES "${CUDECOMP_CUDA_CC_LIST}")

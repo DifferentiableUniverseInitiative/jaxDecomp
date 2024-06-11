@@ -6,6 +6,7 @@
 #include "fft.h"
 #include "halo.h"
 #include "logger.hpp"
+#include "transpose.h"
 #include <cstddef>
 #include <cudecomp.h>
 #include <memory>
@@ -34,6 +35,12 @@ public:
   HRESULT createHaloExecutor(haloDescriptor_t& descriptor, size_t& work_size,
                              std::shared_ptr<HaloExchange<double>>& executor);
 
+  HRESULT createTransposeExecutor(transposeDescriptor& descriptor, size_t& work_size,
+                                  std::shared_ptr<Transpose<float>>& executor);
+
+  HRESULT createTransposeExecutor(transposeDescriptor& descriptor, size_t& work_size,
+                                  std::shared_ptr<Transpose<double>>& executor);
+
   inline cudecompHandle_t getHandle() const { return m_Handle; }
 
   void finalize();
@@ -55,6 +62,9 @@ private:
 
   std::unordered_map<haloDescriptor_t, std::shared_ptr<HaloExchange<double>>> m_HaloDescriptors64;
   std::unordered_map<haloDescriptor_t, std::shared_ptr<HaloExchange<float>>> m_HaloDescriptors32;
+
+  std::unordered_map<transposeDescriptor, std::shared_ptr<Transpose<double>>> m_TransposeDescriptors64;
+  std::unordered_map<transposeDescriptor, std::shared_ptr<Transpose<float>>> m_TransposeDescriptors32;
 
 public:
   GridDescriptorManager(GridDescriptorManager const&) = delete;

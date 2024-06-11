@@ -5,6 +5,7 @@
 #include "halo.h"
 #include "helpers.h"
 #include "logger.hpp"
+#include "transpose.h"
 #include <cudecomp.h>
 #include <mpi.h>
 #include <pybind11/pybind11.h>
@@ -118,129 +119,23 @@ decompGridDescConfig_t getAutotunedGridConfig(decompGridDescConfig_t grid_config
   return output_config;
 };
 
-/// XLA interface ops
-void transposeXtoY(cudaStream_t stream, void** buffers, const char* opaque, size_t opaque_len) {
+void transpose(cudaStream_t stream, void** buffers, const char* opaque, size_t opaque_len) {
+  transposeDescriptor descriptor = *UnpackDescriptor<transposeDescriptor>(opaque, opaque_len);
 
-  cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
-  void* data_d = buffers[0]; // In place operations, so only one buffer
+  size_t work_size;
+  cudecompHandle_t my_handle(jd::GridDescriptorManager::getInstance().getHandle());
+  if (descriptor.double_precision) {
 
-  // Create cuDecomp grid descriptor
-  cudecompGridDescConfig_t config = *UnpackDescriptor<cudecompGridDescConfig_t>(opaque, opaque_len);
+    auto executor = std::make_shared<jd::Transpose<double>>();
+    jd::GridDescriptorManager::getInstance().createTransposeExecutor(descriptor, work_size, executor);
+    executor->transpose(my_handle, descriptor, stream, buffers);
 
-  // Create the grid description
-  cudecompGridDesc_t grid_desc;
-  CHECK_CUDECOMP_EXIT(cudecompGridDescCreate(handle, &grid_desc, &config, nullptr));
+  } else {
 
-  // Get workspace sizes
-  int64_t transpose_work_num_elements;
-  CHECK_CUDECOMP_EXIT(cudecompGetTransposeWorkspaceSize(handle, grid_desc, &transpose_work_num_elements));
-
-  int64_t dtype_size;
-  CHECK_CUDECOMP_EXIT(cudecompGetDataTypeSize(CUDECOMP_FLOAT, &dtype_size));
-
-  double* transpose_work_d;
-  CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_desc, reinterpret_cast<void**>(&transpose_work_d),
-                                     transpose_work_num_elements * dtype_size));
-
-  CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT,
-                                            nullptr, nullptr, stream));
-
-  CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc, transpose_work_d));
-
-  CHECK_CUDECOMP_EXIT(cudecompGridDescDestroy(handle, grid_desc));
-}
-
-void transposeYtoZ(cudaStream_t stream, void** buffers, const char* opaque, size_t opaque_len) {
-  cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
-
-  void* data_d = buffers[0]; // In place operations, so only one buffer
-
-  // Create cuDecomp grid descriptor
-  cudecompGridDescConfig_t config = *UnpackDescriptor<cudecompGridDescConfig_t>(opaque, opaque_len);
-
-  // Create the grid description
-  cudecompGridDesc_t grid_desc;
-  CHECK_CUDECOMP_EXIT(cudecompGridDescCreate(handle, &grid_desc, &config, nullptr));
-
-  // Get workspace sizes
-  int64_t transpose_work_num_elements;
-  CHECK_CUDECOMP_EXIT(cudecompGetTransposeWorkspaceSize(handle, grid_desc, &transpose_work_num_elements));
-
-  int64_t dtype_size;
-  CHECK_CUDECOMP_EXIT(cudecompGetDataTypeSize(CUDECOMP_FLOAT, &dtype_size));
-
-  double* transpose_work_d;
-  CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_desc, reinterpret_cast<void**>(&transpose_work_d),
-                                     transpose_work_num_elements * dtype_size));
-
-  CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT,
-                                            nullptr, nullptr, stream));
-
-  CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc, transpose_work_d));
-
-  CHECK_CUDECOMP_EXIT(cudecompGridDescDestroy(handle, grid_desc));
-}
-
-void transposeZtoY(cudaStream_t stream, void** buffers, const char* opaque, size_t opaque_len) {
-  cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
-
-  void* data_d = buffers[0]; // In place operations, so only one buffer
-
-  // Create cuDecomp grid descriptor
-  cudecompGridDescConfig_t config = *UnpackDescriptor<cudecompGridDescConfig_t>(opaque, opaque_len);
-
-  // Create the grid description
-  cudecompGridDesc_t grid_desc;
-  CHECK_CUDECOMP_EXIT(cudecompGridDescCreate(handle, &grid_desc, &config, nullptr));
-
-  // Get workspace sizes
-  int64_t transpose_work_num_elements;
-  CHECK_CUDECOMP_EXIT(cudecompGetTransposeWorkspaceSize(handle, grid_desc, &transpose_work_num_elements));
-
-  int64_t dtype_size;
-  CHECK_CUDECOMP_EXIT(cudecompGetDataTypeSize(CUDECOMP_FLOAT, &dtype_size));
-
-  double* transpose_work_d;
-  CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_desc, reinterpret_cast<void**>(&transpose_work_d),
-                                     transpose_work_num_elements * dtype_size));
-
-  CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT,
-                                            nullptr, nullptr, stream));
-
-  CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc, transpose_work_d));
-
-  CHECK_CUDECOMP_EXIT(cudecompGridDescDestroy(handle, grid_desc));
-}
-
-void transposeYtoX(cudaStream_t stream, void** buffers, const char* opaque, size_t opaque_len) {
-  cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
-
-  void* data_d = buffers[0]; // In place operations, so only one buffer
-
-  // Create cuDecomp grid descriptor
-  cudecompGridDescConfig_t config = *UnpackDescriptor<cudecompGridDescConfig_t>(opaque, opaque_len);
-
-  // Create the grid description
-  cudecompGridDesc_t grid_desc;
-  CHECK_CUDECOMP_EXIT(cudecompGridDescCreate(handle, &grid_desc, &config, nullptr));
-
-  // Get workspace sizes
-  int64_t transpose_work_num_elements;
-  CHECK_CUDECOMP_EXIT(cudecompGetTransposeWorkspaceSize(handle, grid_desc, &transpose_work_num_elements));
-
-  int64_t dtype_size;
-  CHECK_CUDECOMP_EXIT(cudecompGetDataTypeSize(CUDECOMP_FLOAT, &dtype_size));
-
-  double* transpose_work_d;
-  CHECK_CUDECOMP_EXIT(cudecompMalloc(handle, grid_desc, reinterpret_cast<void**>(&transpose_work_d),
-                                     transpose_work_num_elements * dtype_size));
-
-  CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, grid_desc, data_d, data_d, transpose_work_d, CUDECOMP_FLOAT,
-                                            nullptr, nullptr, stream));
-
-  CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc, transpose_work_d));
-
-  CHECK_CUDECOMP_EXIT(cudecompGridDescDestroy(handle, grid_desc));
+    auto executor = std::make_shared<jd::Transpose<float>>();
+    jd::GridDescriptorManager::getInstance().createTransposeExecutor(descriptor, work_size, executor);
+    executor->transpose(my_handle, descriptor, stream, buffers);
+  }
 }
 
 /**
@@ -303,10 +198,7 @@ void halo(cudaStream_t stream, void** buffers, const char* opaque, size_t opaque
 // Utility to export ops to XLA
 py::dict Registrations() {
   py::dict dict;
-  dict["transpose_x_y"] = EncapsulateFunction(transposeXtoY);
-  dict["transpose_y_z"] = EncapsulateFunction(transposeYtoZ);
-  dict["transpose_z_y"] = EncapsulateFunction(transposeZtoY);
-  dict["transpose_y_x"] = EncapsulateFunction(transposeYtoX);
+  dict["transpose"] = EncapsulateFunction(transpose);
   dict["pfft3d"] = EncapsulateFunction(pfft3d);
   dict["halo"] = EncapsulateFunction(halo);
   return dict;
@@ -324,11 +216,23 @@ PYBIND11_MODULE(_jaxdecomp, m) {
   m.def("registrations", &jd::Registrations);
 
   // Utilities for exported ops
-  m.def("build_transpose_descriptor", [](jd::decompGridDescConfig_t config) {
-    cudecompGridDescConfig_t cuconfig;
-    cudecompGridDescConfigSet(&cuconfig, &config);
-    return jd::PackDescriptor(cuconfig);
-  });
+  m.def("build_transpose_descriptor",
+        [](jd::decompGridDescConfig_t config, jd::TransposeType type, bool double_precision) {
+          cudecompGridDescConfig_t cuconfig;
+          cudecompGridDescConfigSet(&cuconfig, &config);
+          size_t work_size;
+          jd::transposeDescriptor desc(cuconfig, type, double_precision);
+
+          if (double_precision) {
+            auto executor = std::make_shared<jd::Transpose<double>>();
+            HRESULT hr = jd::GridDescriptorManager::getInstance().createTransposeExecutor(desc, work_size, executor);
+          } else {
+            auto executor = std::make_shared<jd::Transpose<float>>();
+            HRESULT hr = jd::GridDescriptorManager::getInstance().createTransposeExecutor(desc, work_size, executor);
+          }
+
+          return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(desc));
+        });
 
   m.def("build_fft_descriptor",
         [](jd::decompGridDescConfig_t config, bool forward, bool double_precision, bool adjoint) {
@@ -341,18 +245,13 @@ PYBIND11_MODULE(_jaxdecomp, m) {
           if (double_precision) {
 
             auto executor = std::make_shared<jd::FourierExecutor<double>>();
-
             HRESULT hr = jd::GridDescriptorManager::getInstance().createFFTExecutor(fftdesc, work_size, executor);
-
-            return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(fftdesc));
 
           } else {
             auto executor = std::make_shared<jd::FourierExecutor<float>>();
-
             HRESULT hr = jd::GridDescriptorManager::getInstance().createFFTExecutor(fftdesc, work_size, executor);
-
-            return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(fftdesc));
           }
+          return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(fftdesc));
         });
 
   m.def("build_halo_descriptor",
@@ -399,6 +298,13 @@ PYBIND11_MODULE(_jaxdecomp, m) {
       .value("HALO_COMM_NCCL", cudecompHaloCommBackend_t::CUDECOMP_HALO_COMM_NCCL)
       .value("HALO_COMM_NVSHMEM", cudecompHaloCommBackend_t::CUDECOMP_HALO_COMM_NVSHMEM)
       .value("HALO_COMM_NVSHMEM_BLOCKING", cudecompHaloCommBackend_t::CUDECOMP_HALO_COMM_NVSHMEM_BLOCKING)
+      .export_values();
+
+  py::enum_<jd::TransposeType>(m, "TransposeType")
+      .value("TRANSPOSE_XY", jd::TransposeType::TRANSPOSE_XY)
+      .value("TRANSPOSE_YZ", jd::TransposeType::TRANSPOSE_YZ)
+      .value("TRANSPOSE_ZY", jd::TransposeType::TRANSPOSE_ZY)
+      .value("TRANSPOSE_YX", jd::TransposeType::TRANSPOSE_YX)
       .export_values();
 
   py::class_<jd::decompPencilInfo_t> pencil_info(m, "PencilInfo");

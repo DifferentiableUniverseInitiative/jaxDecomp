@@ -1,17 +1,11 @@
 from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass
 from functools import partial
-from typing import Tuple
 
-import jax.numpy as jnp
-from jax import jit, lax
-from jax._src.api import ShapeDtypeStruct
-from jax._src.core import ShapedArray
-from jax._src.typing import Array, ArrayLike
+from jax import core
+from jax._src import dispatch
+from jax._src.interpreters import batching
 from jax.experimental.custom_partitioning import custom_partitioning
-from jax.lax import dynamic_slice
-from jax.sharding import Mesh, NamedSharding
-from jax.sharding import PartitionSpec as P
+from jax.interpreters import mlir, xla
 
 # Inspired by https://github.com/NVIDIA/TransformerEngine/blob/main/transformer_engine/jax/cpp_extensions.py
 
@@ -169,3 +163,14 @@ def register_primitive(cls):
   else:
     raise ValueError(
         "register_primitive only accepts BasePrimitive or CustomParPrimitive")
+
+
+# helper functions
+
+
+def get_axis_size(sharding, index):
+  axis_name = sharding.spec[index]
+  if axis_name == None:
+    return 1
+  else:
+    return sharding.mesh.shape[sharding.spec[index]]
