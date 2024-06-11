@@ -20,6 +20,10 @@ namespace jaxdecomp {
 // cudecompHandle_t handle;
 
 /**
+ * @brief Initializes the global handle
+ */
+void init() { jd::GridDescriptorManager::getInstance(); };
+/**
  * @brief Finalizes the cuDecomp library
  */
 void finalize() { jd::GridDescriptorManager::getInstance().finalize(); };
@@ -311,6 +315,7 @@ py::dict Registrations() {
 
 PYBIND11_MODULE(_jaxdecomp, m) {
   // Utilities
+  m.def("init", &jd::init);
   m.def("finalize", &jd::finalize);
   m.def("get_pencil_info", &jd::getPencilInfo);
   m.def("get_autotuned_config", &jd::getAutotunedGridConfig);

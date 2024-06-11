@@ -10,7 +10,7 @@ from ._src import (  # transposeXtoY, transposeYtoX, transposeYtoZ, transposeZto
     TRANSPOSE_COMM_MPI_P2P_PL, TRANSPOSE_COMM_NCCL, TRANSPOSE_COMM_NCCL_PL,
     TRANSPOSE_COMM_NVSHMEM, TRANSPOSE_COMM_NVSHMEM_PL, HaloCommBackend,
     TransposeCommBackend, finalize, get_autotuned_config, get_pencil_info,
-    halo_exchange, make_config, slice_pad, slice_unpad)
+    halo_exchange, init, make_config, slice_pad, slice_unpad)
 
 try:
   __version__ = version("jaxDecomp")
@@ -20,6 +20,7 @@ except PackageNotFoundError:
 
 __all__ = [
     "config",
+    "init",
     "finalize",
     "get_pencil_info",
     "get_autotuned_config",

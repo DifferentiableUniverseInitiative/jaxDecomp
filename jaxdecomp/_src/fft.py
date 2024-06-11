@@ -75,39 +75,31 @@ def sfft_abstract_eval(x, fft_type, pdims, global_shape, adjoint):
     axis = 2
 
   output_shape = None
+  match fft_type:
+    case xla_client.FftType.FFT:
+      # FFT is X to Y to Z so Z-Pencil is returned
+      # Except if we are doing a YZ slab in which case we return a Y-Pencil
+      transpose_shape = (1, 2, 0)
+      transposed_pdims = pdims
+    case xla_client.FftType.IFFT:
+      # IFFT is Z to X to Y so X-Pencil is returned
+      # In YZ slab case we only need one transposition back to get the X-Pencil
+      transpose_shape = (2, 0, 1)
+      transposed_pdims = pdims
+    case _:
+      raise TypeError("only complex FFTs are currently supported through pfft.")
 
-  expected_slice_shape = (global_shape[0] // pdims[1],
-                          global_shape[1] // pdims[0], global_shape[2])
   # Are we operating on the global array?
   # This is called when the abstract_eval of the custom partitioning is called _custom_partitioning_abstract_eval in  https://github.com/google/jax/blob/main/jax/experimental/custom_partitioning.py#L223
   if x.shape == global_shape:
-    # only works for cubes
-    # TODO(wassim) The transpose has to be the same as the slices maybe?
-    output_shape = x.shape
+    shape = tuple([global_shape[i] for i in transpose_shape])
+    output_shape = shape
   # Or are we operating on a local slice?
   # this is called JAX calls make_jaxpr(lower_fn) in https://github.com/google/jax/blob/main/jax/experimental/custom_partitioning.py#L142C5-L142C35
-  elif x.shape == expected_slice_shape:
-
-    output_shape = expected_slice_shape
-
-    # why do this? there has to be an easier way to check validity of the shape
-    config = _jaxdecomp.GridConfig()
-
-    config.pdims = pdims
-    # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
-    config.gdims = global_shape[::-1]
-    config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
-    config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
-    # Dimensions are actually in reverse order due to Fortran indexing at the cuDecomp level
-    pencil = _jaxdecomp.get_pencil_info(config, axis)
-    shape = pencil.shape[::-1]
-    assert np.prod(shape) == np.prod(
-        x.shape
-    ), "Only array dimensions divisible by the process mesh size are currently supported. The current configuration leads to local slices of varying sizes between forward and reverse FFT."
-
-  # This should never happen
   else:
-    assert False, f"Invalid shape for the input array Expected either the global shape : {global_shape} or the local slice shape : {expected_slice_shape} but got {x.shape}"
+    output_shape = (global_shape[transpose_shape[0]] // transposed_pdims[1],
+                    global_shape[transpose_shape[1]] // transposed_pdims[0],
+                    global_shape[transpose_shape[2]])
 
   # Sanity check
   assert (output_shape is not None)
@@ -119,8 +111,6 @@ def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   (aval_out,) = ctx.avals_out
   dtype = x_aval.dtype
   a_type = ir.RankedTensorType(a.type)
-  n = len(a_type.shape)
-
   # We currently only support complex FFTs through this interface, so let's check the fft type
   assert fft_type in (FftType.FFT,
                       FftType.IFFT), "Only complex FFTs are currently supported"
@@ -129,8 +119,16 @@ def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   forward = fft_type in (FftType.FFT,)
   is_double = np.finfo(dtype).dtype == np.float64
 
-  # global_shape pdims have been provided by the sharding in the custom partitioning definition
-  # TODO(wassim) maybe they should None by default which would discourage users from calling sfft directly
+  # Get original global shape
+  match fft_type:
+    case xla_client.FftType.FFT:
+      transpose_back_shape = (0, 1, 2)
+    case xla_client.FftType.IFFT:
+      transpose_back_shape = (2, 0, 1)
+    case _:
+      raise TypeError("only complex FFTs are currently supported through pfft.")
+  # Make sure to get back the original shape of the X-Pencil
+  global_shape = tuple([global_shape[i] for i in transpose_back_shape])
   # Compute the descriptor for our FFT
   config = _jaxdecomp.GridConfig()
 
@@ -140,6 +138,8 @@ def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
   workspace_size, opaque = _jaxdecomp.build_fft_descriptor(
       config, forward, is_double, adjoint)
+
+  n = len(a_type.shape)
   layout = tuple(range(n - 1, -1, -1))
 
   # We ask XLA to allocate a workspace for this operation.
@@ -161,15 +161,16 @@ def sfft_lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
   )
 
   # Finally we reshape the arry to the expected shape.
-  return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
+  out_type = ir.RankedTensorType.get(aval_out.shape, a_type.element_type)
+  return hlo.ReshapeOp(out_type, result).results
 
 
 def _fft_transpose_rule(x, operand, fft_type, pdims, global_shape, adjoint):
   assert fft_type in [FftType.FFT, FftType.IFFT]
   if fft_type == FftType.FFT:
-    result = sfft(x, FftType.IFFT, pdims, global_shape, ~adjoint)
+    result = sfft(x, FftType.IFFT, ~adjoint, pdims, global_shape)
   elif fft_type == FftType.IFFT:
-    result = sfft(x, FftType.FFT, pdims, global_shape, ~adjoint)
+    result = sfft(x, FftType.FFT, ~adjoint, pdims, global_shape)
   else:
     raise NotImplementedError
 
@@ -219,7 +220,6 @@ def partition(fft_type, adjoint, mesh, arg_shapes, result_shape):
   input_sharding = arg_shapes[0].sharding
 
   def lower_fn(operand):
-
     # Operand is a local slice and arg_shapes contains the global shape
     # No need to retranpose in the relowered function because abstract eval understands sliced input
     # and in the original lowering we use aval.out
@@ -230,6 +230,17 @@ def partition(fft_type, adjoint, mesh, arg_shapes, result_shape):
     pdims = (get_axis_size(input_sharding, 1), get_axis_size(input_sharding, 0))
 
     output = sfft(operand, fft_type, adjoint, pdims, global_shape)
+
+    # This is supposed to let us avoid making an extra transpose in the YZ case
+    # it does not work
+    # # In case of YZ slab the cuda code tranposes only once
+    # # We transpose again to give back the Z-Pencil to the user in case of FFT and the X-Pencil in case of IFFT
+    # # this transposition is supposed to compiled out by XLA when doing a gradient (forward followed by backward)
+    # if get_axis_size(input_sharding, 0) == 1:
+    #   if fft_type == FftType.FFT:
+    #     output = output.transpose((1, 2, 0))
+    #   elif fft_type == FftType.IFFT:
+    #     output = output.transpose((2, 0, 1))
     return output
 
   return mesh, lower_fn,  \
@@ -257,7 +268,7 @@ def infer_sharding_from_operands(fft_type, adjoint, mesh, arg_shapes,
     """
   # only one operand is used in pfft
   input_sharding = arg_shapes[0].sharding
-  return to_named_sharding(input_sharding)
+  return NamedSharding(mesh, P(*input_sharding.spec))
 
 
 @partial(custom_partitioning, static_argnums=(1, 2))

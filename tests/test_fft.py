@@ -35,8 +35,8 @@ def create_spmd_array(global_shape, pdims):
       ],
       key=jax.random.PRNGKey(rank))
   # Remap to the global array from the local slice
-  devices = mesh_utils.create_device_mesh(pdims[::-1])
-  mesh = Mesh(devices, axis_names=('z', 'y'))
+  devices = mesh_utils.create_device_mesh(pdims)
+  mesh = Mesh(devices, axis_names=('y', 'z'))
   global_array = multihost_utils.host_local_array_to_global_array(
       local_array, mesh, P('z', 'y'))
 
@@ -46,18 +46,21 @@ def create_spmd_array(global_shape, pdims):
 pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
 
+decomp = [(size, 1), (1, size), pencil_1, pencil_2]
+global_shapes = [(4, 8, 16), (4, 4, 4), (29 * size, 19 * size, 17 * size)
+                ]  # Cubes, non-cubes and primes
 
-@pytest.mark.parametrize(
-    "pdims",
-    [(1, size),
-     (size, 1), pencil_1, pencil_2])  # Test with Slab and Pencil decompositions
-def test_fft(pdims):
+
+# Cartesian product tests
+@pytest.mark.parametrize("pdims",
+                         decomp)  # Test with Slab and Pencil decompositions
+@pytest.mark.parametrize("global_shape",
+                         global_shapes)  # Test cubes, non-cubes and primes
+def test_fft(pdims, global_shape):
 
   print("*" * 80)
-  print(f"Testing with pdims {pdims}")
+  print(f"Testing with pdims {pdims} and global shape {global_shape}")
 
-  global_shape = (29 * size, 19 * size, 17 * size
-                 )  # These sizes are prime numbers x size of the pmesh
   global_array, mesh = create_spmd_array(global_shape, pdims)
 
   # Perform distributed FFT
@@ -70,31 +73,35 @@ def test_fft(pdims):
   gathered_array = multihost_utils.process_allgather(global_array, tiled=True)
   gathered_karray = multihost_utils.process_allgather(karray, tiled=True)
   gathered_rec_array = multihost_utils.process_allgather(rec_array, tiled=True)
-  jax_karray = jnp.fft.fftn(gathered_array).transpose([1, 2, 0])
-  jax_rec_array = jnp.fft.ifftn(jax_karray).transpose([2, 0, 1])
+  jax_karray = jnp.fft.fftn(gathered_array)
+
   # Check reconstructed array
   assert_allclose(
       gathered_array.real, gathered_rec_array.real, rtol=1e-7, atol=1e-7)
   assert_allclose(
       gathered_array.imag, gathered_rec_array.imag, rtol=1e-7, atol=1e-7)
-  # Check the reverse FFT
+
+  # Check the forward FFT
+  transpose_back = [1, 2, 0]
+  jax_karray_transposed = jax_karray.transpose(transpose_back)
   assert_allclose(
-      gathered_rec_array.real, jax_rec_array.real, rtol=1e-7, atol=1e-7)
+      gathered_karray.real, jax_karray_transposed.real, rtol=1e-7, atol=1e-7)
   assert_allclose(
-      gathered_rec_array.imag, jax_rec_array.imag, rtol=1e-7, atol=1e-7)
+      gathered_karray.imag, jax_karray_transposed.imag, rtol=1e-7, atol=1e-7)
 
 
-@pytest.mark.parametrize(
-    "pdims",
-    [(1, size),
-     (size, 1), pencil_1, pencil_2])  # Test with Slab and Pencil decompositions
-def test_grad(pdims):
+# Cartesian product tests
+@pytest.mark.parametrize("pdims",
+                         decomp)  # Test with Slab and Pencil decompositions
+@pytest.mark.parametrize("global_shape",
+                         global_shapes)  # Test cubes, non-cubes and primes
+def test_grad(pdims, global_shape):
+
+  transpose_back = [2, 0, 1]
 
   print("*" * 80)
-  print(f"Testing with pdims {pdims}")
+  print(f"Testing with pdims {pdims} and global shape {global_shape}")
 
-  global_shape = (29 * size, 19 * size, 17 * size
-                 )  # These sizes are prime numbers x size of the pmesh
   global_array, mesh = create_spmd_array(global_shape, pdims)
 
   print("-" * 40)
@@ -109,7 +116,7 @@ def test_grad(pdims):
     # Perform local FFT
   @jax.jit
   def local_grad(arr):
-    y = jnp.fft.fftn(arr).transpose([1, 2, 0])
+    y = jnp.fft.fftn(arr).transpose(transpose_back)
     y = (y * jnp.conjugate(y)).real.sum()
     return y
 

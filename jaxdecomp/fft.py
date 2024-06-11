@@ -46,18 +46,8 @@ def _do_pfft(
 
 
 def pfft3d(a: ArrayLike, norm: Optional[str] = "backward") -> Array:
-  return _do_pfft(
-      "fft",
-      xla_client.FftType.FFT,
-      a,
-      norm=norm,
-  )
+  return _do_pfft("fft", xla_client.FftType.FFT, a, norm=norm)
 
 
 def pifft3d(a: ArrayLike, norm: Optional[str] = "backward") -> Array:
-  return _do_pfft(
-      "ifft",
-      xla_client.FftType.IFFT,
-      a,
-      norm=norm,
-  )
+  return _do_pfft("ifft", xla_client.FftType.IFFT, a, norm=norm)

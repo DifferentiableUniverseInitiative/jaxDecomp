@@ -2,6 +2,7 @@ from jax.lib import xla_client
 
 from . import _jaxdecomp
 
+init = _jaxdecomp.init
 finalize = _jaxdecomp.finalize
 get_pencil_info = _jaxdecomp.get_pencil_info
 get_autotuned_config = _jaxdecomp.get_autotuned_config
