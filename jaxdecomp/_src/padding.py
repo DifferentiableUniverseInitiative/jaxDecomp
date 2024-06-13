@@ -4,12 +4,11 @@ from functools import partial
 from typing import Tuple
 
 import jax.numpy as jnp
-from jax import jit, lax
+from jax import jit
 from jax._src.api import ShapeDtypeStruct
 from jax._src.core import ShapedArray
 from jax._src.typing import Array, ArrayLike
 from jax.experimental.custom_partitioning import custom_partitioning
-from jax.lax import dynamic_slice
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
@@ -190,16 +189,11 @@ class SliceUnPaddingPrimitive(CustomParPrimitive):
     first_x, last_x = unpadding_width[0]
     first_y, last_y = unpadding_width[1]
     first_z, last_z = unpadding_width[2]
-    # Interior padding is padding between each row .. not needed here
-    interiour_padding = 0
+    last_x = arr.shape[0] - last_x
+    last_y = arr.shape[1] - last_y
+    last_z = arr.shape[2] - last_z
 
-    # unlike jnp.pad lax.pad can unpad if given negative values
-    return lax.pad(
-        arr,
-        padding_value=0.0,
-        padding_config=((-first_x, -last_x, interiour_padding),
-                        (-first_y, -last_y, interiour_padding),
-                        (-first_z, -last_z, interiour_padding)))
+    return arr[first_x:last_x, first_y:last_y, first_z:last_z]
 
   @staticmethod
   def infer_sharding_from_operands(padding_width: int | tuple[int],
