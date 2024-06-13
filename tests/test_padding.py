@@ -26,19 +26,35 @@ size = jax.process_count()
 
 
 # Helper function to create a 3D array and remap it to the global array
-def create_spmd_array(global_shape, pdims):
+def create_spmd_array(global_shape, pdims, complex=False):
 
   assert (len(global_shape) == 3)
   assert (len(pdims) == 2)
   assert (prod(pdims) == size
          ), "The product of pdims must be equal to the number of MPI processes"
 
-  local_array = jax.random.normal(
-      shape=[
-          global_shape[0] // pdims[1], global_shape[1] // pdims[0],
-          global_shape[2]
-      ],
-      key=jax.random.PRNGKey(rank))
+  if complex:
+
+    local_array = jax.random.normal(
+        shape=[
+            global_shape[0] // pdims[1], global_shape[1] // pdims[0],
+            global_shape[2]
+        ],
+        key=jax.random.PRNGKey(rank)) + 1j * jax.random.normal(
+            shape=[
+                global_shape[0] // pdims[1], global_shape[1] // pdims[0],
+                global_shape[2]
+            ],
+            key=jax.random.PRNGKey(rank + 1))
+
+  else:
+
+    local_array = jax.random.normal(
+        shape=[
+            global_shape[0] // pdims[1], global_shape[1] // pdims[0],
+            global_shape[2]
+        ],
+        key=jax.random.PRNGKey(rank))
   # Remap to the global array from the local slice
   devices = mesh_utils.create_device_mesh(pdims[::-1])
   mesh = Mesh(devices, axis_names=('z', 'y'))
@@ -50,19 +66,18 @@ def create_spmd_array(global_shape, pdims):
 
 pencil_1 = (size // 2, size // (size // 2))
 pencil_2 = (size // (size // 2), size // 2)
+decomp = [(size, 1), (1, size), pencil_1, pencil_2]
+global_shapes = [(32, 32, 32), (29 * size, 19 * size, 17 * size)]
 
 
-@pytest.mark.parametrize(
-    "pdims",
-    [(1, size),
-     (size, 1), pencil_1, pencil_2])  # Test with Slab and Pencil decompositions
-def test_padding(pdims):
+@pytest.mark.parametrize("pdims",
+                         decomp)  # Test with Slab and Pencil decompositions
+@pytest.mark.parametrize("global_shape",
+                         global_shapes)  # Test cubes, non-cubes and primes
+def test_padding(pdims, global_shape):
 
   print("*" * 80)
-  print(f"Testing with pdims {pdims}")
-
-  global_shape = (29 * size, 19 * size, 17 * size
-                 )  # These sizes are prime numbers x size of the pmesh
+  print(f"Testing with pdims {pdims} and global_shape {global_shape}")
 
   global_array, mesh = create_spmd_array(global_shape, pdims)
 
@@ -160,6 +175,32 @@ def test_padding(pdims):
       global_array, tiled=True)
   gathered_unpadded = multihost_utils.process_allgather(
       unpadded_array, tiled=True)
+  # Make sure the unpadded arrays is equal to the original array
+  assert_array_equal(gathered_original, gathered_unpadded)
+
+
+@pytest.mark.parametrize("pdims",
+                         decomp)  # Test with Slab and Pencil decompositions
+@pytest.mark.parametrize("global_shape",
+                         global_shapes)  # Test cubes, non-cubes and primes
+def test_complex_unpad(pdims, global_shape):
+
+  print("*" * 80)
+  print(f"Testing with pdims {pdims} and global_shape {global_shape}")
+
+  global_array, mesh = create_spmd_array(global_shape, pdims, complex=True)
+
+  padding = ((32, 32), (32, 32), (0, 0))
+
+  with mesh:
+    jaxdecomp_padded = slice_pad(global_array, padding, pdims)
+    jaxdecomp_unpadded = slice_unpad(jaxdecomp_padded, padding, pdims)
+
+  gathered_original = multihost_utils.process_allgather(
+      global_array, tiled=True)
+  gathered_unpadded = multihost_utils.process_allgather(
+      jaxdecomp_unpadded, tiled=True)
+
   # Make sure the unpadded arrays is equal to the original array
   assert_array_equal(gathered_original, gathered_unpadded)
 
