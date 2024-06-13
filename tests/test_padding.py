@@ -203,4 +203,3 @@ def test_complex_unpad(pdims, global_shape):
 
   # Make sure the unpadded arrays is equal to the original array
   assert_array_equal(gathered_original, gathered_unpadded)
-
