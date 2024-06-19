@@ -5,13 +5,13 @@ from typing import Tuple
 import jax
 import jaxlib.mlir.ir as ir
 import numpy as np
-from jax._src.api import ShapeDtypeStruct
-from jax._src.core import ShapedArray
+from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
 from jax._src.lib.mlir.dialects import hlo
 from jax._src.typing import Array, ArrayLike
-from jax.core import Primitive, ShapedArray
-from jax.interpreters import ad, xla
+from jax.core import ShapedArray
+from jax.interpreters import mlir
+from jax.interpreters.mlir import hlo
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxlib.hlo_helpers import custom_call
@@ -20,10 +20,6 @@ import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
 from jaxdecomp._src.spmd_ops import (BasePrimitive, get_axis_size,
                                      register_primitive)
-
-_out_axes = {'x_y': 1, 'y_z': 2, 'z_y': 1, 'y_x': 0}
-
-import traceback
 
 
 class TransposePrimitive(BasePrimitive):
