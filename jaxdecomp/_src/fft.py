@@ -9,8 +9,7 @@ from jax._src.interpreters import mlir
 from jax._src.lib.mlir.dialects import hlo
 from jax._src.numpy.util import promote_dtypes_complex
 from jax.core import Primitive, ShapedArray
-from jax.interpreters import ad, mlir, xla
-from jax.interpreters.mlir import hlo
+from jax.interpreters import ad, xla
 from jax.lib import xla_client
 from jaxlib.hlo_helpers import custom_call
 
@@ -43,7 +42,7 @@ class FFTPrimitive(BasePrimitive):
 
   name = "fft"
   multiple_results = False
-  impl_static_args = (1,)
+  impl_static_args = (1, 2)
   inner_primitive = None
   outer_primitive = None
 
@@ -168,8 +167,6 @@ class FFTPrimitive(BasePrimitive):
     if typ in [xla_client.FftType.RFFT, xla_client.FftType.IRFFT]:
       raise TypeError("only complex FFTs are currently supported through pfft.")
 
-    (x,) = promote_dtypes_complex(x)
-
     pdims = (1, jax.device_count())
     global_shape = x.shape
 
@@ -181,9 +178,13 @@ class FFTPrimitive(BasePrimitive):
         adjoint=adjoint)
 
   @staticmethod
-  def per_shard_impl(x, kind, pdims, global_shape, adjoint):
+  def per_shard_impl(x, fft_type, pdims, global_shape, adjoint):
     return FFTPrimitive.inner_primitive.bind(
-        x, kind=kind, pdims=pdims, global_shape=global_shape, adjoint=adjoint)
+        x,
+        fft_type=fft_type,
+        pdims=pdims,
+        global_shape=global_shape,
+        adjoint=adjoint)
 
   @staticmethod
   def infer_sharding_from_operands(fft_type, adjoint, mesh: Mesh,
@@ -240,7 +241,8 @@ class FFTPrimitive(BasePrimitive):
         FFTPrimitive.per_shard_impl,
         fft_type=fft_type,
         pdims=pdims,
-        global_shape=global_shape)
+        global_shape=global_shape,
+        adjoint=adjoint)
 
     return mesh, impl, output_sharding, (input_sharding,)
 
@@ -248,13 +250,16 @@ class FFTPrimitive(BasePrimitive):
 register_primitive(FFTPrimitive)
 
 
-def pfft_p_lower(x, fft_type, adjoint=False):
+def pfft_p_lower(x, fft_type, adjoint):
+
+  (x,) = promote_dtypes_complex(x)
+
   return FFTPrimitive.outer_primitive.bind(
       x, fft_type=fft_type, adjoint=adjoint)
 
 
 @partial(jax.custom_vjp, nondiff_argnums=(1, 2))
-def pfft(x, fft_type, adjoint):
+def pfft(x, fft_type, adjoint=False):
   output, _ = _pfft_fwd_rule(x, fft_type=fft_type, adjoint=adjoint)
   return output
 
