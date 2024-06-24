@@ -30,8 +30,7 @@ class HaloPrimitive(BasePrimitive):
     return x.update(shape=x.shape, dtype=x.dtype)
 
   @staticmethod
-  def outer_abstract(x, halo_extents, halo_periods, reduce_halo, pdims,
-                     global_shape):
+  def outer_abstract(x, halo_extents, halo_periods, reduce_halo):
     return x.update(shape=x.shape, dtype=x.dtype)
 
   @staticmethod
@@ -134,7 +133,7 @@ class HaloPrimitive(BasePrimitive):
                 result_shape):
 
     halo_exchange_sharding = NamedSharding(mesh,
-                                           P(*arg_shapes[0].sharding))
+                                           P(*arg_shapes[0].sharding.spec))
     global_shape = arg_shapes[0].shape
     pdims = (get_axis_size(halo_exchange_sharding,
                            1), get_axis_size(halo_exchange_sharding, 0))
