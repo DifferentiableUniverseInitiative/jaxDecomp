@@ -10,8 +10,6 @@ from jax._src.interpreters import mlir
 from jax._src.lib.mlir.dialects import hlo
 from jax._src.typing import Array, ArrayLike
 from jax.core import ShapedArray
-from jax.interpreters import mlir
-from jax.interpreters.mlir import hlo
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxlib.hlo_helpers import custom_call
