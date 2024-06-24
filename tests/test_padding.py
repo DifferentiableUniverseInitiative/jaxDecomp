@@ -6,6 +6,7 @@ import pytest
 
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
+from conftest import initialize_distributed
 from jax import lax
 from jax.experimental import mesh_utils, multihost_utils
 from jax.experimental.shard_map import shard_map
@@ -17,8 +18,7 @@ import jaxdecomp
 from jaxdecomp._src.padding import slice_pad, slice_unpad
 
 # Initialize jax distributed to instruct jax local process which GPU to use
-jaxdecomp.init()
-jax.distributed.initialize()
+initialize_distributed()
 rank = jax.process_index()
 size = jax.process_count()
 
@@ -204,8 +204,3 @@ def test_complex_unpad(pdims, global_shape):
   # Make sure the unpadded arrays is equal to the original array
   assert_array_equal(gathered_original, gathered_unpadded)
 
-
-def test_end():
-  # fake test to finalize the MPI processes
-  jaxdecomp.finalize()
-  jax.distributed.shutdown()
