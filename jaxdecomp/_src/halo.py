@@ -4,9 +4,10 @@ from typing import Tuple
 import jax
 import jaxlib.mlir.ir as ir
 import numpy as np
+from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
 from jax._src.typing import Array
-from jax.core import Primitive
+from jax.core import Primitive, ShapedArray
 from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxlib.hlo_helpers import custom_call
@@ -247,8 +248,8 @@ class HaloPrimitive(BasePrimitive):
       halo_extents: Tuple[int, int,
                           int], halo_periods: Tuple[bool, bool,
                                                     bool], reduce_halo: bool,
-      mesh: NamedSharding, arg_shapes: Tuple[ir.ShapeDtypeStruct],
-      result_shape: ir.ShapedArray) -> NamedSharding:
+      mesh: NamedSharding, arg_infos: Tuple[ShapeDtypeStruct],
+      result_infos: Tuple[ShapedArray]) -> NamedSharding:
     """
         Infer sharding information for halo exchange operation.
 
@@ -272,14 +273,16 @@ class HaloPrimitive(BasePrimitive):
         NamedSharding
             Sharding information for halo exchange operation.
         """
-    halo_exchange_sharding = arg_shapes[0].sharding
+    halo_exchange_sharding = arg_infos[0].sharding
     return NamedSharding(mesh, P(*halo_exchange_sharding.spec))
 
   @staticmethod
-  def partition(halo_extents: Tuple[int, int, int],
-                halo_periods: Tuple[bool, bool, bool], reduce_halo: bool,
-                mesh: NamedSharding, arg_shapes: Tuple[ir.ShapeDtypeStruct],
-                result_shape: ir.ShapedArray) -> Tuple[NamedSharding, partial]:
+  def partition(
+      halo_extents: Tuple[int, int,
+                          int], halo_periods: Tuple[bool, bool,
+                                                    bool], reduce_halo: bool,
+      mesh: NamedSharding, arg_shapes: Tuple[ShapeDtypeStruct],
+      result_shape: ShapeDtypeStruct) -> Tuple[NamedSharding, partial]:
     """
         Partition function for halo exchange operation.
 
