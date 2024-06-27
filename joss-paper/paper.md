@@ -30,7 +30,7 @@ bibliography: paper.bib
 ---
 
 
-# Summary
+# Abstract
 
 Cosmological simulations are key tools in understanding the distribution of galaxies and dark matter in the universe. Differentiable simulations provide access to gradients, significantly accelerating the inference process. Fast Particle Mesh (PM) simulations are excellent candidates due to their speed, simplicity, and inherent differentiability. However, as we enter the exascale era, simulation sizes are surpassing the maximum available memory, even for high-end HPC GPUs. Therefore, a multi-node distributed Particle Mesh simulation is necessary to simulate large cosmological volumes effectively.
 
@@ -67,7 +67,7 @@ In a particle mesh simulation, we use the 3DFFT to estimate the force field acti
 ![Distributed Halo Exchange using jaxDecomp](assets/halo-exchange.svg){width=40%}
 
 
-## Example
+# Example
 
 In this example, we show how to perform a distributed 3D FFT using `jaxDecomp` and `JAX`. The code snippet below demonstrates the initialization of the distributed mesh, the creation of the initial distributed tensor, and the execution of a distributed 3D FFT using `jaxDecomp`.
 
@@ -117,7 +117,24 @@ z = step(z)
 
 ```
 
-A more detailed example of a LPT simulation can be found in the [documentation](https://jaxdecomp.readthedocs.io/en/latest/).
+A more detailed example of a LPT simulation can be found in the [jaxdecomp_lpt](examples/jaxdecomp_lpt.py).
 
 
-## Stability and releases
+# Benchmark
+
+We benchmarked the distributed FFTs using `jaxDecomp` on a V100s with 32GB of memory. We compared the performance of `jaxDecomp` with the base `JAX` implementation.\
+At $2048^3$ resolution, the base `JAX` implementation could not fit the data on a single GPU, while `jaxDecomp` could fit the data on 4 GPUs.
+
+![Performance comparison between JAX and jaxDecomp](assets/benchmark.png){.center width=40%}
+
+# Stability and releases
+
+A lot of effort has been put into packaging and testing. We have a continuous integration pipeline that builds and uploads the package to PyPI on every commit. We also have a 100% code coverage tests covering all four functionalities (FFT, Halo, (un)padding, and transposition). The code has been tester on the Jean Zay supercomputer, and we have been able to run simulations up to 64 GPUs.
+
+# Acknowledgements
+
+This work was granted access to the HPC resources of IDRIS under the allocation 2024-AD011014949 made by GENCI.
+
+We also acknowledge the SCIPOL project\footnote{\url{scipol.in2p3.fr}} funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation program (PI: Josquin Errard, Grant agreement No. 101044073).
+
+# References
