@@ -1,5 +1,3 @@
-from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass
 from functools import partial
 from typing import Tuple
 
@@ -8,20 +6,32 @@ from jax import jit
 from jax._src.api import ShapeDtypeStruct
 from jax._src.core import ShapedArray
 from jax._src.typing import Array, ArrayLike
-from jax.experimental.custom_partitioning import custom_partitioning
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
 from jaxdecomp._src.spmd_ops import CustomParPrimitive, register_primitive
 
 
-## Padding Custom SPMD lowering
 class SlicePaddingPrimitive(CustomParPrimitive):
+  """
+    Custom primitive for slice padding operation.
 
-  name = "slice_pad"
-  multiple_results = False
-  impl_static_args = (1, 2, 3)
-  outer_pritimive = None
+    Attributes
+    ----------
+    name : str
+        The name of the primitive operation.
+    multiple_results : bool
+        Whether the operation produces multiple results.
+    impl_static_args : tuple
+        Static arguments for the implementation.
+    outer_pritimive : object
+        Outer primitive used for the operation.
+    """
+
+  name: str = "slice_pad"
+  multiple_results: bool = False
+  impl_static_args: Tuple[int, int, int] = (1, 2, 3)
+  outer_pritimive: object = None
 
   # Global array implementation is used purely for its abstract eval
   # at jit time, the shape of the global array output is infered from this function
@@ -33,7 +43,25 @@ class SlicePaddingPrimitive(CustomParPrimitive):
            padding_width: int | tuple[int],
            pdims: tuple[int],
            mode: str = 'constant') -> Array:
+    """
+        Implementation of the slice padding operation.
 
+        Parameters
+        ----------
+        arr : ArrayLike
+            Input array to be padded.
+        padding_width : int | tuple[int]
+            Width of padding to apply.
+        pdims : tuple[int]
+            Dimensions for padding.
+        mode : str, optional
+            Padding mode ('constant' by default).
+
+        Returns
+        -------
+        Array
+            Padded array.
+        """
     assert arr.ndim == 3, "Only 3D arrays are supported"
     assert len(pdims) == 2, "Only 2D pdims are supported"
 
@@ -83,11 +111,27 @@ class SlicePaddingPrimitive(CustomParPrimitive):
 
     return arr
 
-  # Actual per slice implementation of the primitive
   @staticmethod
   def per_shard_impl(arr: ArrayLike,
                      padding_width: int | tuple[int],
                      mode: str = 'constant') -> Array:
+    """
+        Per-shard implementation of the slice padding operation.
+
+        Parameters
+        ----------
+        arr : ArrayLike
+            Input array to be padded.
+        padding_width : int | tuple[int]
+            Width of padding to apply.
+        mode : str, optional
+            Padding mode ('constant' by default).
+
+        Returns
+        -------
+        Array
+            Padded array.
+        """
     return jnp.pad(arr, padding_width, mode=mode)
 
   @staticmethod
@@ -95,6 +139,29 @@ class SlicePaddingPrimitive(CustomParPrimitive):
                                    pdims: tuple[int], mode: str, mesh: Mesh,
                                    arg_infos: Tuple[ShapeDtypeStruct],
                                    result_infos: Tuple[ShapedArray]):
+    """
+        Infers sharding information from operands for the slice padding operation.
+
+        Parameters
+        ----------
+        padding_width : int | tuple[int]
+            Width of padding to apply.
+        pdims : tuple[int]
+            Dimensions for padding.
+        mode : str
+            Padding mode.
+        mesh : Mesh
+            Computational mesh.
+        arg_infos : Tuple[ShapeDtypeStruct]
+            Information about operands.
+        result_infos : Tuple[ShapedArray]
+            Information about results.
+
+        Returns
+        -------
+        NamedSharding
+            Sharding information.
+        """
     input_sharding = arg_infos[0].sharding
     return NamedSharding(input_sharding.mesh, P(*input_sharding.spec))
 
@@ -102,8 +169,29 @@ class SlicePaddingPrimitive(CustomParPrimitive):
   def partition(padding_width: int | tuple[int], pdims: tuple[int], mode: str,
                 mesh: Mesh, arg_infos: Tuple[ShapeDtypeStruct],
                 result_infos: Tuple[ShapedArray]):
+    """
+        Partitions the slice padding operation across a computational mesh.
 
-    # Only one non static input and one output
+        Parameters
+        ----------
+        padding_width : int | tuple[int]
+            Width of padding to apply.
+        pdims : tuple[int]
+            Dimensions for padding.
+        mode : str
+            Padding mode.
+        mesh : Mesh
+            Computational mesh.
+        arg_infos : Tuple[ShapeDtypeStruct]
+            Information about operands.
+        result_infos : Tuple[ShapedArray]
+            Information about results.
+
+        Returns
+        -------
+        Tuple
+            Mesh, implementation, output sharding, and input sharding.
+        """
     input_sharding = NamedSharding(mesh, P(*arg_infos[0].sharding.spec))
     output_sharding = NamedSharding(mesh, P(*result_infos.sharding.spec))
     impl = partial(
@@ -121,25 +209,69 @@ def slice_pad(x: ArrayLike,
               padding_width: int | tuple[int],
               pdims: tuple[int],
               mode: str = 'constant') -> Array:
+  """
+    JIT-compiled function for slice padding operation.
+
+    Parameters
+    ----------
+    x : ArrayLike
+        Input array to be padded.
+    padding_width : int | tuple[int]
+        Width of padding to apply.
+    pdims : tuple[int]
+        Dimensions for padding.
+    mode : str, optional
+        Padding mode ('constant' by default).
+
+    Returns
+    -------
+    Array
+        Padded array.
+    """
   return SlicePaddingPrimitive.outer_lowering(x, padding_width, pdims, mode)
 
 
-## Unpadding Custom SPMD lowering
-
-
 class SliceUnPaddingPrimitive(CustomParPrimitive):
+  """
+    Custom primitive for slice unpading operation.
 
-  name = "slice_unpad"
-  multiple_results = False
-  impl_static_args = (1, 2)
-  outer_pritimive = None
+    Attributes
+    ----------
+    name : str
+        The name of the primitive operation.
+    multiple_results : bool
+        Whether the operation produces multiple results.
+    impl_static_args : tuple
+        Static arguments for the implementation.
+    outer_pritimive : object
+        Outer primitive used for the operation.
+    """
 
-  # Same as padding, the global array implementation is used purely for its abstract eval
+  name: str = "slice_unpad"
+  multiple_results: bool = False
+  impl_static_args: Tuple[int, int] = (1, 2)
+  outer_pritimive: object = None
+
   @staticmethod
   def impl(arr: ArrayLike, padding_width: int | tuple[int],
            pdims: tuple[int]) -> Array:
+    """
+        Implementation of the slice unpading operation.
 
-    # If padding width is an integer then unpad the entire array
+        Parameters
+        ----------
+        arr : ArrayLike
+            Input array to be unpadded.
+        padding_width : int | tuple[int]
+            Width of padding to remove.
+        pdims : tuple[int]
+            Dimensions for unpadding.
+
+        Returns
+        -------
+        Array
+            Unpadded array.
+        """
     if isinstance(padding_width, int):
       unpadding_width = ((padding_width, padding_width),) * arr.ndim
     elif isinstance(padding_width, tuple):
@@ -175,10 +307,23 @@ class SliceUnPaddingPrimitive(CustomParPrimitive):
 
     return arr
 
-  # Actual per slice implementation of the primitive
   @staticmethod
   def per_shard_impl(arr: ArrayLike, padding_width: int | tuple[int]) -> Array:
-    # If padding width is an integer then unpad the entire array
+    """
+        Per-shard implementation of the slice unpading operation.
+
+        Parameters
+        ----------
+        arr : ArrayLike
+            Input array to be unpadded.
+        padding_width : int | tuple[int]
+            Width of padding to remove.
+
+        Returns
+        -------
+        Array
+            Unpadded array.
+        """
     if isinstance(padding_width, int):
       unpadding_width = ((padding_width, padding_width),) * arr.ndim
     elif isinstance(padding_width, tuple):
@@ -200,6 +345,27 @@ class SliceUnPaddingPrimitive(CustomParPrimitive):
                                    pdims: tuple[int], mesh: Mesh,
                                    arg_infos: Tuple[ShapeDtypeStruct],
                                    result_infos: Tuple[ShapedArray]):
+    """
+        Infers sharding information from operands for the slice unpading operation.
+
+        Parameters
+        ----------
+        padding_width : int | tuple[int]
+            Width of padding to remove.
+        pdims : tuple[int]
+            Dimensions for unpadding.
+        mesh : Mesh
+            Computational mesh.
+        arg_infos : Tuple[ShapeDtypeStruct]
+            Information about operands.
+        result_infos : Tuple[ShapedArray]
+            Information about results.
+
+        Returns
+        -------
+        NamedSharding
+            Sharding information.
+        """
     input_sharding = arg_infos[0].sharding
     return NamedSharding(input_sharding.mesh, P(*input_sharding.spec))
 
@@ -207,8 +373,27 @@ class SliceUnPaddingPrimitive(CustomParPrimitive):
   def partition(padding_width: int | tuple[int], pdims: tuple[int], mesh: Mesh,
                 arg_infos: Tuple[ShapeDtypeStruct],
                 result_infos: Tuple[ShapedArray]):
+    """
+        Partitions the slice unpading operation across a computational mesh.
 
-    # Only one non static input and one output
+        Parameters
+        ----------
+        padding_width : int | tuple[int]
+            Width of padding to remove.
+        pdims : tuple[int]
+            Dimensions for unpadding.
+        mesh : Mesh
+            Computational mesh.
+        arg_infos : Tuple[ShapeDtypeStruct]
+            Information about operands.
+        result_infos : Tuple[ShapedArray]
+            Information about results.
+
+        Returns
+        -------
+        Tuple
+            Mesh, implementation, output sharding, and input sharding.
+        """
     input_sharding = NamedSharding(mesh, P(*arg_infos[0].sharding.spec))
     output_sharding = NamedSharding(mesh, P(*result_infos.sharding.spec))
     impl = partial(
@@ -222,4 +407,21 @@ register_primitive(SliceUnPaddingPrimitive)
 @partial(jit, static_argnums=(1, 2))
 def slice_unpad(arr: ArrayLike, padding_width: int | tuple[int],
                 pdims: tuple[int]) -> Array:
+  """
+    JIT-compiled function for slice unpading operation.
+
+    Parameters
+    ----------
+    arr : ArrayLike
+        Input array to be unpadded.
+    padding_width : int | tuple[int]
+        Width of padding to remove.
+    pdims : tuple[int]
+        Dimensions for unpadding.
+
+    Returns
+    -------
+    Array
+        Unpadded array.
+    """
   return SliceUnPaddingPrimitive.outer_lowering(arr, padding_width, pdims)

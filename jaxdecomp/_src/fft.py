@@ -8,24 +8,40 @@ from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
 from jax._src.lib.mlir.dialects import hlo
 from jax._src.numpy.util import promote_dtypes_complex
+from jax._src.typing import Array
 from jax.core import Primitive, ShapedArray
-from jax.interpreters import ad, xla
 from jax.lib import xla_client
+from jax.sharding import Mesh, NamedSharding
+from jax.sharding import PartitionSpec as P
 from jaxlib.hlo_helpers import custom_call
 
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
-
-FftType = xla_client.FftType
-from jax.experimental.custom_partitioning import custom_partitioning
-from jax.sharding import Mesh, NamedSharding
-from jax.sharding import PartitionSpec as P
-
 from jaxdecomp._src.spmd_ops import (BasePrimitive, get_axis_size,
                                      register_primitive)
 
+FftType = xla_client.FftType
+
 
 def _str_to_fft_type(s: str) -> xla_client.FftType:
+  """
+  Convert a string to an FFT type enum.
+
+  Parameters
+  ----------
+  s : str
+    String representation of FFT type.
+
+  Returns
+  -------
+  xla_client.FftType
+    Corresponding FFT type enum.
+
+  Raises
+  ------
+  ValueError
+    If the string `s` does not match known FFT types.
+  """
   if s in ("fft", "FFT"):
     return xla_client.FftType.FFT
   elif s in ("ifft", "IFFT"):
@@ -39,6 +55,9 @@ def _str_to_fft_type(s: str) -> xla_client.FftType:
 
 
 class FFTPrimitive(BasePrimitive):
+  """
+  Custom primitive for FFT operations.
+  """
 
   name = "fft"
   multiple_results = False
@@ -47,8 +66,30 @@ class FFTPrimitive(BasePrimitive):
   outer_primitive = None
 
   @staticmethod
-  def abstract(x, fft_type, pdims, global_shape, adjoint):
+  def abstract(x: Array, fft_type: xla_client.FftType, pdims: Tuple[int, int],
+               global_shape: Tuple[int, int,
+                                   int], adjoint: bool) -> ShapedArray:
+    """
+    Abstract function to compute the shape of FFT output.
 
+    Parameters
+    ----------
+    x : Array
+      Input array.
+    fft_type : xla_client.FftType
+      Type of FFT operation.
+    pdims : Tuple[int, int]
+      Parallel dimensions.
+    global_shape : Tuple[int, int, int]
+      Global shape of the array.
+    adjoint : bool
+      Whether to compute the adjoint FFT.
+
+    Returns
+    -------
+    ShapedArray
+      Shape of the output array.
+    """
     if global_shape == x.shape:
       return FFTPrimitive.outer_abstract(x, fft_type=fft_type, adjoint=adjoint)
 
@@ -74,8 +115,25 @@ class FFTPrimitive(BasePrimitive):
     return ShapedArray(output_shape, x.dtype)
 
   @staticmethod
-  def outer_abstract(x, fft_type, adjoint):
+  def outer_abstract(x: Array, fft_type: xla_client.FftType,
+                     adjoint: bool) -> ShapedArray:
+    """
+    Abstract function for outer FFT operation.
 
+    Parameters
+    ----------
+    x : Array
+      Input array.
+    fft_type : xla_client.FftType
+      Type of FFT operation.
+    adjoint : bool
+      Whether to compute the adjoint FFT.
+
+    Returns
+    -------
+    ShapedArray
+      Shape of the output array.
+    """
     match fft_type:
       case xla_client.FftType.FFT:
         # FFT is X to Y to Z so Z-Pencil is returned
@@ -93,7 +151,32 @@ class FFTPrimitive(BasePrimitive):
     return ShapedArray(output_shape, x.dtype)
 
   @staticmethod
-  def lowering(ctx, a, *, fft_type, pdims, global_shape, adjoint):
+  def lowering(ctx, a: Array, *, fft_type: xla_client.FftType,
+               pdims: Tuple[int, int], global_shape: Tuple[int, int,
+                                                           int], adjoint: bool):
+    """
+    Lowering function for FFT primitive.
+
+    Parameters
+    ----------
+    ctx
+      Context.
+    a : Primitive
+      Input primitive.
+    fft_type : xla_client.FftType
+      Type of FFT operation.
+    pdims : Tuple[int, int]
+      Parallel dimensions.
+    global_shape : Tuple[int, int, int]
+      Global shape of the array.
+    adjoint : bool
+      Whether to compute the adjoint FFT.
+
+    Returns
+    -------
+    list
+      List of results from the operation.
+    """
     (x_aval,) = ctx.avals_in
     (aval_out,) = ctx.avals_out
     dtype = x_aval.dtype
@@ -119,7 +202,6 @@ class FFTPrimitive(BasePrimitive):
     global_shape = tuple([global_shape[i] for i in transpose_back_shape])
     # Compute the descriptor for our FFT
     config = _jaxdecomp.GridConfig()
-
     config.pdims = pdims
     config.gdims = global_shape[::-1]
     config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
@@ -131,7 +213,6 @@ class FFTPrimitive(BasePrimitive):
     layout = tuple(range(n - 1, -1, -1))
 
     # We ask XLA to allocate a workspace for this operation.
-    # TODO: check that the memory is not used all the time, just when needed
     workspace = mlir.full_like_aval(
         ctx, 0, jax.core.ShapedArray(shape=[workspace_size], dtype=np.byte))
 
@@ -151,12 +232,25 @@ class FFTPrimitive(BasePrimitive):
     # Finally we reshape the arry to the expected shape.
     return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
-  # Note : This must no longer be jitted because it will have single device abstract shapes
-  # The actual jit is done in the pfft function in lower_fn
-  # This means that sfft should never be lowered as is and only be lowered in the context of pfft
   @staticmethod
-  def impl(x, fft_type, adjoint):
+  def impl(x: Array, fft_type: Union[str, xla_client.FftType], adjoint: bool):
+    """
+    Implementation function for FFT primitive.
 
+    Parameters
+    ----------
+    x : Array
+      Input array.
+    fft_type : Union[str, xla_client.FftType]
+      Type of FFT operation.
+    adjoint : bool
+      Whether to compute the adjoint FFT.
+
+    Returns
+    -------
+    Primitive
+      Result of the operation.
+    """
     if isinstance(fft_type, str):
       typ = _str_to_fft_type(fft_type)
     elif isinstance(fft_type, xla_client.FftType):
@@ -178,7 +272,30 @@ class FFTPrimitive(BasePrimitive):
         adjoint=adjoint)
 
   @staticmethod
-  def per_shard_impl(x, fft_type, pdims, global_shape, adjoint):
+  def per_shard_impl(x: Array, fft_type: xla_client.FftType, pdims: Tuple[int,
+                                                                          int],
+                     global_shape: Tuple[int, int, int], adjoint: bool):
+    """
+    Implementation function for per-shard FFT primitive.
+
+    Parameters
+    ----------
+    x : Array
+      Input array.
+    fft_type : xla_client.FftType
+      Type of FFT operation.
+    pdims : Tuple[int, int]
+      Parallel dimensions.
+    global_shape : Tuple[int, int, int]
+      Global shape of the array.
+    adjoint : bool
+      Whether to compute the adjoint FFT.
+
+    Returns
+    -------
+    Primitive
+      Result of the operation.
+    """
     return FFTPrimitive.inner_primitive.bind(
         x,
         fft_type=fft_type,
@@ -187,50 +304,60 @@ class FFTPrimitive(BasePrimitive):
         adjoint=adjoint)
 
   @staticmethod
-  def infer_sharding_from_operands(fft_type, adjoint, mesh: Mesh,
-                                   arg_infos: Tuple[ShapeDtypeStruct],
-                                   result_infos: Tuple[ShapedArray]):
+  def infer_sharding_from_operands(
+      fft_type: xla_client.FftType, adjoint: bool, mesh: Mesh,
+      arg_infos: Tuple[ShapeDtypeStruct],
+      result_infos: Tuple[ShapedArray]) -> NamedSharding:
     """
-    Tell XLA how to infer the sharding of the output from the input sharding.
+    Infer sharding for FFT primitive based on operands.
 
-    Args:
-        mesh (Mesh): The contextual mesh
+    Parameters
+    ----------
+    fft_type : xla_client.FftType
+      Type of FFT operation.
+    adjoint : bool
+      Whether to compute the adjoint FFT.
+    mesh : Mesh
+      Contextual mesh for sharding.
+    arg_infos : Tuple[ShapeDtypeStruct]
+      Shape and sharding information of input operands.
+    result_infos : Tuple[ShapedArray]
+      Shape information of output.
 
-        arg_shapes (tuple): A tuple of ShapeDtypeStruct that contains the shape and the sharding of each input operand
-
-        result_shape (ShapedArray) : a single ShapedArray reprsenting a single output without the sharding information
-
-    Returns:
-
-        result_sharding (XLACompatibleSharding): The sharding result for example a NamedSharding.
-
+    Returns
+    -------
+    NamedSharding
+      Sharding information for the result.
     """
     input_sharding = arg_infos[0].sharding
     return NamedSharding(mesh, P(*input_sharding.spec))
 
   @staticmethod
-  def partition(fft_type, adjoint, mesh, arg_shapes, result_shape):
+  def partition(
+      fft_type: xla_client.FftType, adjoint: bool, mesh: Mesh,
+      arg_shapes: Tuple[ShapeDtypeStruct], result_shape: ShapeDtypeStruct
+  ) -> Tuple[Mesh, partial, NamedSharding, Tuple[NamedSharding]]:
     """
-      Tells XLA how to partition the primitive
+    Partition the FFT primitive for XLA.
 
-      Args:
-          mesh (Mesh): The contextual mesh
+    Parameters
+    ----------
+    fft_type : xla_client.FftType
+      Type of FFT operation.
+    adjoint : bool
+      Whether to compute the adjoint FFT.
+    mesh : Mesh
+      Contextual mesh for sharding.
+    arg_shapes : Tuple[ShapeDtypeStruct]
+      Shape and sharding information of input operands.
+    result_shape : ShapeDtypeStruct
+      Shape and sharding information of output.
 
-          arg_shapes (tuple): A tuple of ShapeDtypeStruct that contains the shape and the sharding of each input operand
-
-          result_shape (ShapeDtypeStruct) : a ShapeDtypeStruct reprsenting a single output
-
-      Returns:
-          Mesh (Mesh) : The mesh.
-
-          function: The lowered function, to allow the user to redefine how the primitive is called in a context of a specific sharding
-
-          result_sharding (XLACompatibleSharding): The sharding result for example a NamedSharding.
-
-          arg_shardings (tuple): a tuple of all XLACompatibleSharding of the input operands
-      """
-
-    # pfft only has one operand
+    Returns
+    -------
+    Tuple[Mesh, partial, NamedSharding, Tuple[NamedSharding]]
+      Mesh, lowered function, output sharding, and input operand sharding.
+    """
     input_sharding = NamedSharding(mesh, P(*arg_shapes[0].sharding.spec))
     output_sharding = NamedSharding(mesh, P(*result_shape.sharding.spec))
 
@@ -250,8 +377,25 @@ class FFTPrimitive(BasePrimitive):
 register_primitive(FFTPrimitive)
 
 
-def pfft_p_lower(x, fft_type, adjoint):
+def pfft_p_lower(x: Array, fft_type: Union[str, xla_client.FftType],
+                 adjoint: bool) -> Primitive:
+  """
+  Lowering function for pfft primitive.
 
+  Parameters
+  ----------
+  x : Array
+    Input array.
+  fft_type : Union[str, xla_client.FftType]
+    Type of FFT operation.
+  adjoint : bool
+    Whether to compute the adjoint FFT.
+
+  Returns
+  -------
+  Primitive
+    Result of the operation.
+  """
   (x,) = promote_dtypes_complex(x)
 
   return FFTPrimitive.outer_primitive.bind(
@@ -259,18 +403,74 @@ def pfft_p_lower(x, fft_type, adjoint):
 
 
 @partial(jax.custom_vjp, nondiff_argnums=(1, 2))
-def pfft(x, fft_type, adjoint=False):
+def pfft(x: Array,
+         fft_type: Union[str, xla_client.FftType],
+         adjoint: bool = False) -> Primitive:
+  """
+  Custom VJP definition for pfft.
+
+  Parameters
+  ----------
+  x : Array
+    Input array.
+  fft_type : Union[str, xla_client.FftType]
+    Type of FFT operation.
+  adjoint : bool, optional
+    Whether to compute the adjoint FFT. Defaults to False.
+
+  Returns
+  -------
+  Primitive
+    Result of the operation.
+  """
   output, _ = _pfft_fwd_rule(x, fft_type=fft_type, adjoint=adjoint)
   return output
 
 
-def _pfft_fwd_rule(x, fft_type: str, adjoint: bool = False):
-  # Linear function has no residuals
+def _pfft_fwd_rule(x: Array,
+                   fft_type: Union[str, xla_client.FftType],
+                   adjoint: bool = False) -> Tuple[Primitive, None]:
+  """
+  Forward rule for pfft.
+
+  Parameters
+  ----------
+  x : Array
+    Input array.
+  fft_type : Union[str, xla_client.FftType]
+    Type of FFT operation.
+  adjoint : bool, optional
+    Whether to compute the adjoint FFT. Defaults to False.
+
+  Returns
+  -------
+  Tuple[Primitive, None]
+    Result of the operation and None (no residuals).
+  """
   return pfft_p_lower(x, fft_type=fft_type, adjoint=adjoint), None
 
 
-def _pfft_bwd_rule(fft_type, adjoint, ctx, g):
+def _pfft_bwd_rule(fft_type: Union[str, xla_client.FftType], adjoint: bool, ctx,
+                   g: Primitive) -> Tuple[Primitive]:
+  """
+  Backward rule for pfft.
 
+  Parameters
+  ----------
+  fft_type : Union[str, xla_client.FftType]
+    Type of FFT operation.
+  adjoint : bool
+    Whether to compute the adjoint FFT.
+  ctx
+    Context.
+  g : Primitive
+    Gradient value.
+
+  Returns
+  -------
+  Tuple[Primitive]
+    Result of the operation.
+  """
   assert fft_type in [FftType.FFT, FftType.IFFT]
   if fft_type == FftType.FFT:
     fft_type = FftType.IFFT
