@@ -1,11 +1,9 @@
 name: Draft PDF
 on:
   push:
-    paths:
-      - paper.md
-      - paper.bib
-      - assets/*
-      - .github/workflows/draft-pdf.yml
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
   paper:
