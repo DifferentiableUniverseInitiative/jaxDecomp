@@ -30,7 +30,8 @@ build-dir = "build/{wheel_tag}"
 wheel.py-api = "py3"
 cmake.build-type = "Release"
 # Add any additional configurations for scikit-build if necessary
-cmake.args = [
-    "-DCMAKE_INSTALL_PREFIX:PATH=jaxdecomp/_src/_jaxdecomp/",
-    "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY:PATH=jaxdecomp/_src/_jaxdecomp/",
-]
+wheel.install-dir = "jaxdecomp/_src"
+
+
+[tool.scikit-build.cmake.define]
+CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
