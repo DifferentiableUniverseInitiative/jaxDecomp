@@ -4,7 +4,9 @@ cmake_minimum_required(VERSION 3.19...3.25)
 set(CMAKE_CXX_STANDARD  17)
 set(CMAKE_CUDA_STANDARD 17)
 # Latest JAX v0.4.26 no longer supports cuda 11.8
-set(NVHPC_CUDA_VERSION 12.2)
+# By default, build for CUDA 12.2, users can override this with -DNVHPC_CUDA_VERSION=11.8
+set(NVHPC_CUDA_VERSION 12.2 CACHE STRING  "CUDA version to build for" )
+
 # Build debug
 # set(CMAKE_BUILD_TYPE Debug)
 add_subdirectory(third_party/cuDecomp)
@@ -15,8 +17,8 @@ option(CUDECOMP_BUILD_FORTRAN "Build Fortran bindings" OFF)
 option(CUDECOMP_ENABLE_NVSHMEM "Enable NVSHMEM" OFF)
 option(CUDECOMP_BUILD_EXTRAS "Build benchmark, examples, and tests" OFF)
 
-set(CUDECOMP_CUDA_CC_LIST "70;80" CACHE STRING "List of CUDA compute capabilities to build cuDecomp for.")
-
+# 70: Volta, 80: Ampere, 89: RTX 4060
+set(CUDECOMP_CUDA_CC_LIST "70;80;89" CACHE STRING "List of CUDA compute capabilities to build cuDecomp for.")
 
 # Add pybind11 and cuDecomp subdirectories
 add_subdirectory(pybind11)
