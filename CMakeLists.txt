@@ -1,15 +1,19 @@
 cmake_minimum_required(VERSION 3.19...3.25)
 
+project(jaxdecomp LANGUAGES CXX CUDA)
+
 # NVCC 12 does not support C++20
 set(CMAKE_CXX_STANDARD  17)
 set(CMAKE_CUDA_STANDARD 17)
+
 # Latest JAX v0.4.26 no longer supports cuda 11.8
-set(NVHPC_CUDA_VERSION 12.2)
+find_package(CUDAToolkit REQUIRED VERSION 12)
+set(NVHPC_CUDA_VERSION ${CUDAToolkit_VERSION_MAJOR}.${CUDAToolkit_VERSION_MINOR})
+
 # Build debug
 # set(CMAKE_BUILD_TYPE Debug)
-add_subdirectory(third_party/cuDecomp)
 
-project(jaxdecomp LANGUAGES CXX CUDA)
+add_subdirectory(third_party/cuDecomp)
 
 option(CUDECOMP_BUILD_FORTRAN "Build Fortran bindings" OFF)
 option(CUDECOMP_ENABLE_NVSHMEM "Enable NVSHMEM" OFF)
@@ -32,7 +36,7 @@ find_library(NCCL_LIBRARY
     NAMES nccl
     HINTS ${NVHPC_NCCL_LIBRARY_DIR}
   )
-  string(REPLACE "/lib" "/include" NCCL_INCLUDE_DIR ${NVHPC_NCCL_LIBRARY_DIR})
+string(REPLACE "/lib" "/include" NCCL_INCLUDE_DIR ${NVHPC_NCCL_LIBRARY_DIR})
 
 
 message(STATUS "Using NCCL library: ${NCCL_LIBRARY}")
@@ -66,8 +70,9 @@ target_link_libraries(_jaxdecomp PRIVATE NVHPC::CUTENSOR)
 target_link_libraries(_jaxdecomp PRIVATE NVHPC::CUDA)
 target_link_libraries(_jaxdecomp PRIVATE ${NCCL_LIBRARY})
 target_link_libraries(_jaxdecomp PRIVATE cudecomp)
+target_link_libraries(_jaxdecomp PRIVATE stdc++fs)
 set_target_properties(_jaxdecomp PROPERTIES LINKER_LANGUAGE CXX)
 
+set_target_properties(_jaxdecomp PROPERTIES INSTALL_RPATH "$ORIGIN/lib")
 
-install(TARGETS cudecomp LIBRARY DESTINATION  ${CMAKE_INSTALL_PREFIX} PUBLIC_HEADER DESTINATION  ${CMAKE_INSTALL_PREFIX})
-install(TARGETS _jaxdecomp LIBRARY DESTINATION  ${CMAKE_INSTALL_PREFIX} PUBLIC_HEADER DESTINATION  ${CMAKE_INSTALL_PREFIX})
+install(TARGETS _jaxdecomp LIBRARY DESTINATION . PUBLIC_HEADER DESTINATION .)
