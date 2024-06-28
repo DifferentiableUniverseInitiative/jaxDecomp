@@ -67,3 +67,7 @@ target_link_libraries(_jaxdecomp PRIVATE NVHPC::CUDA)
 target_link_libraries(_jaxdecomp PRIVATE ${NCCL_LIBRARY})
 target_link_libraries(_jaxdecomp PRIVATE cudecomp)
 set_target_properties(_jaxdecomp PROPERTIES LINKER_LANGUAGE CXX)
+
+
+install(TARGETS cudecomp LIBRARY DESTINATION  ${CMAKE_INSTALL_PREFIX} PUBLIC_HEADER DESTINATION  ${CMAKE_INSTALL_PREFIX})
+install(TARGETS _jaxdecomp LIBRARY DESTINATION  ${CMAKE_INSTALL_PREFIX} PUBLIC_HEADER DESTINATION  ${CMAKE_INSTALL_PREFIX})
