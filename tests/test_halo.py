@@ -7,6 +7,7 @@ jax.config.update("jax_enable_x64", True)
 from math import prod
 
 import jax.numpy as jnp
+from conftest import initialize_distributed
 from jax.experimental import mesh_utils, multihost_utils
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh
@@ -17,8 +18,7 @@ import jaxdecomp
 from jaxdecomp import slice_pad, slice_unpad
 
 # Initialize jax distributed to instruct jax local process which GPU to use
-jaxdecomp.init()
-jax.distributed.initialize()
+initialize_distributed()
 rank = jax.process_index()
 size = jax.process_count()
 
@@ -209,18 +209,17 @@ def test_full_halo(pdims):
       assert_array_equal(exchanged_slice[-halo_size:],
                          periodic_exchanged_slice[-halo_size:])
 
-    # Test reduced halo
-
     # Lower center of the previous slice
-    previous_halo_extension = prev_slice[-2 * halo_size:-halo_size]
+    previous_halo_extension = prev_slice[-2 * halo_size:-3 * (halo_size // 2)]
     # Upper center of the next slice
-    next_halo_extension = next_slice[halo_size:2 * halo_size]
+    next_halo_extension = next_slice[3 * (halo_size // 2):2 * halo_size]
     # Upper and lower center of the reduced slice
-    upper_halo_reduced = reduced_slice[:halo_size]
-    lower_halo_reduced = reduced_slice[-halo_size:]
+
+    upper_halo_reduced = reduced_slice[:halo_size // 2]
+    lower_halo_reduced = reduced_slice[-(halo_size // 2):]
     # Upper and lower center of the original slice (after update no exchange and halo reduction)
-    upper_halo_original = unpadded_slice[:halo_size]
-    lower_halo_original = unpadded_slice[-halo_size:]
+    upper_halo_original = unpadded_slice[:halo_size // 2]
+    lower_halo_original = unpadded_slice[-(halo_size // 2):]
 
     # Upper slice should be equal to original upper slice + lower center of the previous slice
     assert_array_equal(upper_halo_reduced,
@@ -228,9 +227,3 @@ def test_full_halo(pdims):
     # Lower slice should be equal to original lower slice + upper center of the next slice
     assert_array_equal(lower_halo_reduced,
                        (next_halo_extension + lower_halo_original))
-
-
-def test_end():
-  # fake test to finalize the MPI processes
-  jaxdecomp.finalize()
-  jax.distributed.shutdown()

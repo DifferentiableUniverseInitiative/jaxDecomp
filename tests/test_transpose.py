@@ -9,6 +9,7 @@ from math import prod
 
 import jax.numpy as jnp
 import numpy as np
+from conftest import initialize_distributed
 from jax.experimental import mesh_utils, multihost_utils
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh
@@ -19,8 +20,7 @@ import jaxdecomp
 from jaxdecomp import (transposeXtoY, transposeYtoX, transposeYtoZ,
                        transposeZtoY)
 
-jaxdecomp.init()
-jax.distributed.initialize()
+initialize_distributed()
 rank = jax.process_index()
 size = jax.process_count()
 
@@ -193,9 +193,3 @@ def test_tranpose_grad(pdims, global_shape):
   print(f"Shape of JAX array {jax_grad.shape}")
   # Check the gradients
   assert_allclose(jax_grad, gathered_grads, rtol=1e-5, atol=1e-5)
-
-
-def test_end():
-  # fake test to finalize the MPI processes
-  jaxdecomp.finalize()
-  jax.distributed.shutdown()
