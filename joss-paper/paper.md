@@ -99,21 +99,26 @@ z = jax.make_array_from_single_device_arrays(
 
 
 @jax.jit
-def step(z):
-    with mesh:
-        padding = ((halo_size[0] , halo_size[0]) , (halo_size[1] , halo_size[1]) , (0 , 0))
-        k_array = jaxdecomp.fft.pfft3d(z).real
-        k_array = k_array * 2 # element wise operation is distributed automatically by jax
-        k_array = jaxdecomp.slice_pad(k_array , padding , pdims)
-        k_array = jaxdecomp.halo_exchange(
-                            k_array,
-                            halo_extents=halo_size,
-                            halo_periods=(True, True, True))
-        k_array = jaxdecomp.slice_unpad(k_array , padding , pdims)
+def do_fft(z):
+      k_array = jaxdecomp.fft.pfft3d(z)
+      k_array = k_array * 2 # element wise operation is distributed automatically by jax
+      r_array = jaxdecomp.fft.pifft3d(k_array).real
+      return r_array
 
-        return jaxdecomp.fft.ifft3d(k_array).real
 
-z = step(z)
+def do_halo_exchange(z):
+    padding = ((halo_size[0] , halo_size[0]) , (halo_size[1] , halo_size[1]) , (0 , 0))
+    z = jaxdecomp.slice_pad(k_array , padding , pdims)
+    z = jaxdecomp.halo_exchange(
+                        z,
+                        halo_extents=(halo_size // 2 , halo_size // 2),
+                        halo_periods=(True, True, True))
+    z = jaxdecomp.slice_unpad(z , padding , pdims)*
+    return k_array
+
+with mesh:
+    z = do_fft(z)
+    z = do_halo_exchange(z)
 
 ```
 
@@ -129,12 +134,12 @@ At $2048^3$ resolution, the base `JAX` implementation could not fit the data on 
 
 # Stability and releases
 
-A lot of effort has been put into packaging and testing. We have a continuous integration pipeline that builds and uploads the package to PyPI on every commit. We also have a 100% code coverage tests covering all four functionalities (FFT, Halo, (un)padding, and transposition). The code has been tester on the Jean Zay supercomputer, and we have been able to run simulations up to 64 GPUs.
+A lot of effort has been put into packaging and testing. We have a continuous integration pipeline that builds and uploads the package to PyPI on every commit. We aim to have a 100% code coverage tests covering all four functionalities (FFT, Halo, (un)padding, and transposition). The code has been tester on the Jean Zay supercomputer, and we have been able to run simulations up to 64 GPUs.
 
 # Acknowledgements
 
 This work was granted access to the HPC resources of IDRIS under the allocation 2024-AD011014949 made by GENCI.
 
-We also acknowledge the SCIPOL project\footnote{\url{scipol.in2p3.fr}} funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation program (PI: Josquin Errard, Grant agreement No. 101044073).
+We also acknowledge the SCIPOL scipol.in2p3.fr funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation program (PI: Josquin Errard, Grant agreement No. 101044073).
 
 # References
