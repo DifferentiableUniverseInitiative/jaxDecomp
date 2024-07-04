@@ -56,7 +56,7 @@ Starting with a 2D decomposition, The X axis is not distributed, and the Y and Z
 
 And inverse FFTs goes the other way around, by running a 1D inverse FFT on the Z axis, then transposing the data from a Z pencil to a Y pencil, and running a 1D inverse FFT on the Y axis, and finally transposing the data from a Y pencil to an X pencil and running a 1D inverse FFT on the X axis.
 
-![Distributed FFTs using jaxDecomp](assets/fft.svg){width=40%}
+![Distributed FFTs using jaxDecomp](assets/fft.svg){width=60%}
 
 At any point of the simulation, the data is distributed accross 2 dimensions, with the third dimension being undistributed. This allows us to store simulation data of any size on the GPUs, as long as the data fits in the combined memory of the GPUs.
 
@@ -64,7 +64,7 @@ At any point of the simulation, the data is distributed accross 2 dimensions, wi
 
 In a particle mesh simulation, we use the 3DFFT to estimate the force field acting on the particles. The force field is then interpolated to the particles, and the particles are moved accordingly. The particles that are close to the boundary of the local domain need to be updated using the data from the neighboring domains. This is done using a halo exchange operation. Where we pad each slice of the simulation then we perform a halo exchange operation to update the particles that are close to the boundary of the local domain.
 
-![Distributed Halo Exchange using jaxDecomp](assets/halo-exchange.svg){width=40%}
+![Distributed Halo Exchange using jaxDecomp](assets/halo-exchange.svg){width=60%}
 
 
 # Example
@@ -112,8 +112,9 @@ def do_halo_exchange(z):
     z = jaxdecomp.halo_exchange(
                         z,
                         halo_extents=(halo_size // 2 , halo_size // 2),
-                        halo_periods=(True, True, True))
-    z = jaxdecomp.slice_unpad(z , padding , pdims)*
+                        halo_periods=(True, True, True),
+                        reduce_halo=True)
+    z = jaxdecomp.slice_unpad(z , padding , pdims)
     return k_array
 
 with mesh:
@@ -122,7 +123,7 @@ with mesh:
 
 ```
 
-A more detailed example of a LPT simulation can be found in the [jaxdecomp_lpt](examples/jaxdecomp_lpt.py).
+A more detailed example of a LPT simulation can be found in the [jaxdecomp_lpt](../examples/jaxdecomp_lpt.py).
 
 
 # Benchmark
@@ -134,7 +135,8 @@ At $2048^3$ resolution, the base `JAX` implementation could not fit the data on 
 
 # Stability and releases
 
-A lot of effort has been put into packaging and testing. We have a continuous integration pipeline that builds and uploads the package to PyPI on every commit. We aim to have a 100% code coverage tests covering all four functionalities (FFT, Halo, (un)padding, and transposition). The code has been tester on the Jean Zay supercomputer, and we have been able to run simulations up to 64 GPUs.
+A lot of effort has been put into packaging and testing. We aim to have a 100% code coverage tests covering all four functionalities (FFT, Halo, (un)padding, and transposition). The code has been tester on the Jean Zay supercomputer, and we have been able to run simulations up to 64 GPUs.
+We also aim to package the code and release it on PyPI as built wheels for HPC clusters.
 
 # Acknowledgements
 
