@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.19...3.25)
 
+find_program(NVHPC_CXX_BIN "nvc++" REQUIRED)
+set(CMAKE_CXX_COMPILER ${NVHPC_CXX_BIN})
+
+find_program(NVHPC_C_BIN "nvc" REQUIRED)
+set(CMAKE_C_COMPILER ${NVHPC_C_BIN})
+
 project(jaxdecomp LANGUAGES CXX CUDA)
 
 # NVCC 12 does not support C++20
@@ -10,8 +16,9 @@ set(CMAKE_CUDA_STANDARD 17)
 find_package(CUDAToolkit REQUIRED VERSION 12)
 set(NVHPC_CUDA_VERSION ${CUDAToolkit_VERSION_MAJOR}.${CUDAToolkit_VERSION_MINOR})
 
-# Build debug
-# set(CMAKE_BUILD_TYPE Debug)
+message(STATUS "Using CUDA ${NVHPC_CUDA_VERSION}")
+# Build Release by default
+set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build.")
 
 add_subdirectory(third_party/cuDecomp)
 
