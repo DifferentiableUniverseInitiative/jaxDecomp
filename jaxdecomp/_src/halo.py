@@ -220,7 +220,9 @@ class HaloPrimitive(BasePrimitive):
     )
 
     if reduce_halo:
-      halo_x, halo_y, halo_z = halo_extents
+      # Padding is usally halo_size and the halo_exchange extents are halo_size // 2
+      # So the reduction is done on half of the halo_size
+      halo_x, halo_y, halo_z = [extent * 2 for extent in halo_extents]
 
       # Apply corrections along x
       if halo_x > 0:
