@@ -57,8 +57,7 @@ with mesh:
     # Perform a halo exchange + reduce
     exchanged_reduced = jaxdecomp.halo_exchange(padded_array,
                                            halo_extents=(32,32,32),
-                                           halo_periods=(True,True,True),
-                                           reduce_halo=True)
+                                           halo_periods=(True,True,True))
     # Remove the halo regions
     recarray = jaxdecomp.slice_unpad(exchanged_reduced, padding_width, pdims)
 

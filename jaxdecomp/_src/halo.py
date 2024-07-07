@@ -31,9 +31,8 @@ class HaloPrimitive(BasePrimitive):
 
   @staticmethod
   def abstract(x: Array, halo_extents: Tuple[int, int, int],
-               halo_periods: Tuple[bool, bool, bool], reduce_halo: bool,
-               pdims: Tuple[int, int], global_shape: Tuple[int, int,
-                                                           int]) -> Array:
+               halo_periods: Tuple[bool, bool, bool], pdims: Tuple[int, int],
+               global_shape: Tuple[int, int, int]) -> Array:
     """
         Abstract function for determining the shape and dtype after the halo exchange operation.
 
@@ -45,8 +44,6 @@ class HaloPrimitive(BasePrimitive):
             Extents of the halo in x, y, and z dimensions.
         halo_periods : Tuple[bool, bool, bool]
             Periodicity of the halo in x, y, and z dimensions.
-        reduce_halo : bool
-            Flag indicating whether to reduce the halo.
         pdims : Tuple[int, int]
             Processor dimensions.
         global_shape : Tuple[int, int, int]
@@ -61,8 +58,7 @@ class HaloPrimitive(BasePrimitive):
 
   @staticmethod
   def outer_abstract(x: Array, halo_extents: Tuple[int, int, int],
-                     halo_periods: Tuple[bool, bool,
-                                         bool], reduce_halo: bool) -> Array:
+                     halo_periods: Tuple[bool, bool, bool]) -> Array:
     """
         Abstract function for determining the shape and dtype without considering inner details.
 
@@ -74,8 +70,6 @@ class HaloPrimitive(BasePrimitive):
             Extents of the halo in x, y, and z dimensions.
         halo_periods : Tuple[bool, bool, bool]
             Periodicity of the halo in x, y, and z dimensions.
-        reduce_halo : bool
-            Flag indicating whether to reduce the halo.
 
         Returns
         -------
@@ -86,9 +80,8 @@ class HaloPrimitive(BasePrimitive):
 
   @staticmethod
   def lowering(ctx, x: Array, halo_extents: Tuple[int, int, int],
-               halo_periods: Tuple[bool, bool, bool], reduce_halo: bool,
-               pdims: Tuple[int, int], global_shape: Tuple[int, int,
-                                                           int]) -> Array:
+               halo_periods: Tuple[bool, bool, bool], pdims: Tuple[int, int],
+               global_shape: Tuple[int, int, int]) -> Array:
     """
         Lowering function to generate the MLIR representation for halo exchange.
 
@@ -102,8 +95,6 @@ class HaloPrimitive(BasePrimitive):
             Extents of the halo in x, y, and z dimensions.
         halo_periods : Tuple[bool, bool, bool]
             Periodicity of the halo in x, y, and z dimensions.
-        reduce_halo : bool
-            Flag indicating whether to reduce the halo.
         pdims : Tuple[int, int]
             Processor dimensions.
         global_shape : Tuple[int, int, int]
@@ -149,8 +140,7 @@ class HaloPrimitive(BasePrimitive):
 
   @staticmethod
   def impl(x: Array, halo_extents: Tuple[int, int, int],
-           halo_periods: Tuple[bool, bool,
-                               bool], reduce_halo: bool) -> Primitive:
+           halo_periods: Tuple[bool, bool, bool]) -> Primitive:
     """
         Implementation function for performing halo exchange.
 
@@ -162,8 +152,6 @@ class HaloPrimitive(BasePrimitive):
             Extents of the halo in x, y, and z dimensions.
         halo_periods : Tuple[bool, bool, bool]
             Periodicity of the halo in x, y, and z dimensions.
-        reduce_halo : bool
-            Flag indicating whether to reduce the halo.
 
         Returns
         -------
@@ -177,14 +165,13 @@ class HaloPrimitive(BasePrimitive):
         x,
         halo_extents=halo_extents,
         halo_periods=halo_periods,
-        reduce_halo=reduce_halo,
         pdims=pdims,
         global_shape=global_shape,
     )
 
   @staticmethod
   def per_shard_impl(x: Array, halo_extents: Tuple[int, int, int],
-                     halo_periods: Tuple[bool, bool, bool], reduce_halo: bool,
+                     halo_periods: Tuple[bool, bool, bool],
                      pdims: Tuple[int, int], global_shape: Tuple[int, int,
                                                                  int]) -> Array:
     """
@@ -198,8 +185,6 @@ class HaloPrimitive(BasePrimitive):
             Extents of the halo in x, y, and z dimensions.
         halo_periods : Tuple[bool, bool, bool]
             Periodicity of the halo in x, y, and z dimensions.
-        reduce_halo : bool
-            Flag indicating whether to reduce the halo.
         pdims : Tuple[int, int]
             Processor dimensions.
         global_shape : Tuple[int, int, int]
@@ -214,40 +199,15 @@ class HaloPrimitive(BasePrimitive):
         x,
         halo_extents=halo_extents,
         halo_periods=halo_periods,
-        reduce_halo=reduce_halo,
         pdims=pdims,
         global_shape=global_shape,
     )
-
-    if reduce_halo:
-      halo_x, halo_y, halo_z = halo_extents
-
-      # Apply corrections along x
-      if halo_x > 0:
-        output = output.at[halo_x:halo_x + halo_x // 2].add(output[:halo_x //
-                                                                   2])
-        output = output.at[-(halo_x + halo_x // 2):-halo_x].add(
-            output[-halo_x // 2:])
-      # Apply corrections along y
-      if halo_y > 0:
-        output = output.at[:, halo_y:halo_y + halo_y // 2].add(
-            output[:, :halo_y // 2])
-        output = output.at[:, -(halo_y + halo_y // 2):-halo_y].add(
-            output[:, -halo_y // 2:])
-      # Apply corrections along z
-      if halo_z > 0:
-        output = output.at[:, :, halo_z:halo_z + halo_z // 2].add(
-            output[:, :, :halo_z // 2])
-        output = output.at[:, :, -(halo_z + halo_z // 2):-halo_z].add(
-            output[:, :, -halo_z // 2:])
 
     return output
 
   @staticmethod
   def infer_sharding_from_operands(
-      halo_extents: Tuple[int, int,
-                          int], halo_periods: Tuple[bool, bool,
-                                                    bool], reduce_halo: bool,
+      halo_extents: Tuple[int, int, int], halo_periods: Tuple[bool, bool, bool],
       mesh: NamedSharding, arg_infos: Tuple[ShapeDtypeStruct],
       result_infos: Tuple[ShapedArray]) -> NamedSharding:
     """
@@ -259,8 +219,6 @@ class HaloPrimitive(BasePrimitive):
             Extents of the halo in x, y, and z dimensions.
         halo_periods : Tuple[bool, bool, bool]
             Periodicity of the halo in x, y, and z dimensions.
-        reduce_halo : bool
-            Flag indicating whether to reduce the halo.
         mesh : NamedSharding
             Mesh object for sharding.
         arg_shapes : Tuple[ir.ShapeDtypeStruct]
@@ -278,9 +236,7 @@ class HaloPrimitive(BasePrimitive):
 
   @staticmethod
   def partition(
-      halo_extents: Tuple[int, int,
-                          int], halo_periods: Tuple[bool, bool,
-                                                    bool], reduce_halo: bool,
+      halo_extents: Tuple[int, int, int], halo_periods: Tuple[bool, bool, bool],
       mesh: NamedSharding, arg_shapes: Tuple[ShapeDtypeStruct],
       result_shape: ShapeDtypeStruct) -> Tuple[NamedSharding, partial]:
     """
@@ -292,8 +248,6 @@ class HaloPrimitive(BasePrimitive):
             Extents of the halo in x, y, and z dimensions.
         halo_periods : Tuple[bool, bool, bool]
             Periodicity of the halo in x, y, and z dimensions.
-        reduce_halo : bool
-            Flag indicating whether to reduce the halo.
         mesh : NamedSharding
             Mesh object for sharding.
         arg_shapes : Tuple[ir.ShapeDtypeStruct]
@@ -320,7 +274,6 @@ class HaloPrimitive(BasePrimitive):
         HaloPrimitive.per_shard_impl,
         halo_extents=halo_extents,
         halo_periods=halo_periods,
-        reduce_halo=reduce_halo,
         pdims=pdims,
         global_shape=shape_without_halo)
 
@@ -331,8 +284,7 @@ register_primitive(HaloPrimitive)
 
 
 def halo_p_lower(x: Array, halo_extents: Tuple[int, int, int],
-                 halo_periods: Tuple[bool, bool,
-                                     bool], reduce_halo: bool) -> Primitive:
+                 halo_periods: Tuple[bool, bool, bool]) -> Primitive:
   """
     Lowering function for the halo exchange operation.
 
@@ -344,8 +296,6 @@ def halo_p_lower(x: Array, halo_extents: Tuple[int, int, int],
         Extents of the halo in x, y, and z dimensions.
     halo_periods : Tuple[bool, bool, bool]
         Periodicity of the halo in x, y, and z dimensions.
-    reduce_halo : bool
-        Flag indicating whether to reduce the halo.
 
     Returns
     -------
@@ -356,16 +306,13 @@ def halo_p_lower(x: Array, halo_extents: Tuple[int, int, int],
       x,
       halo_extents=halo_extents,
       halo_periods=halo_periods,
-      reduce_halo=reduce_halo,
   )
 
 
 # Custom Partitioning
 @partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3))
-def halo_exchange(x: Array,
-                  halo_extents: Tuple[int, int, int],
-                  halo_periods: Tuple[bool, bool, bool],
-                  reduce_halo: bool = False) -> Array:
+def halo_exchange(x: Array, halo_extents: Tuple[int, int, int],
+                  halo_periods: Tuple[bool, bool, bool]) -> Array:
   """
     Halo exchange operation with custom VJP.
 
@@ -377,21 +324,18 @@ def halo_exchange(x: Array,
         Extents of the halo in x, y, and z dimensions.
     halo_periods : Tuple[bool, bool, bool]
         Periodicity of the halo in x, y, and z dimensions.
-    reduce_halo : bool, optional
-        Flag indicating whether to reduce the halo. Default is False.
 
     Returns
     -------
     Array
         Output array after the halo exchange operation.
     """
-  output, _ = _halo_fwd_rule(x, halo_extents, halo_periods, reduce_halo)
+  output, _ = _halo_fwd_rule(x, halo_extents, halo_periods)
   return output
 
 
 def _halo_fwd_rule(x: Array, halo_extents: Tuple[int, int, int],
-                   halo_periods: Tuple[bool, bool, bool],
-                   reduce_halo: bool) -> Tuple[Array, None]:
+                   halo_periods: Tuple[bool, bool, bool]) -> Tuple[Array, None]:
   """
     Forward rule for the halo exchange operation.
 
@@ -403,20 +347,18 @@ def _halo_fwd_rule(x: Array, halo_extents: Tuple[int, int, int],
         Extents of the halo in x, y, and z dimensions.
     halo_periods : Tuple[bool, bool, bool]
         Periodicity of the halo in x, y, and z dimensions.
-    reduce_halo : bool
-        Flag indicating whether to reduce the halo.
 
     Returns
     -------
     Tuple[Array, None]
         Output array after the halo exchange operation and None for no residuals.
     """
-  return halo_p_lower(x, halo_extents, halo_periods, reduce_halo), None
+  return halo_p_lower(x, halo_extents, halo_periods), None
 
 
 def _halo_bwd_rule(halo_extents: Tuple[int, int, int],
-                   halo_periods: Tuple[bool, bool, bool], reduce_halo: bool,
-                   ctx, g: Array) -> Tuple[Array]:
+                   halo_periods: Tuple[bool, bool,
+                                       bool], ctx, g: Array) -> Tuple[Array]:
   """
     Backward rule for the halo exchange operation.
 
@@ -426,8 +368,6 @@ def _halo_bwd_rule(halo_extents: Tuple[int, int, int],
         Extents of the halo in x, y, and z dimensions.
     halo_periods : Tuple[bool, bool, bool]
         Periodicity of the halo in x, y, and z dimensions.
-    reduce_halo : bool
-        Flag indicating whether to reduce the halo.
     ctx
         Context for the operation.
     g : Array
@@ -438,7 +378,7 @@ def _halo_bwd_rule(halo_extents: Tuple[int, int, int],
     Tuple[Array]
         Gradient array after the halo exchange operation.
     """
-  return halo_p_lower(g, halo_extents, halo_periods, reduce_halo),
+  return halo_p_lower(g, halo_extents, halo_periods),
 
 
 # Define VJP for custom halo_exchange operation
