@@ -54,13 +54,12 @@ with mesh:
     # Add halo regions to our array
     padding_width = ((32,32),(32,32),(32,32)) # Has to a tuple of tuples
     padded_array = jaxdecomp.slice_pad(recarray, padding_width , pdims)
-    # Perform a halo exchange + reduce
-    exchanged_reduced = jaxdecomp.halo_exchange(padded_array,
+    # Perform a halo exchange
+    exchanged_array = jaxdecomp.halo_exchange(padded_array,
                                            halo_extents=(32,32,32),
-                                           halo_periods=(True,True,True),
-                                           reduce_halo=True)
+                                           halo_periods=(True,True,True))
     # Remove the halo regions
-    recarray = jaxdecomp.slice_unpad(exchanged_reduced, padding_width, pdims)
+    recarray = jaxdecomp.slice_unpad(exchanged_array, padding_width, pdims)
 
     # Gather the results (only if it fits on CPU memory)
     gathered_array = multihost_utils.process_allgather(recarray, tiled=True)

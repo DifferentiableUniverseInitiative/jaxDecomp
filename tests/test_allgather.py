@@ -6,6 +6,7 @@ jax.config.update("jax_enable_x64", True)
 from math import prod
 
 import pytest
+from conftest import initialize_distributed
 from jax.experimental import mesh_utils, multihost_utils
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh
@@ -13,8 +14,7 @@ from jax.sharding import PartitionSpec as P
 from numpy.testing import assert_array_equal
 
 # Initialize jax distributed to instruct jax local process which GPU to use
-jaxdecomp.init()
-jax.distributed.initialize()
+initialize_distributed()
 rank = jax.process_index()
 size = jax.process_count()
 
