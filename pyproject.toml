@@ -25,7 +25,7 @@ test = ["pytest"]
 
 [tool.scikit-build]
 minimum-version = "0.8"
-cmake.version = ">=3.19"
+cmake.version = ">=3.25"
 build-dir = "build/{wheel_tag}"
 wheel.py-api = "py3"
 cmake.build-type = "Release"
