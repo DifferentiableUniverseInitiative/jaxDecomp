@@ -59,7 +59,7 @@ with mesh:
                                            halo_extents=(32,32,32),
                                            halo_periods=(True,True,True))
     # Remove the halo regions
-    recarray = jaxdecomp.slice_unpad(exchanged_reduced, padding_width, pdims)
+    recarray = jaxdecomp.slice_unpad(exchanged_array, padding_width, pdims)
 
     # Gather the results (only if it fits on CPU memory)
     gathered_array = multihost_utils.process_allgather(recarray, tiled=True)
