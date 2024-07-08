@@ -170,10 +170,10 @@ def cic_paint(displacement, sharding, halo_size):
 
     a, b, c = jnp.meshgrid(
         jnp.arange(local_mesh_shape[0]), jnp.arange(local_mesh_shape[1]),
-        jnp.arange(local_mesh_shape[2]))
+        jnp.arange(local_mesh_shape[2]) , indexing='ij')
 
     # adding an offset of size halo size
-    pmid = jnp.stack([b + halo_size, a + halo_size, c], axis=-1)
+    pmid = jnp.stack([a + halo_size, b + halo_size, c], axis=-1)
     return scatter(pmid.reshape([-1, 3]), disp.reshape([-1, 3]), mesh)
 
   # Performs painting on padded mesh
