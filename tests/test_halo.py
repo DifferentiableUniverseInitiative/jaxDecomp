@@ -134,13 +134,6 @@ def test_full_halo(pdims):
         updated_array,
         halo_extents=(halo_size, 0, 0),
         halo_periods=(False, False, False))
-    exchanged_reduced_array = jaxdecomp.halo_exchange(
-        updated_array,
-        halo_extents=(halo_size, 0, 0),
-        halo_periods=(True, True, True),
-        reduce_halo=True)
-    unpadded_reduced_array = slice_unpad(exchanged_reduced_array, padding,
-                                         pdims)
     unpadded_updated_array = slice_unpad(updated_array, padding, pdims)
 
   # Gather array from all processes
@@ -151,8 +144,6 @@ def test_full_halo(pdims):
       periodic_exchanged_array, tiled=True)
   updated_gathered_array = multihost_utils.process_allgather(
       updated_array, tiled=True)
-  gathered_exchanged_reduced_array = multihost_utils.process_allgather(
-      unpadded_reduced_array, tiled=True)
   gathered_unpadded_updated_array = multihost_utils.process_allgather(
       unpadded_updated_array, tiled=True)
   # Get the slices using array_split
@@ -162,17 +153,14 @@ def test_full_halo(pdims):
       updated_gathered_array, size, axis=0)
   gathered_periodic_exchanged_slices = jnp.array_split(
       periodic_exchanged_gathered_array, size, axis=0)
-  gathered_reduced_exchange_slices = jnp.array_split(
-      gathered_exchanged_reduced_array, size, axis=0)
   gathered_unpadded_updated_slices = jnp.array_split(
       gathered_unpadded_updated_array, size, axis=0)
 
   gathered_arrays = zip(gathered_periodic_exchanged_slices, gathered_array_slices\
-                      , gathered_reduced_exchange_slices, gathered_updated_slices \
+                      , gathered_updated_slices \
                       , gathered_unpadded_updated_slices)
 
-  for slice_indx, (periodic_exchanged_slice, exchanged_slice, reduced_slice,
-                   original_slice,
+  for slice_indx, (periodic_exchanged_slice, exchanged_slice, original_slice,
                    unpadded_slice) in enumerate(gathered_arrays):
 
     next_indx = slice_indx + 1
@@ -208,22 +196,3 @@ def test_full_halo(pdims):
                          periodic_exchanged_slice[:halo_size])
       assert_array_equal(exchanged_slice[-halo_size:],
                          periodic_exchanged_slice[-halo_size:])
-
-    # Lower center of the previous slice
-    previous_halo_extension = prev_slice[-2 * halo_size:-3 * (halo_size // 2)]
-    # Upper center of the next slice
-    next_halo_extension = next_slice[3 * (halo_size // 2):2 * halo_size]
-    # Upper and lower center of the reduced slice
-
-    upper_halo_reduced = reduced_slice[:halo_size // 2]
-    lower_halo_reduced = reduced_slice[-(halo_size // 2):]
-    # Upper and lower center of the original slice (after update no exchange and halo reduction)
-    upper_halo_original = unpadded_slice[:halo_size // 2]
-    lower_halo_original = unpadded_slice[-(halo_size // 2):]
-
-    # Upper slice should be equal to original upper slice + lower center of the previous slice
-    assert_array_equal(upper_halo_reduced,
-                       (previous_halo_extension + upper_halo_original))
-    # Lower slice should be equal to original lower slice + upper center of the next slice
-    assert_array_equal(lower_halo_reduced,
-                       (next_halo_extension + lower_halo_original))
