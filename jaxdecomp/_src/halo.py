@@ -25,7 +25,7 @@ class HaloPrimitive(BasePrimitive):
 
   name = "halo_exchange"
   multiple_results = False
-  impl_static_args = (1, 2, 3)
+  impl_static_args = (1, 2)
   inner_primitive = None
   outer_primitive = None
 
@@ -310,7 +310,7 @@ def halo_p_lower(x: Array, halo_extents: Tuple[int, int, int],
 
 
 # Custom Partitioning
-@partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3))
+@partial(jax.custom_vjp, nondiff_argnums=(1, 2))
 def halo_exchange(x: Array, halo_extents: Tuple[int, int, int],
                   halo_periods: Tuple[bool, bool, bool]) -> Array:
   """
@@ -385,4 +385,4 @@ def _halo_bwd_rule(halo_extents: Tuple[int, int, int],
 halo_exchange.defvjp(_halo_fwd_rule, _halo_bwd_rule)
 
 # JIT compile the halo_exchange operation
-halo_exchange = jax.jit(halo_exchange, static_argnums=(1, 2, 3))
+halo_exchange = jax.jit(halo_exchange, static_argnums=(1, 2))
