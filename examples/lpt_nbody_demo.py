@@ -1,7 +1,12 @@
 import argparse
 import os
 from functools import partial
-from typing import Tuple
+from typing import Any, Callable, Hashable, Tuple
+
+from jax._src import mesh as mesh_lib
+
+Specs = Any
+AxisName = Hashable
 
 import jax
 
@@ -12,22 +17,33 @@ import jax_cosmo as jc
 import numpy as np
 from jax.experimental import mesh_utils
 from jax.experimental.shard_map import shard_map
-from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from scatter import scatter
 
 import jaxdecomp
 
 
-def _global_to_local_size(mesh_shape, sharding):
+def shmap(f: Callable,
+          in_specs: Specs,
+          out_specs: Specs,
+          check_rep: bool = True,
+          auto: frozenset[AxisName] = frozenset()):
+  """Helper function to create a shard_map function that extracts the mesh from the
+    context."""
+  # Extracts the mesh from the context
+  mesh = mesh_lib.thread_resources.env.physical_mesh
+  return shard_map(f, mesh, in_specs, out_specs, check_rep, auto)
+
+
+def _global_to_local_size(mesh_shape):
   """ Utility function to compute the expected local size of a mesh
       given the global size and the sharding strategy.
   """
-  pdims = sharding.mesh.devices.shape
+  pdims = mesh_lib.thread_resources.env.physical_mesh.devices.shape
   return [mesh_shape[0] // pdims[1], mesh_shape[1] // pdims[0], mesh_shape[2]]
 
 
-def fttk(nc: int, sharding) -> list:
+def fttk(nc: int) -> list:
   """
     Generate Fourier transform wave numbers for a given mesh.
 
@@ -42,19 +58,18 @@ def fttk(nc: int, sharding) -> list:
     -------
     list
         List of wave number arrays for each dimension.
-    """
+  """
   kd = np.fft.fftfreq(nc) * 2 * np.pi
-  return [
-      jax.make_array_from_callback(
-          (nc, 1, 1),
-          sharding=NamedSharding(sharding.mesh, P('z')),
-          data_callback=lambda x: kd.reshape([-1, 1, 1])[x]),
-      jax.make_array_from_callback(
-          (1, nc, 1),
-          sharding=NamedSharding(sharding.mesh, P(None, 'y')),
-          data_callback=lambda x: kd.reshape([1, -1, 1])[x]),
-      kd.reshape([1, 1, -1])
-  ]
+
+  @partial(
+      shmap,
+      in_specs=(P('z'), P('y'), P(None)),
+      out_specs=(P('z'), P(None, 'y'), P(None)))
+  def get_kvec(kx, ky, kz):
+    return (kx.reshape([-1, 1, 1]), ky.reshape([1, -1,
+                                                1]), kz.reshape([1, 1, -1]))
+
+  return get_kvec(kd, kd, kd)
 
 
 def gravity_kernel(kvec):
@@ -69,7 +84,7 @@ def gravity_kernel(kvec):
     -------
     jnp.ndarray
         Gravitational kernel.
-    """
+  """
   kx, ky, kz = kvec
   kk = kx**2 + ky**2 + kz**2
   laplace_kernel = jnp.where(kk == 0, 1., 1. / kk)
@@ -81,7 +96,7 @@ def gravity_kernel(kvec):
   return grav_kernel
 
 
-def gaussian_field_and_forces(key, nc, box_size, power_spectrum, sharding):
+def gaussian_field_and_forces(key, nc, box_size, power_spectrum):
   """
     Generate a Gaussian field with a given power spectrum, along with gravitational forces.
 
@@ -104,19 +119,20 @@ def gaussian_field_and_forces(key, nc, box_size, power_spectrum, sharding):
         The generated Gaussian field and the gravitational forces.
     """
   mesh_shape = (nc,) * 3
-  local_mesh_shape = _global_to_local_size(mesh_shape, sharding)
+  local_mesh_shape = _global_to_local_size(mesh_shape)
 
   # Create a distributed field drawn from a Gaussian distribution in real space
-  delta = jax.make_array_from_single_device_arrays(
-      shape=mesh_shape,
-      sharding=sharding,
-      arrays=[jax.random.normal(key, local_mesh_shape, dtype='float32')])
+  @partial(shmap, in_specs=(), out_specs=P('z', 'y'))
+  def _sample_gaussian():
+    return jax.random.normal(key, local_mesh_shape, dtype='float32')
+
+  delta = _sample_gaussian()
 
   # Compute the Fourier transform of the field
   delta_k = jaxdecomp.fft.pfft3d(delta.astype(jnp.complex64))
 
   # Compute the Fourier wavenumbers of the field
-  kx, ky, kz = fttk(nc, sharding)
+  kx, ky, kz = fttk(nc)
   kk = jnp.sqrt(kx**2 + ky**2 + kz**2) * (nc / box_size)**3
 
   # Apply power spectrum to Fourier modes
@@ -135,7 +151,7 @@ def gaussian_field_and_forces(key, nc, box_size, power_spectrum, sharding):
   return delta, forces
 
 
-def cic_paint(displacement, sharding, halo_size):
+def cic_paint(displacement, halo_size):
   """ Paints particles on a mesh using Cloud-In-Cell interpolation.
 
     Parameters
@@ -152,13 +168,9 @@ def cic_paint(displacement, sharding, halo_size):
     jnp.ndarray
         Density field.
   """
-  local_mesh_shape = _global_to_local_size(displacement.shape, sharding)
+  local_mesh_shape = _global_to_local_size(displacement.shape)
 
-  @partial(
-      shard_map,
-      mesh=sharding.mesh,
-      in_specs=(P('z', 'y'),),
-      out_specs=P('z', 'y'))
+  @partial(shmap, in_specs=(P('z', 'y'),), out_specs=P('z', 'y'))
   def cic_op(disp):
     """ CiC operation on each local slice of the mesh."""
     # Create a mesh to paint the particles on for the local slice
@@ -169,8 +181,10 @@ def cic_paint(displacement, sharding, halo_size):
                    [[halo_size, halo_size], [halo_size, halo_size], [0, 0]])
 
     a, b, c = jnp.meshgrid(
-        jnp.arange(local_mesh_shape[0]), jnp.arange(local_mesh_shape[1]),
-        jnp.arange(local_mesh_shape[2]) , indexing='ij')
+        jnp.arange(local_mesh_shape[0]),
+        jnp.arange(local_mesh_shape[1]),
+        jnp.arange(local_mesh_shape[2]),
+        indexing='ij')
 
     # adding an offset of size halo size
     pmid = jnp.stack([a + halo_size, b + halo_size, c], axis=-1)
@@ -185,11 +199,7 @@ def cic_paint(displacement, sharding, halo_size):
       halo_extents=(halo_size // 2, halo_size // 2, 0),
       halo_periods=(True, True, True))
 
-  @partial(
-      shard_map,
-      mesh=sharding.mesh,
-      in_specs=(P('z', 'y'),),
-      out_specs=P('z', 'y'))
+  @partial(shmap, in_specs=(P('z', 'y'),), out_specs=P('z', 'y'))
   def unpad(x):
     """ Unpad the output array. """
     x = x.at[halo_size:halo_size + halo_size // 2].add(x[:halo_size // 2])
@@ -205,7 +215,8 @@ def cic_paint(displacement, sharding, halo_size):
   return field
 
 
-def simulation_fn(key, nc, box_size, sharding, halo_size, a=1.0):
+@partial(jax.jit, static_argnames=('nc', 'box_size', 'halo_size'))
+def simulation_fn(key, nc, box_size, halo_size, a=1.0):
   """
     Run a simulation to generate initial conditions and density field using LPT.
 
@@ -240,11 +251,7 @@ def simulation_fn(key, nc, box_size, sharding, halo_size, a=1.0):
 
   # Generate a Gaussian field and gravitational forces from a power spectrum
   intial_conditions, initial_forces = gaussian_field_and_forces(
-      key=key,
-      nc=nc,
-      box_size=box_size,
-      power_spectrum=pk_fn,
-      sharding=sharding)
+      key=key, nc=nc, box_size=box_size, power_spectrum=pk_fn)
 
   # Compute the LPT displacement of that particles initialy placed on a regular grid
   # would experience at scale factor a, by simple Zeldovich approximation
@@ -252,7 +259,7 @@ def simulation_fn(key, nc, box_size, sharding, halo_size, a=1.0):
       cosmology, jnp.atleast_1d(a)) * initial_forces
 
   # Paints the displaced particles on a mesh to obtain the density field
-  final_field = cic_paint(initial_displacement, sharding, halo_size)
+  final_field = cic_paint(initial_displacement, halo_size)
 
   return intial_conditions, final_field
 
@@ -273,16 +280,11 @@ def main(args):
   pdims = tuple(map(int, args.pdims.split('x')))
   devices = mesh_utils.create_device_mesh(pdims)
   mesh = Mesh(devices, axis_names=('y', 'z'))
-  sharding = jax.sharding.NamedSharding(mesh, P('z', 'y'))
 
   with mesh:
     # Run the simulation on the compute mesh
     initial_conds, final_field = simulation_fn(
-        key=key,
-        nc=args.nc,
-        box_size=args.box_size,
-        sharding=sharding,
-        halo_size=args.halo_size)
+        key=key, nc=args.nc, box_size=args.box_size, halo_size=args.halo_size)
 
   # Create output directory to save the results
   output_dir = args.output
