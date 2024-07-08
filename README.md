@@ -54,8 +54,8 @@ with mesh:
     # Add halo regions to our array
     padding_width = ((32,32),(32,32),(32,32)) # Has to a tuple of tuples
     padded_array = jaxdecomp.slice_pad(recarray, padding_width , pdims)
-    # Perform a halo exchange + reduce
-    exchanged_reduced = jaxdecomp.halo_exchange(padded_array,
+    # Perform a halo exchange
+    exchanged_array = jaxdecomp.halo_exchange(padded_array,
                                            halo_extents=(32,32,32),
                                            halo_periods=(True,True,True))
     # Remove the halo regions
