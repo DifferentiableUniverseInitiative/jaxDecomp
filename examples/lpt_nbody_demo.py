@@ -17,6 +17,7 @@ import jax_cosmo as jc
 import numpy as np
 from jax.experimental import mesh_utils
 from jax.experimental.shard_map import shard_map
+from jax.sharding import Mesh
 from jax.sharding import PartitionSpec as P
 from scatter import scatter
 
@@ -279,7 +280,7 @@ def main(args):
   # Create computing mesh and sharding information
   pdims = tuple(map(int, args.pdims.split('x')))
   devices = mesh_utils.create_device_mesh(pdims)
-  mesh = Mesh(devices, axis_names=('y', 'z'))
+  mesh = Mesh(devices, axis_names=('y', 'x'))
 
   with mesh:
     # Run the simulation on the compute mesh
