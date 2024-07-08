@@ -6,6 +6,7 @@ from math import prod
 
 import jax.numpy as jnp
 import pytest
+from conftest import initialize_distributed
 from jax.experimental import mesh_utils, multihost_utils
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh
@@ -15,7 +16,7 @@ from numpy.testing import assert_allclose
 import jaxdecomp
 
 # Initialize cuDecomp
-jax.distributed.initialize()
+initialize_distributed()
 rank = jax.process_index()
 size = jax.process_count()
 
@@ -205,13 +206,3 @@ def test_vmap():
       atol=1e-10)
   # Check the reverse FFT
   assert_allclose(array, rec_array, rtol=1e-10, atol=1e-10)
-
-
-# find a way to finalize pytest
-def test_end():
-  # Make sure that it is cleaned up
-  # This has to be this way because pytest runs the "global code" before running the tests
-  # There are other solutions https://stackoverflow.com/questions/41871278/pytest-run-a-function-at-the-end-of-the-tests
-  # but this require the least amount of work
-  jaxdecomp.finalize()
-  jax.distributed.shutdown()

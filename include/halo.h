@@ -22,10 +22,13 @@ public:
   ~haloDescriptor_t() = default;
 
   bool operator==(const haloDescriptor_t& other) const {
-    return (double_precision == other.double_precision && halo_extents == other.halo_extents &&
-            halo_periods == other.halo_periods && axis == other.axis && config.gdims[0] == other.config.gdims[0] &&
-            config.gdims[1] == other.config.gdims[1] && config.gdims[2] == other.config.gdims[2] &&
-            config.pdims[0] == other.config.pdims[0] && config.pdims[1] == other.config.pdims[1]);
+    return (double_precision == other.double_precision && halo_extents[0] == other.halo_extents[0] &&
+            halo_extents[1] == other.halo_extents[1] && halo_extents[2] == other.halo_extents[2] &&
+            halo_periods[0] == other.halo_periods[0] && halo_periods[1] == other.halo_periods[1] &&
+            halo_periods[2] == other.halo_periods[2] && axis == other.axis &&
+            config.gdims[0] == other.config.gdims[0] && config.gdims[1] == other.config.gdims[1] &&
+            config.gdims[2] == other.config.gdims[2] && config.pdims[0] == other.config.pdims[0] &&
+            config.pdims[1] == other.config.pdims[1]);
   }
 };
 

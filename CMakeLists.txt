@@ -26,8 +26,8 @@ option(CUDECOMP_BUILD_FORTRAN "Build Fortran bindings" OFF)
 option(CUDECOMP_ENABLE_NVSHMEM "Enable NVSHMEM" OFF)
 option(CUDECOMP_BUILD_EXTRAS "Build benchmark, examples, and tests" OFF)
 
-set(CUDECOMP_CUDA_CC_LIST "70;80" CACHE STRING "List of CUDA compute capabilities to build cuDecomp for.")
-
+# 70: Volta, 80: Ampere, 89: RTX 4060
+set(CUDECOMP_CUDA_CC_LIST "70;80;89" CACHE STRING "List of CUDA compute capabilities to build cuDecomp for.")
 
 # Add pybind11 and cuDecomp subdirectories
 add_subdirectory(pybind11)
