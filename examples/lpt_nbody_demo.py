@@ -49,7 +49,8 @@ def fttk(nc: int) -> list:
         nc (int): Shape of the mesh grid.
 
     Returns:
-        list: List of wave number arrays for each dimension.
+        list: List of wave number arrays for each dimension in
+        the order [kx, ky, kz].
   """
   kd = np.fft.fftfreq(nc) * 2 * np.pi
 
@@ -57,15 +58,17 @@ def fttk(nc: int) -> list:
       shmap,
       in_specs=(P('x'), P('y'), P(None)),
       out_specs=(P('x'), P(None, 'y'), P(None)))
-  def get_kvec(kx, ky, kz):
-    return (kx.reshape([-1, 1, 1]),
-            ky.reshape([1, -1, 1]),
-            kz.reshape([1, 1, -1])) # yapf: disable
+  def get_kvec(ky, kz, kx):
+    return (ky.reshape([-1, 1, 1]),
+            kz.reshape([1, -1, 1]),
+            kx.reshape([1, 1, -1])) # yapf: disable
+  ky, kz, kx = get_kvec(kd, kd, kd)  # The order of the output
+  # corresponds to the order of dimensions in the transposed FFT
+  # output
+  return kx, ky, kz
 
-  return get_kvec(kd, kd, kd)
 
-
-def gravity_kernel(kvec):
+def gravity_kernel(kx, ky, kz):
   """ Computes a Fourier kernel combining laplace and derivative
     operators to compute gravitational forces.
 
@@ -75,14 +78,12 @@ def gravity_kernel(kvec):
     Returns:
         tuple of jnp.ndarray: kernels for each dimension.
   """
-  kx, ky, kz = kvec
   kk = kx**2 + ky**2 + kz**2
   laplace_kernel = jnp.where(kk == 0, 1., 1. / kk)
-  # Note that we return frequency arrays in the transposed order [z, x, y]
-  # corresponding to the transposed FFT output
-  grav_kernel = (laplace_kernel * 1j * kz,
-                 laplace_kernel * 1j * kx,
-                 laplace_kernel * 1j * ky) # yapf: disable
+
+  grav_kernel = (laplace_kernel * 1j * kx,
+                 laplace_kernel * 1j * ky,
+                 laplace_kernel * 1j * kz) # yapf: disable
   return grav_kernel
 
 
@@ -121,7 +122,7 @@ def gaussian_field_and_forces(key, nc, box_size, power_spectrum):
   delta = jaxdecomp.fft.pifft3d(delta_k).real
 
   # Compute gravitational forces associated with this field
-  grav_kernel = gravity_kernel([kx, ky, kz])
+  grav_kernel = gravity_kernel(kx, ky, kz)
   forces_k = [g * delta_k for g in grav_kernel]
 
   # Retrieve the forces in real space by inverse Fourier transforming
