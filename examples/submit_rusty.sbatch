@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #SBATCH -p gpu
 #SBATCH -t 0:10:00
-#SBATCH -C a100-80gb&ib-a100
+#SBATCH -C a100
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=16
@@ -10,7 +10,7 @@
 module load modules/2.3
 module load gcc nvhpc python
 
-source /mnt/home/flanusse/venvs/jaxdecomp724/bin/activate
+source ~/venvs/jaxdecomp724/bin/activate
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export LD_LIBRARY_PATH=$NVHPC_ROOT/Linux_x86_64/24.3/cuda/12.3/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=$NVHPC_ROOT/Linux_x86_64/24.3/cuda/12.3/lib64:$LD_LIBRARY_PATH
