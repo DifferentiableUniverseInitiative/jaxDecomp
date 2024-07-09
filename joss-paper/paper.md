@@ -2,27 +2,28 @@
 title: 'jaxDecomp : JAX Library for 3D Domain Decomposition and Parallel FFTs'
 tags:
   - Jax
-  - Cuda
+  - CUDA
   - Python
-  - Hpc
+  - HPC
   - FFT
   - Simulations
 authors:
-  - name: Wassim KABALAN
+  - name: Wassim Kabalan
     orcid: 0009-0001-6501-4564
     affiliation: 1
   - name: François Lanusse
-    affiliation: 2
+    orcid: 0000-0001-7956-0542
+    affiliation: 2, 3
   - name: Alexandre Boucaud
     affiliation: 1
   - name: Eric Aubourg
-    affiliation: 3
+    affiliation: 1
 affiliations:
  - name: Université Paris Cité, CNRS, Astroparticule et Cosmologie, F-75013 Paris, France
    index: 1
  - name: Université Paris-Saclay, Université Paris Cité, CEA, CNRS, AIM, 91191, Gif-sur-Yvette, France
    index: 2
- - name: Université Paris-Saclay, Université Paris Cité, CEA, CNRS, AIM, 91191, Gif-sur-Yvette, France
+ - name: Flatiron Institute, Center for Computational Astrophysics, 162 5th Avenue, New York, NY 10010, USA
    index: 3
 date: 26 June 2024
 bibliography: paper.bib
@@ -140,7 +141,7 @@ We also aim to package the code and release it on PyPI as built wheels for HPC c
 
 # Acknowledgements
 
-This work was granted access to the HPC resources of IDRIS under the allocation 2024-AD011014949 made by GENCI.
+This work was granted access to the HPC resources of IDRIS under the allocation 2024-AD011014949 made by GENCI. The computations in this work were, in part, run at facilities supported by the Scientific Computing Core at the Flatiron Institute, a division of the Simons Foundation.
 
 We also acknowledge the SCIPOL scipol.in2p3.fr funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation program (PI: Josquin Errard, Grant agreement No. 101044073).
 
