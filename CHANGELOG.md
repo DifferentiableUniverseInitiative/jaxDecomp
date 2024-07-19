@@ -1,5 +1,11 @@
 # Change log
 
+## jaxdecomp 0.1.0
+
+* Changes
+  * Fixed bug with Halo
+  * Added joss paper
+
 
 ## jaxdecomp 0.0.1
 
