@@ -123,11 +123,6 @@ class HaloPrimitive(BasePrimitive):
         config, is_double, halo_extents[::-1], halo_periods[::-1], 0)
     layout = tuple(range(n - 1, -1, -1))
 
-    # If XLA is not the selected allocator, then allocate a workspace with size 1
-    # TODO(Wassim) : Eventually, Only cuda should allocate .. this will be removed in the future
-    if os.environ.get("JD_ALLOCATE_WITH_XLA", "0") == "0":
-      workspace_size = 1
-
     workspace = mlir.full_like_aval(
         ctx, 0, jax.core.ShapedArray(shape=[workspace_size], dtype=np.byte))
 

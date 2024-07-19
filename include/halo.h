@@ -52,8 +52,6 @@ private:
   cudecompPencilInfo_t m_PencilInfo;
 
   int64_t m_WorkSize;
-  void* m_WorkSizeBuffer;
-
   HRESULT cleanUp(cudecompHandle_t handle);
 };
 
