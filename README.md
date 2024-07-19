@@ -65,7 +65,6 @@ with mesh:
     gathered_array = multihost_utils.process_allgather(recarray, tiled=True)
 
 # Finalize the library
-jaxdecomp.finalize()
 jax.distributed.shutdown()
 ```
 **Note**: All these functions are jittable and have well defined derivatives!
