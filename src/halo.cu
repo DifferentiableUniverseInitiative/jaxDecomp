@@ -36,7 +36,8 @@ HRESULT HaloExchange<real_t>::get_halo_descriptor(cudecompHandle_t handle, size_
   else
     CHECK_CUDECOMP_EXIT(cudecompGetDataTypeSize(CUDECOMP_FLOAT, &dtype_size));
 
-  work_size = dtype_size * workspace_num_elements;
+  m_WorkSize = dtype_size * workspace_num_elements;
+  work_size = m_WorkSize;
 
   static const char* cudalloc = std::getenv("JD_ALLOCATE_WITH_XLA");
 
