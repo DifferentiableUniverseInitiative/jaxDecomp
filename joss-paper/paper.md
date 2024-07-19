@@ -27,6 +27,8 @@ affiliations:
    index: 3
 date: 26 June 2024
 bibliography: paper.bib
+header-includes:
+  - \usepackage{algorithm2e}
 
 ---
 
@@ -43,25 +45,84 @@ To address these limitations, we introduce jaxDecomp, a JAX library that wraps N
 
 # Statement of Need
 
-For numerical simulations on HPC systems, having a distributed, easy-to-use, and differentiable FFT is critical for achieving peak performance and scalability. While it is technically feasible to implement distributed FFTs using native JAX, there are significant benefits to using jaxDecomp. Although the performance difference may be marginal, jaxDecomp offers several advantages that make it a valuable tool for HPC applications.
+For numerical simulations on HPC systems, having a distributed, easy-to-use, and differentiable FFT is critical for achieving peak performance and scalability. While it is technically feasible to implement distributed FFTs using native JAX, for performance and memory-critical simulations, it is better to use specialized HPC codes. These codes, however, are not typically differentiable. The need for differentiable, performant, and memory-efficient code has risen due to the recent introduction of differentiable algorithms such as Hamiltonian Monte Carlo (HMC) and the No-U-Turn Sampler (NUTS).
 
-In scientific applications such as particle mesh (PM) simulations for cosmology, existing frameworks like [@FlowPM] a TensorFlow-mesh based simulations, although distributed, TensorFlow-mesh is no longer actively maintained, while frameworks like JAX based frameworks like [@pmwd] are limited to 512 volumes due to lack of distribution capabilities. These examples underscore the critical need for scalable and efficient solutions. jaxDecomp addresses this gap by enabling distributed and differentiable 3D FFTs within JAX, thereby facilitating the simulation of large cosmological volumes on HPC clusters effectively.
+In scientific applications such as particle mesh (PM) simulations for cosmology, existing frameworks like FlowPM, a TensorFlow-mesh based simulation, are distributed but no longer actively maintained. Similarly, JAX-based frameworks like pmwd are limited to 512 volumes due to the lack of distribution capabilities. These examples underscore the critical need for scalable and efficient solutions. jaxDecomp addresses this gap by enabling distributed and differentiable 3D FFTs within JAX, thereby facilitating the simulation of large cosmological volumes on HPC clusters effectively.
 
-# Implementation
+While it is technically feasible to implement distributed FFTs using native JAX, there are significant benefits to using jaxDecomp. Although the performance difference may be marginal, jaxDecomp offers several advantages that make it a valuable tool for HPC applications. Firstly, jaxDecomp provides the ability to easily switch backends between NCCL, MPI, and NVSHMEM, optimizing performance based on the specific HPC cluster configuration. Secondly, jaxDecomp performs operations in place, which is more memory-efficient, minimizing the use of intermediate memory and enhancing overall performance. This is crucial for memory-bound codes such as cosmological simulations.
 
-jaxDecomp utilizes JAX's Custom JAX primitive to wrap cuDecomp operations, enabling integration of CUDA code within the HLO graph via XLA's custom_call. Leveraging the recent custom_partitioning JAX API, partitioning information is embedded in the HLO graph. This approach maintains the state of cuDecomp, including the processor grid and allocated memory, transparently for the user.
-Domain Decomposition
+## Implementation
+
+jaxDecomp utilizes JAX's Custom JAX primitive to wrap cuDecomp operations, enabling the integration of CUDA code within the HLO graph via XLA's custom_call. By leveraging the recent custom_partitioning JAX API, partitioning information is embedded in the HLO graph. This approach transparently maintains the state of cuDecomp, including the processor grid and allocated memory for the user.
+
+### Domain Decomposition
 
 jaxDecomp supports domain decomposition strategies such as 1D and 2D (pencil) decompositions. In 1D decomposition, arrays are decomposed along a single axis, while in 2D decomposition, arrays are decomposed into pencils (slabs). This flexibility allows for efficient distribution of data across multiple GPUs while preserving locality.
 
-# Distributed FFTs
+------------------
+1. **Distributed FFT Algorithm**:
+------------------
+Distribute 3D data across GPUs using 2D domain decomposition.
+$X \times Y \times Z$ data is distributed across $P_x \times P_y$ GPUs.\
 
-## Forward FFTs
+$X \times \frac{Y}{P_y} \times \frac{Z}{P_z}$
 
-For distributed FFTs, jaxDecomp performs a series of 1D FFTs using cuFFT along the undistributed axis of the data. Following this, a multi-GPU transposition using cuDecomp reorganizes the data across GPUs. For instance, in a 2D decomposition where the X-axis remains undistributed and the Y and Z axes are distributed across GPUs, FFTs are executed sequentially on the X, Y, and Z axes respectively.
-Inverse FFTs
+First FFT along X:
 
-Inverse FFTs follow a similar process but in reverse. Starting with the distributed axis (Z in the example above), jaxDecomp performs a 1D inverse FFT, transposes the data across GPUs from a Z-pencil to a Y-pencil, executes a 1D inverse FFT on the Y axis, and continues this process until all axes are processed.
+$FFT (X \times \frac{Y}{P_y} \times \frac{Z}{P_z})$
+
+Transpose X to Y:
+
+local : X split on $P_y$ local transpose to $y \times x \times z$
+global : all-to-all communication to concatenate along $Y$
+
+$Y \times \frac{X}{P_y} \times \frac{Z}{P_z}$
+
+Second FFT along Y:
+$ FFT (Y \times \frac{X}{P_y} \times \frac{Z}{P_z})$
+
+Transpose Y to Z:
+
+local : Y split on $P_z$ local transpose to $z \times x \times y$
+
+global : all-to-all communication to concatenate along $Z$
+
+$Z \times \frac{X}{P_z} \times \frac{Y}{P_y}$
+
+Third FFT along Z:
+
+$FFT (Z \times \frac{X}{P_z} \times \frac{Y}{P_y})$
+
+![](assets/fft.svg)
+
+------------------
+2. **Distributed Halo Exchange**:
+------------------
+
+Algorith is
+
+define halo extent $H_x, H_y, H_z$
+
+UpdateHalo_X :
+
+From $X - 2 \times H_x$ to $X - H_x$ send to right, receive from left
+
+### Distributed Halo Exchange
+
+In jaxDecomp, the distributed halo exchange mechanism efficiently facilitates boundary updates essential for scientific computing algorithms and simulations. This operation involves padding each slice of simulation data and executing a halo exchange to synchronize information across the edges of local domains distributed across GPUs. By exchanging data at the boundaries, jaxDecomp ensures seamless communication and consistency between adjacent domains, which is crucial for achieving accurate and reliable results in distributed simulations on HPC clusters.
+
+### Conclusion
+
+jaxDecomp effectively bridges the gap in JAX's distributed computing capabilities by providing a highly efficient, memory-optimized, and differentiable solution for 3D FFTs and halo exchanges. This integration ensures that scientific computations can be performed at scale, leveraging the power of modern HPC clusters.
+
+### Distributed Halo Exchange
+
+In jaxDecomp, the distributed halo exchange mechanism efficiently facilitates boundary updates essential for scientific computing algorithms and simulations. This operation involves padding each slice of simulation data and executing a halo exchange to synchronize information across the edges of local domains distributed across GPUs. By exchanging data at the boundaries, jaxDecomp ensures seamless communication and consistency between adjacent domains, which is crucial for achieving accurate and reliable results in distributed simulations on HPC clusters.
+
+### Conclusion
+
+jaxDecomp effectively bridges the gap in JAX's distributed computing capabilities by providing a highly efficient, memory-optimized, and differentiable solution for 3D FFTs and halo exchanges. This integration ensures that scientific computations can be performed at scale, leveraging the power of modern HPC clusters.
+
 
 # Distributed Halo Exchange
 
