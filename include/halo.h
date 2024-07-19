@@ -36,19 +36,23 @@ template <typename real_t> class HaloExchange {
   friend class GridDescriptorManager;
 
 public:
-  HaloExchange() = default;
+  HaloExchange() : m_Tracer("JAXDECOMP") {}
   // Grid descriptors are handled by the GridDescriptorManager
+  // No memory should be cleaned up here everything is handled by the GridDescriptorManager
   ~HaloExchange() = default;
 
   HRESULT get_halo_descriptor(cudecompHandle_t handle, size_t& work_size, haloDescriptor_t& halo_desc);
   HRESULT halo_exchange(cudecompHandle_t handle, haloDescriptor_t desc, cudaStream_t stream, void** buffers);
 
 private:
+  AsyncLogger m_Tracer;
+
   cudecompGridDesc_t m_GridConfig;
   cudecompGridDescConfig_t m_GridDescConfig;
   cudecompPencilInfo_t m_PencilInfo;
 
   int64_t m_WorkSize;
+  HRESULT cleanUp(cudecompHandle_t handle);
 };
 
 } // namespace jaxdecomp

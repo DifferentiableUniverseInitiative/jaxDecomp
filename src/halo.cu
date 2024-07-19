@@ -24,23 +24,20 @@ HRESULT HaloExchange<real_t>::get_halo_descriptor(cudecompHandle_t handle, size_
   CHECK_CUDECOMP_EXIT(
       cudecompGetPencilInfo(handle, m_GridConfig, &m_PencilInfo, halo_desc.axis, halo_desc.halo_extents.data()));
 
-  cudecompPencilInfo_t no_halo;
-
-  // Get pencil information for the specified axis
-  CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, m_GridConfig, &no_halo, halo_desc.axis, nullptr));
-
   // Get workspace size
   int64_t workspace_num_elements;
   CHECK_CUDECOMP_EXIT(cudecompGetHaloWorkspaceSize(handle, m_GridConfig, halo_desc.axis, m_PencilInfo.halo_extents,
                                                    &workspace_num_elements));
 
+  // TODO(Wassim) Handle complex numbers
   int64_t dtype_size;
   if (halo_desc.double_precision)
     CHECK_CUDECOMP_EXIT(cudecompGetDataTypeSize(CUDECOMP_DOUBLE, &dtype_size));
   else
     CHECK_CUDECOMP_EXIT(cudecompGetDataTypeSize(CUDECOMP_FLOAT, &dtype_size));
 
-  work_size = dtype_size * workspace_num_elements;
+  m_WorkSize = dtype_size * workspace_num_elements;
+  work_size = m_WorkSize;
 
   return S_OK;
 }
@@ -51,7 +48,6 @@ HRESULT HaloExchange<real_t>::halo_exchange(cudecompHandle_t handle, haloDescrip
   void* data_d = buffers[0];
   void* work_d = buffers[1];
 
-  // desc.axis = 2;
   //  Perform halo exchange along the three dimensions
   for (int i = 0; i < 3; ++i) {
     switch (desc.axis) {
@@ -72,6 +68,12 @@ HRESULT HaloExchange<real_t>::halo_exchange(cudecompHandle_t handle, haloDescrip
 
   return S_OK;
 };
+
+template <typename real_t> HRESULT HaloExchange<real_t>::cleanUp(cudecompHandle_t handle) {
+  //  XLA is doing the allocation
+  // nothing to clean up
+  return S_OK;
+}
 
 template class HaloExchange<float>;
 template class HaloExchange<double>;

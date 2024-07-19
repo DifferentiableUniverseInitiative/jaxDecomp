@@ -1,3 +1,4 @@
+import os
 from functools import partial
 from typing import Tuple
 
@@ -202,7 +203,6 @@ class HaloPrimitive(BasePrimitive):
         pdims=pdims,
         global_shape=global_shape,
     )
-
     return output
 
   @staticmethod

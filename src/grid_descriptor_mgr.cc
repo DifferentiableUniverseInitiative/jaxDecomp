@@ -19,9 +19,8 @@ GridDescriptorManager::GridDescriptorManager() : m_Tracer("JAXDECOMP") {
   MPI_Comm mpi_comm = MPI_COMM_WORLD;
 
   // Check if MPI has already been initialized by the user (maybe with mpi4py)
-  int is_initialized;
-  CHECK_MPI_EXIT(MPI_Initialized(&is_initialized));
-  if (!is_initialized) { CHECK_MPI_EXIT(MPI_Init(nullptr, nullptr)); }
+  CHECK_MPI_EXIT(MPI_Initialized(&isMPIalreadyInitialized));
+  if (!isMPIalreadyInitialized) { CHECK_MPI_EXIT(MPI_Init(nullptr, nullptr)); }
   // Initialize cuDecomp
   CHECK_CUDECOMP_EXIT(cudecompInit(&m_Handle, mpi_comm));
   isInitialized = true;
@@ -144,11 +143,12 @@ HRESULT GridDescriptorManager::createTransposeExecutor(transposeDescriptor& desc
   return hr;
 }
 
+// TODO(Wassim) : This can be cleanup using some polymorphism
 void GridDescriptorManager::finalize() {
   if (!isInitialized) return;
 
   StartTraceInfo(m_Tracer) << "JaxDecomp shut down" << std::endl;
-  // Destroy grid descriptors
+  // Destroy grid descriptors for FFTs
   for (auto& descriptor : m_Descriptors64) {
     auto& executor = descriptor.second;
     // TODO(wassim) : Cleanup cudecomp resources
@@ -175,13 +175,62 @@ void GridDescriptorManager::finalize() {
     executor->clearPlans();
   }
 
+  // Destroy Halo descriptors
+  for (auto& descriptor : m_HaloDescriptors64) {
+    auto& executor = descriptor.second;
+    // Cleanup cudecomp resources
+    // CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc_c, work)); This can
+    // be used instead of requesting XLA to allocate the memory
+    cudecompResult_t err = cudecompGridDescDestroy(m_Handle, executor->m_GridConfig);
+    if (CUDECOMP_RESULT_SUCCESS != err) {
+      StartTraceInfo(m_Tracer) << "CUDECOMP error.at exit " << err << ")" << std::endl;
+    }
+    executor->cleanUp(m_Handle);
+  }
+
+  for (auto& descriptor : m_HaloDescriptors32) {
+    auto& executor = descriptor.second;
+    // Cleanup cudecomp resources
+    // CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc_c, work)); This can
+    // be used instead of requesting XLA to allocate the memory
+    cudecompResult_t err = cudecompGridDescDestroy(m_Handle, executor->m_GridConfig);
+    if (CUDECOMP_RESULT_SUCCESS != err) {
+      StartTraceInfo(m_Tracer) << "CUDECOMP error.at exit " << err << ")" << std::endl;
+    }
+    executor->cleanUp(m_Handle);
+  }
+
+  // Destroy Transpose descriptors
+  for (auto& descriptor : m_TransposeDescriptors64) {
+    auto& executor = descriptor.second;
+    // Cleanup cudecomp resources
+    // CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc_c, work)); This can
+    // be used instead of requesting XLA to allocate the memory
+    cudecompResult_t err = cudecompGridDescDestroy(m_Handle, executor->m_GridConfig);
+    if (CUDECOMP_RESULT_SUCCESS != err) {
+      StartTraceInfo(m_Tracer) << "CUDECOMP error.at exit " << err << ")" << std::endl;
+    }
+  }
+
+  for (auto& descriptor : m_TransposeDescriptors32) {
+    auto& executor = descriptor.second;
+    // Cleanup cudecomp resources
+    // CHECK_CUDECOMP_EXIT(cudecompFree(handle, grid_desc_c, work)); This can
+    // be used instead of requesting XLA to allocate the memory
+    cudecompResult_t err = cudecompGridDescDestroy(m_Handle, executor->m_GridConfig);
+    if (CUDECOMP_RESULT_SUCCESS != err) {
+      StartTraceInfo(m_Tracer) << "CUDECOMP error.at exit " << err << ")" << std::endl;
+    }
+  }
+
   // TODO(wassim) : Cleanup cudecomp resources
   //  there is an issue with mpi4py calling finalize at py_exit before this
   cudecompFinalize(m_Handle);
   // Clean finish
   CHECK_CUDA_EXIT(cudaDeviceSynchronize());
-  // MPI is finalized by the mpi4py runtime (I wish it wasn't)
-  // CHECK_MPI_EXIT(MPI_Finalize());
+  // If jaxDecomp initialized MPI finalize it
+  // Otherwise mpi4py will finalize its own MPI WORLD Communicator
+  if (!isMPIalreadyInitialized) { CHECK_MPI_EXIT(MPI_Finalize()); }
   isInitialized = false;
 }
 
