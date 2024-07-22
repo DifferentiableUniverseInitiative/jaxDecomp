@@ -9,63 +9,67 @@
    publisher={Oxford University Press (OUP)},
    author={Feng, Yu and Chu, Man-Yat and Seljak, Uroš and McDonald, Patrick},
    year={2016},
-   month=aug, pages={2273–2286} }
+   month={aug},
+   pages={2273--2286}
+}
 
 @article{2DECOMP&FFT,
-   doi = {10.21105/joss.05813},
-   url = {https://doi.org/10.21105/joss.05813},
-   year = {2023},
-   publisher = {The Open Journal},
-   volume = {8}, number = {91},
-   pages = {5813},
-   author = {Stefano Rolfo and Cédric Flageul and Paul Bartholomew and Filippo Spiga and Sylvain Laizet},
-   title = {The 2DECOMP&FFT library: an update with new CPU/GPU capabilities},
-   journal = {Journal of Open Source Software} }
+   doi={10.21105/joss.05813},
+   url={https://doi.org/10.21105/joss.05813},
+   year={2023},
+   publisher={The Open Journal},
+   volume={8},
+   number={91},
+   pages={5813},
+   author={Stefano Rolfo and Cédric Flageul and Paul Bartholomew and Filippo Spiga and Sylvain Laizet},
+   title={The 2DECOMP&FFT library: an update with new CPU/GPU capabilities},
+   journal={Journal of Open Source Software}
+}
 
-@inproceedings{cuDecomp ,
-   author = {Romero, Joshua and Costa, Pedro and Fatica, Massimiliano},
-   title = {Distributed-memory simulations of turbulent flows on modern GPU systems using an adaptive pencil decomposition library},
-   year = {2022},
-   isbn = {9781450394109},
-   publisher = {Association for Computing Machinery},
-   address = {New York, NY, USA},
-   url = {https://doi.org/10.1145/3539781.3539797},
-   doi = {10.1145/3539781.3539797},
-   abstract = {This paper presents a performance analysis of pencil domain decomposition methodologies for three-dimensional Computational Fluid Dynamics (CFD) codes for turbulence simulations, on several large GPU-accelerated clusters. The performance was assessed for the numerical solution of the Navier-Stokes equations in two codes which require the calculation of Fast-Fourier Transforms (FFT): a tri-periodic pseudo-spectral solver for isotropic turbulence, and a finite-difference solver for canonical turbulent flows, where the FFTs are used in its Poisson solver. Both codes use a newly developed transpose library that automatically determines the optimal domain decomposition and communication backend on each system. We compared the performance across systems with very different node topologies and available network bandwidth, to show how these characteristics impact decomposition selection for best performance. Additionally, we assessed the performance of several communication libraries available on these systems, such as Open-MPI, IBM Spectrum MPI, Cray MPI, the NVIDIA Collective Communication Library (NCCL), and NVSHMEM. Our results show that the optimal combination of communication backend and domain decomposition is highly system-dependent, and that the adaptive decomposition library is key in ensuring efficient resource usage with minimal user effort.},
-   booktitle = {Proceedings of the Platform for Advanced Scientific Computing Conference},
-   articleno = {14},
-   numpages = {11},
-   keywords = {parallel transpose, direct numerical simulation, computational fluid dynamics, GPU accelerated systems},
-   location = {Basel, Switzerland},
-   series = {PASC '22}
-   }
+@inproceedings{cuDecomp,
+   author={Romero, Joshua and Costa, Pedro and Fatica, Massimiliano},
+   title={Distributed-memory simulations of turbulent flows on modern GPU systems using an adaptive pencil decomposition library},
+   year={2022},
+   isbn={9781450394109},
+   publisher={Association for Computing Machinery},
+   address={New York, NY, USA},
+   url={https://doi.org/10.1145/3539781.3539797},
+   doi={10.1145/3539781.3539797},
+   abstract={This paper presents a performance analysis of pencil domain decomposition methodologies for three-dimensional Computational Fluid Dynamics (CFD) codes for turbulence simulations, on several large GPU-accelerated clusters. The performance was assessed for the numerical solution of the Navier-Stokes equations in two codes which require the calculation of Fast-Fourier Transforms (FFT): a tri-periodic pseudo-spectral solver for isotropic turbulence, and a finite-difference solver for canonical turbulent flows, where the FFTs are used in its Poisson solver. Both codes use a newly developed transpose library that automatically determines the optimal domain decomposition and communication backend on each system. We compared the performance across systems with very different node topologies and available network bandwidth, to show how these characteristics impact decomposition selection for best performance. Additionally, we assessed the performance of several communication libraries available on these systems, such as Open-MPI, IBM Spectrum MPI, Cray MPI, the NVIDIA Collective Communication Library (NCCL), and NVSHMEM. Our results show that the optimal combination of communication backend and domain decomposition is highly system-dependent, and that the adaptive decomposition library is key in ensuring efficient resource usage with minimal user effort.},
+   booktitle={Proceedings of the Platform for Advanced Scientific Computing Conference},
+   articleno={14},
+   numpages={11},
+   keywords={parallel transpose, direct numerical simulation, computational fluid dynamics, GPU accelerated systems},
+   location={Basel, Switzerland},
+   series={PASC '22}
+}
 
 @misc{pmwd,
-      title={pmwd: A Differentiable Cosmological Particle-Mesh $N$-body Library},
-      author={Yin Li and Libin Lu and Chirag Modi and Drew Jamieson and Yucheng Zhang and Yu Feng and Wenda Zhou and Ngai Pok Kwan and François Lanusse and Leslie Greengard},
-      year={2022},
-      eprint={2211.09958},
-      archivePrefix={arXiv},
-      primaryClass={astro-ph.IM},
-      url={https://arxiv.org/abs/2211.09958},
+   title={pmwd: A Differentiable Cosmological Particle-Mesh $N$-body Library},
+   author={Yin Li and Libin Lu and Chirag Modi and Drew Jamieson and Yucheng Zhang and Yu Feng and Wenda Zhou and Ngai Pok Kwan and François Lanusse and Leslie Greengard},
+   year={2022},
+   eprint={2211.09958},
+   archivePrefix={arXiv},
+   primaryClass={astro-ph.IM},
+   url={https://arxiv.org/abs/2211.09958},
 }
 
 @software{JAX,
-  author = {James Bradbury and Roy Frostig and Peter Hawkins and Matthew James Johnson and Chris Leary and Dougal Maclaurin and George Necula and Adam Paszke and Jake Vander{P}las and Skye Wanderman-{M}ilne and Qiao Zhang},
-  title = {{JAX}: composable transformations of {P}ython+{N}um{P}y programs},
-  url = {http://github.com/google/jax},
-  version = {0.3.13},
-  year = {2018},
+  author={James Bradbury and Roy Frostig and Peter Hawkins and Matthew James Johnson and Chris Leary and Dougal Maclaurin and George Necula and Adam Paszke and Jake VanderPlas and Skye Wanderman-Milne and Qiao Zhang},
+  title={{JAX}: composable transformations of {P}ython+{N}um{P}y programs},
+  url={http://github.com/google/jax},
+  version={0.3.13},
+  year={2018},
 }
 
 @misc{NUTS,
-      title={The No-U-Turn Sampler: Adaptively Setting Path Lengths in Hamiltonian Monte Carlo},
-      author={Matthew D. Hoffman and Andrew Gelman},
-      year={2011},
-      eprint={1111.4246},
-      archivePrefix={arXiv},
-      primaryClass={stat.CO},
-      url={https://arxiv.org/abs/1111.4246},
+   title={The No-U-Turn Sampler: Adaptively Setting Path Lengths in Hamiltonian Monte Carlo},
+   author={Matthew D. Hoffman and Andrew Gelman},
+   year={2011},
+   eprint={1111.4246},
+   archivePrefix={arXiv},
+   primaryClass={stat.CO},
+   url={https://arxiv.org/abs/1111.4246},
 }
 
 @book{HMC,
@@ -76,19 +80,51 @@
    publisher={Chapman and Hall/CRC},
    author={Brooks, Steve and Gelman, Andrew and Jones, Galin and Meng, Xiao-Li},
    year={2011},
-   month=may }
+   month={may}
+}
 
-   @article{mpi4jax, doi = {10.21105/joss.03419}, url = {https://doi.org/10.21105/joss.03419}, year = {2021}, publisher = {The Open Journal}, volume = {6}, number = {65}, pages = {3419}, author = {Dion Häfner and Filippo Vicentini}, title = {mpi4jax: Zero-copy MPI communication of JAX arrays}, journal = {Journal of Open Source Software} }
+@article{mpi4jax,
+   doi={10.21105/joss.03419},
+   url={https://doi.org/10.21105/joss.03419},
+   year={2021},
+   publisher={The Open Journal},
+   volume={6},
+   number={65},
+   pages={3419},
+   author={Dion Häfner and Filippo Vicentini},
+   title={mpi4jax: Zero-copy MPI communication of JAX arrays},
+   journal={Journal of Open Source Software}
+}
 
+@article{JAXCOSMO,
+   title={JAX-COSMO: An End-to-End Differentiable and GPU Accelerated Cosmology Library},
+   volume={6},
+   ISSN={2565-6120},
+   url={http://dx.doi.org/10.21105/astro.2302.05163},
+   DOI={10.21105/astro.2302.05163},
+   journal={The Open Journal of Astrophysics},
+   publisher={Maynooth University},
+   author={Campagne, Jean-Eric and Lanusse, François and Zuntz, Joe and Boucaud, Alexandre and Casas, Santiago and Karamanis, Minas and Kirkby, David and Lanzieri, Denise and Peel, Austin and Li, Yin},
+   year={2023},
+   month={apr}
+}
 
-   @article{JAXCOSMO,
-          title={JAX-COSMO: An End-to-End Differentiable and GPU Accelerated Cosmology Library},
-             volume={6},
-                ISSN={2565-6120},
-                   url={http://dx.doi.org/10.21105/astro.2302.05163},
-                      DOI={10.21105/astro.2302.05163},
-                         journal={The Open Journal of Astrophysics},
-                            publisher={Maynooth University},
-                               author={Campagne, Jean-Eric and Lanusse, François and Zuntz, Joe and Boucaud, Alexandre and Casas, Santiago and Karamanis, Minas and Kirkby, David and Lanzieri, Denise and Peel, Austin and Li, Yin},
-                                  year={2023},
-                                     month=apr }
+@misc{FlowPM,
+   title={FlowPM: Distributed TensorFlow Implementation of the FastPM Cosmological N-body Solver},
+   author={Chirag Modi and Francois Lanusse and Uros Seljak},
+   year={2020},
+   eprint={2010.11847},
+   archivePrefix={arXiv},
+   primaryClass={astro-ph.CO},
+   url={https://arxiv.org/abs/2010.11847},
+}
+
+@misc{TF-MESH,
+   title={Mesh-TensorFlow: Deep Learning for Supercomputers},
+   author={Noam Shazeer and Youlong Cheng and Niki Parmar and Dustin Tran and Ashish Vaswani and Penporn Koanantakool and Peter Hawkins and HyoukJoong Lee and Mingsheng Hong and Cliff Young and Ryan Sepassi and Blake Hechtman},
+   year={2018},
+   eprint={1811.02084},
+   archivePrefix={arXiv},
+   primaryClass={cs.LG},
+   url={https://arxiv.org/abs/1811.02084},
+}
