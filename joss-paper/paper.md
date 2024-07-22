@@ -86,8 +86,8 @@ For each axis, a slice of data of size equal to the halo extent is exchanged bet
 
 | Send                                             | Receive                                               |
 |--------------------------------------------------|-----------------------------------------------------|
-| $[ \text{Size} - 2 \times \text{Halo} \rightarrow \text{Size} - \text{Halo} ]$ is sent to the next slice | $[ 0 \rightarrow \text{Halo} ]$ is received from the previous slice |
-| $[ \text{Halo} \rightarrow 2 \times \text{Halo} ]$ is sent to the previous slice | $[ \text{Size} - \text{Halo} \rightarrow \text{Size} ]$ is received from the next slice |
+| $[ \text{Size} - 2 \times \text{Halo extent} \rightarrow  extent\text{Size} - \text{Halo extent} ]$ is sent to the next  extentslice | $[ 0 \rightarrow \text{Halo extent} ]$ is received from the previous slice |
+| $[ \text{Halo extent} \rightarrow 2 \times \text{Halo extent} ]$ is sent to the previous slice | $[  extent\text{Size} - \text{Halo extent} \rightarrow \text{Size} ]$ is received from the next slice |
 
 
 ![Visualization of the distributed halo exchange process in jaxDecomp](assets/halo-exchange.svg)
