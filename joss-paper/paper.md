@@ -55,6 +55,19 @@ While it is technically feasible to implement distributed FFTs using native JAX,
 
 The following steps outline the distributed FFT algorithm in jaxDecomp, which uses 2D domain decomposition to distribute 3D data across GPUs.
 
++--------------------+------------------------------------------------------+---------------------------------------------------------------------------------+
+| Steps              | Local Operation                                      | Global Operation                                                                |
++====================+======================================================+=================================================================================+
+| FFT along X        | Perform batched FFT along the X axis.                | -                                                                               |
++--------------------+------------------------------------------------------+---------------------------------------------------------------------------------+
+| Transpose X to Y   | Local transpose to $Y \times X \times Z$             | All-to-all communication to concatenate $Y$: $Y \times \frac{X}{P_y} \times \frac{Z}{P_z}$  |
++--------------------+------------------------------------------------------+---------------------------------------------------------------------------------+
+| FFT along Y        | Perform batched FFT along the Y axis.                | -                                                                               |
++--------------------+------------------------------------------------------+---------------------------------------------------------------------------------+
+| Transpose Y to Z   | Local transpose to $Z \times X \times Y$             | All-to-all communication to concatenate $Z$: $Z \times \frac{X}{P_z} \times \frac{Y}{P_y}$  |
++--------------------+------------------------------------------------------+---------------------------------------------------------------------------------+
+| FFT along Z        | Perform batched FFT along the Z axis.                | -                                                                               |
++--------------------+------------------------------------------------------+---------------------------------------------------------------------------------+
 
 
 Each transpose includes a local cyclic transposition of axes, which implies a transposition of the decomposition grid. This process involves both a local transposition and a processor grid transposition at each step.
@@ -76,7 +89,13 @@ Using cuDecomp, we can also change the communication backend to `NCCL`, `MPI`, o
 
 For each axis, a slice of data of size equal to the halo extent is exchanged between neighboring subdomains.
 
-
++--------------------------------------------------+-----------------------------------------------------+
+| Send                                             | Receive                                              |
++==================================================+=====================================================+
+| $[ \text{Size} - 2 \times \text{Halo} \rightarrow \text{Size} - \text{Halo} ]$ is sent to the next slice | $[ 0 \rightarrow \text{Halo} ]$ is received from the previous slice |
++--------------------------------------------------+-----------------------------------------------------+
+| $[ \text{Halo} \rightarrow 2 \times \text{Halo} ]$ is sent to the previous slice | $[ \text{Size} - \text{Halo} \rightarrow \text{Size} ]$ is received from the next slice |
++--------------------------------------------------+-----------------------------------------------------+
 
 ![Visualization of the distributed halo exchange process in jaxDecomp](assets/halo-exchange.svg)
 *Figure: Visualization of the distributed halo exchange process in jaxDecomp*
