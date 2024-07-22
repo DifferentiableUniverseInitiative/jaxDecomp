@@ -58,10 +58,11 @@ The following steps outline the distributed FFT algorithm in jaxDecomp, which us
 | Steps            | Local Operation                                 | Global Operation                                                               |
 |------------------|-------------------------------------------------|--------------------------------------------------------------------------------|
 | FFT along X      | Perform batched FFT along the X axis.           | -                                                                              |
-| Transpose X to Y | Local transpose to \(Y \times X \times Z\)      | All-to-all communication to concatenate \(Y\): \(Y \times \frac{X}{P_y} \times \frac{Z}{P_z}\) |
+| Transpose X to Y | Local transpose to $Y \times X \times Z$        | All-to-all communication to concatenate $Y$: $Y \times \frac{X}{P_y} \times \frac{Z}{P_z}$ |
 | FFT along Y      | Perform batched FFT along the Y axis.           | -                                                                              |
-| Transpose Y to Z | Local transpose to \(Z \times X \times Y\)      | All-to-all communication to concatenate \(Z\): \(Z \times \frac{X}{P_z} \times \frac{Y}{P_y}\) |
+| Transpose Y to Z | Local transpose to $Z \times X \times Y$        | All-to-all communication to concatenate $Z$: $Z \times \frac{X}{P_z} \times \frac{Y}{P_y}$ |
 | FFT along Z      | Perform batched FFT along the Z axis.           | -                                                                              |
+
 
 
 
@@ -70,7 +71,6 @@ Each transpose includes a local cyclic transposition of axes, which implies a tr
 In order to capture the changes and return the right output to JAX in a transparent way, the local transpositions are described in the lowering of the primitive and the GPU grid transpositions are described in the `infer_sharding_from_operands` rule, which is part of JAX's `custom_partitioning` API.
 
 ![Visualization of the distributed FFT process in jaxDecomp](assets/fft.svg)
-*Figure: Visualization of the distributed FFT process in jaxDecomp*
 
 ## Distributed Halo Exchange
 
@@ -85,7 +85,6 @@ Using cuDecomp, we can also change the communication backend to `NCCL`, `MPI`, o
 For each axis, a slice of data of size equal to the halo extent is exchanged between neighboring subdomains.
 
 ![Visualization of the distributed halo exchange process in jaxDecomp](assets/halo-exchange.svg)
-*Figure: Visualization of the distributed halo exchange process in jaxDecomp*
 
 ### Efficient State Management in jaxDecomp
 
