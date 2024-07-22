@@ -96,7 +96,7 @@ For each axis, a slice of data of size equal to the halo extent is exchanged bet
 | $[ \text{Halo} \rightarrow 2 \times \text{Halo} ]$ is sent to the previous slice | $[ \text{Size} - \text{Halo} \rightarrow \text{Size} ]$ is received from the next slice |
 +--------------------------------------------------+-----------------------------------------------------+
 
-![Visualization of the distributed halo exchange process in jaxDecomp](assets/halo_exchange.svg)
+![Visualization of the distributed halo exchange process in jaxDecomp](assets/halo-exchange.svg)
 *Figure: Visualization of the distributed halo exchange process in jaxDecomp*
 
 ### Efficient State Management in jaxDecomp
