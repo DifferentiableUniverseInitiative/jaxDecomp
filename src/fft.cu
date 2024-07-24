@@ -51,7 +51,7 @@ HRESULT FourierExecutor<real_t>::Initialize(cudecompHandle_t handle, cudecompGri
   int64_t work_sz_cufft;
 
   HRESULT hr(E_FAIL);
-  switch (GetDecomposition(config.pdims)) {
+  switch (fft_descriptor.decomposition) {
   case Decomposition::slab_XY:
     profiler.Start("InitializeSlabXY");
     hr = InitializeSlabXY(config, pinfo_x_c, pinfo_y_c, pinfo_z_c, work_sz_cufft, is_contiguous);
@@ -64,7 +64,7 @@ HRESULT FourierExecutor<real_t>::Initialize(cudecompHandle_t handle, cudecompGri
     profiler.Start("InitializePencils");
     hr = InitializePencils(config, pinfo_x_c, pinfo_y_c, pinfo_z_c, work_sz_cufft, is_contiguous);
     break;
-  case Decomposition::unknown: hr = E_FAIL; break;
+  case Decomposition::no_decomp: hr = E_FAIL; break;
   }
   profiler.Stop();
 
@@ -81,7 +81,6 @@ HRESULT FourierExecutor<real_t>::Initialize(cudecompHandle_t handle, cudecompGri
     fft_descriptor.gdims[0] = config.gdims[0];
     fft_descriptor.gdims[1] = config.gdims[1];
     fft_descriptor.gdims[2] = config.gdims[2];
-    fft_descriptor.decomposition = GetDecomposition(config.pdims);
   }
 
   int64_t work_sz_decomp;
@@ -139,44 +138,38 @@ FourierExecutor<real_t>::InitializeSlabXY(cudecompGridDescConfig_t& iGridConfig,
   int& gy = iGridConfig.gdims[1];
   int& gz = iGridConfig.gdims[2];
   // The XY plan
-  CHECK_CUFFT_EXIT(cufftCreate(&m_Plan_c2c_xy));
-  CHECK_CUFFT_EXIT(cufftSetAutoAllocation(m_Plan_c2c_xy, 0));
+  CHECK_CUFFT_EXIT(cufftCreate(&m_Plan_c2c_x));
+  CHECK_CUFFT_EXIT(cufftSetAutoAllocation(m_Plan_c2c_x, 0));
   // The ZY plan
-  CHECK_CUFFT_EXIT(cufftCreate(&m_Plan_c2c_z));
-  CHECK_CUFFT_EXIT(cufftSetAutoAllocation(m_Plan_c2c_z, 0));
+  CHECK_CUFFT_EXIT(cufftCreate(&m_Plan_c2c_yz));
+  CHECK_CUFFT_EXIT(cufftSetAutoAllocation(m_Plan_c2c_yz, 0));
   // Get the plan sizes
-  size_t work_size_xy, work_size_z;
+  size_t work_size_x, work_size_yz;
 
-  //  n[In] – Array of size rank, describing the size of each dimension, n[0]
-  //  being the size of the outermost and n[rank-1]
-  // in this case n is Y and X
-  // (Side note: the first axis is always contiguous in cuDecomp)
-  std::array<int, 2> y_x{gy, gx};
-
-  CHECK_CUFFT_EXIT(cufftMakePlanMany(m_Plan_c2c_xy, 2, y_x.data(), nullptr, 1,
-                                     x_pencil_info.shape[0] * x_pencil_info.shape[1], nullptr, 1,
-                                     x_pencil_info.shape[0] * x_pencil_info.shape[1], get_cufft_type_c2c(real_t(0)),
-                                     x_pencil_info.shape[2], &work_size_xy));
+  CHECK_CUFFT_EXIT(cufftMakePlan1d(m_Plan_c2c_x, gx, get_cufft_type_c2c(real_t(0)),
+                                   x_pencil_info.shape[1] * x_pencil_info.shape[2], &work_size_x));
 
   if (is_contiguous) {
 
-    // make the second plan
-    CHECK_CUFFT_EXIT(cufftMakePlan1d(m_Plan_c2c_z, gz, get_cufft_type_c2c(real_t(0)),
-                                     z_pencil_info.shape[1] * z_pencil_info.shape[2], &work_size_z));
+    // make the second plan YZ
+    std::array<int, 2> n{gz, gy};
+    CHECK_CUFFT_EXIT(cufftMakePlanMany(m_Plan_c2c_yz, 2, n.data(), nullptr, 1,
+                                       y_pencil_info.shape[0] * y_pencil_info.shape[1], nullptr, 1,
+                                       y_pencil_info.shape[0] * y_pencil_info.shape[1], get_cufft_type_c2c(real_t(0)),
+                                       y_pencil_info.shape[2], &work_size_yz));
 
   } else {
 
     // TODO(wassim) : I did not understand this yet
     //  Making the second non contiguous plans first for Z Y slab Y is not
     //  contiguous here
-    CHECK_CUFFT_EXIT(
-        cufftMakePlanMany(m_Plan_c2c_z, 1, &gz /* unused */, &gz, z_pencil_info.shape[0] * z_pencil_info.shape[1], 1,
-                          &gz, z_pencil_info.shape[0] * z_pencil_info.shape[1], 1, get_cufft_type_c2c(real_t(0)),
-                          z_pencil_info.shape[0] * z_pencil_info.shape[1], &work_size_z));
+    CHECK_CUFFT_EXIT(cufftMakePlanMany(m_Plan_c2c_y, 1, &gy /* unused */, &gy, y_pencil_info.shape[0], 1, &gy,
+                                       y_pencil_info.shape[0], 1, get_cufft_type_c2c(real_t(0)), y_pencil_info.shape[0],
+                                       &work_size_yz));
     // Another Batched many plan should be made here
   }
 
-  work_size = std::max(work_size_xy, work_size_z);
+  work_size = std::max(work_size_x, work_size_yz);
 
   return work_size > 0 ? S_OK : E_FAIL;
 }
@@ -255,7 +248,7 @@ HRESULT FourierExecutor<real_t>::forward(cudecompHandle_t handle, fftDescriptor 
     profiler.Start("forwardPencil");
     hr = forwardPencil(handle, desc, stream, input, output, work_c_d);
     break;
-  case Decomposition::unknown: hr = E_FAIL;
+  case Decomposition::no_decomp: hr = E_FAIL;
   }
   profiler.Stop();
   return hr;
@@ -288,7 +281,7 @@ HRESULT FourierExecutor<real_t>::backward(cudecompHandle_t handle, fftDescriptor
     profiler.Start("backwardPencil");
     hr = backwardPencil(handle, desc, stream, input, output, work_c_d);
     break;
-  case Decomposition::unknown: hr = E_FAIL;
+  case Decomposition::no_decomp: hr = E_FAIL;
   }
   profiler.Stop();
   return hr;
@@ -300,21 +293,18 @@ HRESULT FourierExecutor<real_t>::forwardXY(cudecompHandle_t handle, fftDescripto
 
   const int DIRECTION = desc.adjoint ? CUFFT_INVERSE : CUFFT_FORWARD;
 
-  CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_xy, stream));
-  CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_z, stream));
-  CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_xy, work_d));
-  CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_z, work_d));
+  CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_yz, stream));
+  CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_x, stream));
+  CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_yz, work_d));
+  CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_x, work_d));
+
   // FFT on the first slab
-  CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_xy, input, output, DIRECTION));
-  // Tranpose X to Y
-  CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, m_GridConfig, output, output, work_d,
-                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
-  // Tranpose Y to Z
-  CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, m_GridConfig, output, output, work_d,
+  CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_yz, input, output, DIRECTION));
+  // Tranpose Y to X but it actually X to Z
+  CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, m_GridConfig, output, output, work_d,
                                             get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
   // FFT on the second slab
-  CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_z, output, output, DIRECTION));
-
+  CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_x, output, output, DIRECTION));
   return S_OK;
 }
 
@@ -324,21 +314,17 @@ HRESULT FourierExecutor<real_t>::backwardXY(cudecompHandle_t handle, fftDescript
 
   const int DIRECTION = desc.adjoint ? CUFFT_FORWARD : CUFFT_INVERSE;
 
-  CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_xy, stream));
-  CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_z, stream));
-  CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_xy, work_d));
-  CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_z, work_d));
-
+  CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_yz, stream));
+  CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_x, stream));
+  CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_yz, work_d));
+  CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_x, work_d));
   // FFT on the first slab
-  CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_z, input, output, DIRECTION));
-  // Tranpose Z to Y
-  CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, m_GridConfig, output, output, work_d,
-                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
-  // Tranpose Y to X
-  CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, m_GridConfig, output, output, work_d,
+  CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_x, input, output, DIRECTION));
+  // Tranpose X to Y but it actually Z to X
+  CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, m_GridConfig, output, output, work_d,
                                             get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
   // IFFT on the second slab
-  CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_xy, output, output, DIRECTION));
+  CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_yz, output, output, DIRECTION));
 
   return S_OK;
 }
@@ -356,15 +342,15 @@ HRESULT FourierExecutor<real_t>::forwardYZ(cudecompHandle_t handle, fftDescripto
   // FFT on the first slab
   CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_x, input, output, DIRECTION));
   // Tranpose X to Y
-  CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, m_GridConfig, output, output, work_d,
+  CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, m_GridConfig, input, output, work_d,
                                             get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
   // FFT on the second slab
   CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_yz, output, output, DIRECTION));
 
   // Extra Y to Z transpose to give back a Z pencil to the user
 
-  CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, m_GridConfig, output, output, work_d,
-                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+  // CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, m_GridConfig, output, output, work_d,
+  //                                           get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
 
   return S_OK;
 }
@@ -381,13 +367,13 @@ HRESULT FourierExecutor<real_t>::backwardYZ(cudecompHandle_t handle, fftDescript
   CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_yz, work_d));
 
   // Input is Z pencil tranposed it back to Y pencil
-  CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, m_GridConfig, input, output, work_d,
-                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+  // CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, m_GridConfig, input, output, work_d,
+  //                                         get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
 
   // FFT on the first slab
   CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_yz, input, output, DIRECTION));
   // Tranpose Y to X
-  CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, m_GridConfig, output, output, work_d,
+  CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, m_GridConfig, input, output, work_d,
                                             get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
   // IFFT on the second slab
   CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_x, output, output, DIRECTION));
@@ -503,9 +489,6 @@ template <typename real_t> HRESULT FourierExecutor<real_t>::clearPlans() {
   // Destroy the plans
   switch (GetDecomposition(m_GridDescConfig.pdims)) {
   case Decomposition::slab_XY:
-    cufftDestroy(m_Plan_c2c_xy);
-    cufftDestroy(m_Plan_c2c_z);
-    break;
   case Decomposition::slab_YZ:
     cufftDestroy(m_Plan_c2c_x);
     cufftDestroy(m_Plan_c2c_yz);
@@ -515,7 +498,7 @@ template <typename real_t> HRESULT FourierExecutor<real_t>::clearPlans() {
     cufftDestroy(m_Plan_c2c_y);
     cufftDestroy(m_Plan_c2c_z);
     break;
-  case Decomposition::unknown: break;
+  case Decomposition::no_decomp: break;
   }
 
   return S_OK;

@@ -234,25 +234,25 @@ PYBIND11_MODULE(_jaxdecomp, m) {
           return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(desc));
         });
 
-  m.def("build_fft_descriptor",
-        [](jd::decompGridDescConfig_t config, bool forward, bool double_precision, bool adjoint) {
-          // Create a real cuDecomp grid descriptor
-          cudecompGridDescConfig_t cuconfig;
-          cudecompGridDescConfigSet(&cuconfig, &config);
+  m.def("build_fft_descriptor", [](jd::decompGridDescConfig_t config, bool forward, bool double_precision, bool adjoint,
+                                   jd::Decomposition decomp) {
+    // Create a real cuDecomp grid descriptor
+    cudecompGridDescConfig_t cuconfig;
+    cudecompGridDescConfigSet(&cuconfig, &config);
 
-          size_t work_size;
-          jd::fftDescriptor fftdesc(cuconfig, double_precision, forward, adjoint);
-          if (double_precision) {
+    size_t work_size;
+    jd::fftDescriptor fftdesc(cuconfig, double_precision, forward, adjoint, decomp);
+    if (double_precision) {
 
-            auto executor = std::make_shared<jd::FourierExecutor<double>>();
-            HRESULT hr = jd::GridDescriptorManager::getInstance().createFFTExecutor(fftdesc, work_size, executor);
+      auto executor = std::make_shared<jd::FourierExecutor<double>>();
+      HRESULT hr = jd::GridDescriptorManager::getInstance().createFFTExecutor(fftdesc, work_size, executor);
 
-          } else {
-            auto executor = std::make_shared<jd::FourierExecutor<float>>();
-            HRESULT hr = jd::GridDescriptorManager::getInstance().createFFTExecutor(fftdesc, work_size, executor);
-          }
-          return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(fftdesc));
-        });
+    } else {
+      auto executor = std::make_shared<jd::FourierExecutor<float>>();
+      HRESULT hr = jd::GridDescriptorManager::getInstance().createFFTExecutor(fftdesc, work_size, executor);
+    }
+    return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(fftdesc));
+  });
 
   m.def("build_halo_descriptor",
         [](jd::decompGridDescConfig_t config, bool double_precision, std::array<int32_t, 3> halo_extents,
@@ -305,6 +305,13 @@ PYBIND11_MODULE(_jaxdecomp, m) {
       .value("TRANSPOSE_YZ", jd::TransposeType::TRANSPOSE_YZ)
       .value("TRANSPOSE_ZY", jd::TransposeType::TRANSPOSE_ZY)
       .value("TRANSPOSE_YX", jd::TransposeType::TRANSPOSE_YX)
+      .export_values();
+
+  py::enum_<jd::Decomposition>(m, "Decomposition")
+      .value("NO_DECOMP", jd::Decomposition::no_decomp)
+      .value("SLAB_XY", jd::Decomposition::slab_XY)
+      .value("SLAB_YZ", jd::Decomposition::slab_YZ)
+      .value("PENCILS", jd::Decomposition::pencil)
       .export_values();
 
   py::class_<jd::decompPencilInfo_t> pencil_info(m, "PencilInfo");

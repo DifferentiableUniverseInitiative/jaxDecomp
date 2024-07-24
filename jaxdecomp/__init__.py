@@ -6,13 +6,14 @@ from jaxdecomp.fft import pfft3d, pifft3d
 
 from ._src import (  # transposeXtoY, transposeYtoX, transposeYtoZ, transposeZtoY,
     HALO_COMM_MPI, HALO_COMM_MPI_BLOCKING, HALO_COMM_NCCL, HALO_COMM_NVSHMEM,
-    HALO_COMM_NVSHMEM_BLOCKING, TRANSPOSE_COMM_MPI_A2A, TRANSPOSE_COMM_MPI_P2P,
-    TRANSPOSE_COMM_MPI_P2P_PL, TRANSPOSE_COMM_NCCL, TRANSPOSE_COMM_NCCL_PL,
-    TRANSPOSE_COMM_NVSHMEM, TRANSPOSE_COMM_NVSHMEM_PL, TRANSPOSE_XY,
-    TRANSPOSE_YX, TRANSPOSE_YZ, TRANSPOSE_ZY, HaloCommBackend,
-    TransposeCommBackend, finalize, get_autotuned_config, get_pencil_info,
-    halo_exchange, init, make_config, slice_pad, slice_unpad, transposeXtoY,
-    transposeYtoX, transposeYtoZ, transposeZtoY)
+    HALO_COMM_NVSHMEM_BLOCKING, NO_DECOMP, PENCILS, SLAB_XY, SLAB_YZ,
+    TRANSPOSE_COMM_MPI_A2A, TRANSPOSE_COMM_MPI_P2P, TRANSPOSE_COMM_MPI_P2P_PL,
+    TRANSPOSE_COMM_NCCL, TRANSPOSE_COMM_NCCL_PL, TRANSPOSE_COMM_NVSHMEM,
+    TRANSPOSE_COMM_NVSHMEM_PL, TRANSPOSE_XY, TRANSPOSE_YX, TRANSPOSE_YZ,
+    TRANSPOSE_ZY, HaloCommBackend, TransposeCommBackend, finalize,
+    get_autotuned_config, get_pencil_info, halo_exchange, init, make_config,
+    slice_pad, slice_unpad, transposeXtoY, transposeYtoX, transposeYtoZ,
+    transposeZtoY)
 
 try:
   __version__ = version("jaxDecomp")
@@ -36,6 +37,14 @@ __all__ = [
     "transposeYtoZ",
     "transposeZtoY",
     "transposeYtoX",
+    "TRANSPOSE_XY",
+    "TRANSPOSE_YX",
+    "TRANSPOSE_YZ",
+    "TRANSPOSE_ZY",
+    "SLAB_XY",
+    "SLAB_YZ",
+    "PENCILS",
+    "NO_DECOMP",
 ]
 
 

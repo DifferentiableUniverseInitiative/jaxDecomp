@@ -24,7 +24,7 @@ static cudecompDataType_t get_cudecomp_datatype(cuda::std::complex<float>) { ret
 static cudecompDataType_t get_cudecomp_datatype(cuda::std::complex<double>) { return CUDECOMP_DOUBLE_COMPLEX; }
 namespace jaxdecomp {
 
-enum Decomposition { slab_XY, slab_YZ, pencil, unknown };
+enum Decomposition { slab_XY = 0, slab_YZ = 1, pencil = 2, no_decomp = 3 };
 
 static Decomposition GetDecomposition(const int pdims[2]) {
   if (pdims[0] == 1 && pdims[1] > 1) {
@@ -36,7 +36,7 @@ static Decomposition GetDecomposition(const int pdims[2]) {
   }
   // Return pencils on one devices for testing
   return Decomposition::pencil;
-  // return Decomposition::unknown;
+  // return Decomposition::no_decomp;
 }
 
 // fftDescriptor hash should be triavially computable
@@ -51,7 +51,7 @@ public:
   int32_t gdims[3]; ///< dimensions of global data grid
   // Decomposition type is used in order to allow reusing plans
   // from the XY and XZ forward pass for ZY and YZ backward pass respectively
-  Decomposition decomposition = Decomposition::unknown; ///< decomposition type
+  Decomposition decomposition = Decomposition::no_decomp; ///< decomposition type
   bool double_precision = false;
   cudecompGridDescConfig_t config; // Descriptor for the grid
 
@@ -74,14 +74,14 @@ public:
   // this is used for subsequent ffts to find the Executor that was already
   // defined
   fftDescriptor(cudecompGridDescConfig_t& config, const bool& double_precision, const bool& iForward,
-                const bool& iAdjoint)
+                const bool& iAdjoint, const Decomposition& iDecomposition)
       : double_precision(double_precision), config(config) {
     gdims[0] = config.gdims[0];
     gdims[1] = config.gdims[1];
     gdims[2] = config.gdims[2];
     forward = iForward;
     adjoint = iAdjoint;
-    decomposition = GetDecomposition(config.pdims);
+    decomposition = iDecomposition;
   }
 };
 
@@ -122,9 +122,9 @@ private:
   cufftHandle m_Plan_c2c_x;
   cufftHandle m_Plan_c2c_y;
   cufftHandle m_Plan_c2c_z;
-  // For Slabs XY
-  cufftHandle m_Plan_c2c_xy;
-  // For Slabs XZ
+  // For Slabs XY  FFT (Y) FFT(XZ) but JAX redifines the axes to YZX as X pencil for cudecomp
+  // so in the end it is FFT(X) FFT(YZ)
+  // For Slabs XZ FFT (X) FFT(YZ)
   cufftHandle m_Plan_c2c_yz;
   // work size
   int64_t m_WorkSize;
