@@ -248,11 +248,14 @@ The performance benchmarks for jaxDecomp were conducted on the Jean Zay supercom
 
 The tests show that jaxDecomp scales very well, even when distributed across multiple nodes, maintaining efficient performance. In particular, jaxDecomp demonstrates efficient computation as the number of GPUs and problem size increase.
 
-![Strong Scaling Performance of jaxDecomp](assets/strong_scaling.png)
+We compare the performance of jaxDecomp with the native JAX FFT implementation, showing that jaxDecomp is slightly faster than the native JAX implementation, but also more memory efficient due to its in-place local transpositions and FFTs.
 
 
+Strong scaling             |  Weak scaling
+:-------------------------:|:-------------------------:
+![](assets/strong_scaling_fft.png)  |  ![](assets/weak_scaling_fft.png)
+![](assets/strong_scaling_ifft.png)  |  ![](assets/weak_scaling_ifft.png)
 
-![Weak Scaling Performance of jaxDecomp](assets/weak_scaling.png)
 
 
 # Stability and releases
