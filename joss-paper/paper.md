@@ -72,6 +72,61 @@ In order to capture the changes and return the right output to JAX in a transpar
 
 ![Visualization of the distributed FFT process in jaxDecomp](assets/fft.svg)
 
+### Domain Decomposition
+
+Domain decomposition is a method used in parallel computing to break down large computational domains into smaller subdomains. In the context of 3D FFTs, domain decomposition can be performed using two main strategies: **Pencil Decomposition** and **Slab Decomposition**. Pencil decomposition divides the domain into smaller "pencils," which span the entire length of one dimension and a fraction of the other two. Slab decomposition, on the other hand, divides the domain into larger "slabs" that cover the entire length of one dimension and a fraction of only one other dimension.
+
+In `jaxDecomp`, the X-axis always starts as undistributed, and the decomposition dimensions (pdims) are defined by the `P_y` and `P_z` parameters.
+
+#### Pencil Decomposition
+
+For pencils, we perform three 1D FFTs with a transpose between each one (two transpositions). The 1D FFT is done on the fastest axis, which is undistributed (X in X pencil, Y in Y pencil, etc).
+
+| Step            | Origin                                      | Target                                      |
+|-----------------|---------------------------------------------|---------------------------------------------|
+| Transpose X to Y | $X \times \frac{Y}{P_y}  \times \frac{Z}{P_z}$  | $Y \times \frac{Z}{P_z} \times \frac{X}{P_y}$ |
+| Transpose Y to Z | $Y \times \frac{Z}{P_z} \times \frac{X}{P_y}$ | $Z \times \frac{X}{P_y} \times \frac{Y}{P_z}$ |
+| Transpose Z to Y | $Z \times \frac{X}{P_y} \times \frac{Y}{P_z}$ | $Y \times \frac{Z}{P_z} \times \frac{X}{P_y}$ |
+| Transpose Y to X | $Y \times \frac{Z}{P_z} \times \frac{X}{P_y}$ | $X \times \frac{Y}{P_y}  \times \frac{Z}{P_z}$ |
+
+#### Slab Decomposition
+
+For 1D decomposition (slabs), we need to perform one 1D FFT and one 2D FFT. 2D FFTs present additional challenges because both the fastest and the second fastest axes must remain undistributed.
+
+For example, consider a $({P_y}, {P_z})$ decomposition with $P_z = 1$:
+
+| Step            | Decomposition             | FFT Feasibility      |
+|-----------------|---------------------------|----------------------|
+| Initial         | $X \times \frac{Y}{P_y} \times Z$ | Can only do 1D FFT on X |
+| Transpose X to Y| $Y \times Z \times \frac{X}{P_y}$ | Can do 2D FFT on YZ  |
+
+This is the case for the YZ slab, where the transformation sequence enables the application of a 2D FFT on the YZ plane:
+
+The function can be represented by:
+$FFT(X) \rightarrow TransposeXtoY \rightarrow FFT2D(YZ)$
+
+For the other decomposition, with $P_y = 1$ and $P_z = 4$:
+
+| Step            | Decomposition             | FFT Feasibility      |
+|-----------------|---------------------------|----------------------|
+| Initial         | $X \times Y \times \frac{Z}{P_z}$ | Can do 1D FFT on X or 2D FFT on XY |
+| Transpose X to Y| $Y \times \frac{Z}{P_z} \times X$ | Can only do 1D FFT on Y (already done) |
+
+To achieve a Z pencil from an X pencil in a single transposition, a coordinate transformation can be applied, effectively reinterpreting the axes from XYZ to YZX. This approach allows for slab decomposition with a single transposition step.
+
+The function can be represented by:
+$FFT2D(XY) \rightarrow TransposeXtoZ \rightarrow FFT(Z)$
+
+#### Slab Decomposition with Coordinate Transformation
+
+| Step                 | Decomposition                           | Our Coordinates                      | Coordinate Step      | FFT Feasibility                        |
+|----------------------|------------------------------------------|--------------------------------------|----------------------|----------------------------------------|
+| Initial              | $Y \times Z \times \frac{X}{P_z}$         | $X \times Y \times \frac{Z}{P_z}$     | -                    | Can do 2D FFT on XY                    |
+| Transpose Y to X     | $X \times \frac{Y}{P_z} \times Z$         | $Z \times \frac{X}{P_z} \times Y$     | Transpose X to Z     | Can do 1D (I)FFT on the last axis Z    |
+| Transpose X to Y     | $Y \times Z \times \frac{X}{P_z}$         | $X \times Y \times \frac{Z}{P_z}$     | Transpose Z to X     | Can do 2DIFFT on XY                    |
+
+This approach ensures that slab decomposition can be achieved in a single transposition step, enhancing computational efficiency.
+
 ## Distributed Halo Exchange
 
 The halo exchange is a crucial step in distributed programming. It allows the transfer of data on the edges of each slice to the adjacent slice, ensuring data consistency across the boundaries of distributed domains.
