@@ -53,6 +53,7 @@ class JAXDecompConfig:
   """Class for storing the configuration state of the library."""
   halo_comm_backend: HaloCommBackend = HALO_COMM_NCCL
   transpose_comm_backend: TransposeCommBackend = TRANSPOSE_COMM_NCCL
+  transpose_axis_contiguous: bool = True
 
   def update(self, key, value):
     if hasattr(self, key):

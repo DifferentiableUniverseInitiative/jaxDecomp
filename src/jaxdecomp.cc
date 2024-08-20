@@ -217,11 +217,11 @@ PYBIND11_MODULE(_jaxdecomp, m) {
 
   // Utilities for exported ops
   m.def("build_transpose_descriptor",
-        [](jd::decompGridDescConfig_t config, jd::TransposeType type, bool double_precision) {
+        [](jd::decompGridDescConfig_t config, jd::TransposeType type, bool double_precision, bool contiguous) {
           cudecompGridDescConfig_t cuconfig;
           cudecompGridDescConfigSet(&cuconfig, &config);
           size_t work_size;
-          jd::transposeDescriptor desc(cuconfig, type, double_precision);
+          jd::transposeDescriptor desc(cuconfig, type, double_precision, contiguous);
 
           if (double_precision) {
             auto executor = std::make_shared<jd::Transpose<double>>();
