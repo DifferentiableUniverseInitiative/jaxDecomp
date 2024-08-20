@@ -12,17 +12,26 @@ import numpy as np
 from conftest import initialize_distributed
 from jax.experimental import mesh_utils, multihost_utils
 from jax.experimental.shard_map import shard_map
-from jax.sharding import Mesh
+from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from numpy.testing import assert_allclose, assert_array_equal
 
 import jaxdecomp
 from jaxdecomp import (transposeXtoY, transposeYtoX, transposeYtoZ,
                        transposeZtoY)
+from jaxdecomp._src.spmd_ops import get_pdims_from_sharding
 
 initialize_distributed()
 rank = jax.process_index()
 size = jax.process_count()
+
+
+def compare_sharding(sharding1, sharding2):
+  pdims1 = get_pdims_from_sharding(sharding1)
+  pdims2 = get_pdims_from_sharding(sharding2)
+  pdims1 = pdims1 + (1,) * (3 - len(pdims1))
+  pdims2 = pdims2 + (1,) * (3 - len(pdims2))
+  return pdims1 == pdims2
 
 
 # Helper function to create a 3D array and remap it to the global array
@@ -43,7 +52,7 @@ def create_spmd_array(global_shape, pdims):
 
   # Remap to the global array from the local slice
   devices = mesh_utils.create_device_mesh(pdims)
-  mesh = Mesh(devices, axis_names=('y', 'z'))
+  mesh = Mesh(devices.T, axis_names=('z', 'y'))
   global_array = multihost_utils.host_local_array_to_global_array(
       local_array, mesh, P('z', 'y'))
 
@@ -56,6 +65,7 @@ pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
 decomp = [(size, 1), (1, size), pencil_1, pencil_2]
 global_shapes = [(4, 8, 16), (4, 4, 4), (29 * size, 19 * size, 17 * size)
                 ]  # Cubes, non-cubes and primes
+local_transpose = [False, True]
 
 
 # Cartesian product tests
@@ -63,13 +73,16 @@ global_shapes = [(4, 8, 16), (4, 4, 4), (29 * size, 19 * size, 17 * size)
                          decomp)  # Test with Slab and Pencil decompositions
 @pytest.mark.parametrize("global_shape",
                          global_shapes)  # Test cubes, non-cubes and primes
-def test_tranpose(pdims, global_shape):
+@pytest.mark.parametrize("local_transpose", local_transpose)
+def test_tranpose(pdims, global_shape, local_transpose):
   """ Goes from an array of shape [z,y,x] # What we call an x pencil
     to [x,z,y] # what we call a y pencil
     """
   print("*" * 80)
-  print(f"Testing with pdims {pdims} and global shape {global_shape}")
-
+  print(
+      f"Testing with pdims {pdims} and global shape {global_shape} with local transpose {local_transpose}"
+  )
+  jaxdecomp.config.update("transpose_axis_contiguous", local_transpose)
   global_array, mesh = create_spmd_array(global_shape, pdims)
 
   with mesh:
@@ -83,29 +96,29 @@ def test_tranpose(pdims, global_shape):
   print(f"jd_tranposed_zy shape {jd_tranposed_zy.shape}")
   print(f"jd_tranposed_yx shape {jd_tranposed_yx.shape}")
 
-  if pdims[1] == 1:
-    original_sharding = P(None, 'y')
-    transposed_sharding = P('y',)
-  elif pdims[0] == 1:
-    original_sharding = P('z',)
-    transposed_sharding = P(None, 'z')
+  if local_transpose:
+    original_sharding = NamedSharding(mesh, P('z', 'y'))
+    y_pencil_sharding = NamedSharding(mesh, P('y', 'z'))
+    z_pencil_sharding = NamedSharding(mesh, P('z', 'y'))
   else:
-    original_sharding = P('z', 'y')
-    transposed_sharding = P('y', 'z')
+    original_sharding = NamedSharding(mesh, P('z', 'y'))
+    y_pencil_sharding = NamedSharding(mesh, P('z', None, 'y'))
+    z_pencil_sharding = NamedSharding(mesh, P(None, 'z', 'y'))
 
   print(f"Original sharding {original_sharding}")
-  print(f"Tansposed sharding {transposed_sharding}")
+  print(f"y pencil sharding {y_pencil_sharding}")
+  print(f"z pencil sharding {z_pencil_sharding}")
 
-  print(f"JD tranposed yz sharding {jd_tranposed_yz.sharding.spec}")
   print(f"JD tranposed xy sharding {jd_tranposed_xy.sharding.spec}")
+  print(f"JD tranposed yz sharding {jd_tranposed_yz.sharding.spec}")
   print(f"JD tranposed zy sharding {jd_tranposed_zy.sharding.spec}")
   print(f"JD tranposed yx sharding {jd_tranposed_yx.sharding.spec}")
 
-  assert global_array.sharding.spec == P('z', 'y')
-  assert jd_tranposed_xy.sharding.spec == transposed_sharding
-  assert jd_tranposed_yz.sharding.spec == original_sharding
-  assert jd_tranposed_zy.sharding.spec == transposed_sharding
-  assert jd_tranposed_yx.sharding.spec == original_sharding
+  assert compare_sharding(global_array.sharding, original_sharding)
+  assert compare_sharding(jd_tranposed_xy.sharding, y_pencil_sharding)
+  assert compare_sharding(jd_tranposed_yz.sharding, z_pencil_sharding)
+  assert compare_sharding(jd_tranposed_zy.sharding, y_pencil_sharding)
+  assert compare_sharding(jd_tranposed_yx.sharding, original_sharding)
 
   gathered_array = multihost_utils.process_allgather(global_array, tiled=True)
 
@@ -123,10 +136,18 @@ def test_tranpose(pdims, global_shape):
   # Tranposing backward is a shift axis to the left so YXZ to XZY to ZYX (1 2 0)
   # Double Tranposing from ZYX to YXZ is double (2 0 1) so  (1 2 0)
 
-  forward_tranpose = [2, 0, 1]
-  backward_tranpose = [1, 2, 0]
-  double_forward = [1, 2, 0]
+  if local_transpose:
+    forward_tranpose = [2, 0, 1]
+    backward_tranpose = [1, 2, 0]
+    double_forward = [1, 2, 0]
+  else:
+    forward_tranpose = [0, 1, 2]
+    backward_tranpose = [0, 1, 2]
+    double_forward = [0, 1, 2]
 
+  print(
+      f"For local_transpose {local_transpose} forward_tranpose {forward_tranpose} backward_tranpose {backward_tranpose}"
+  )
   #
   # Test X to Y transpose
   # It tranposes ZYX to XZY so from 0 1 2 to 2 0 1
@@ -152,7 +173,7 @@ def test_tranpose(pdims, global_shape):
   # The X pencils should match in forward and backward transposes (original array)
   assert_array_equal(gathered_jd_yx, gathered_array)
 
-  print(f"Pdims {pdims} are ok!")
+  print(f"Pdims {pdims} with local_transpose {local_transpose} is ok!!")
 
 
 # Cartesian product tests
@@ -160,7 +181,10 @@ def test_tranpose(pdims, global_shape):
                          decomp)  # Test with Slab and Pencil decompositions
 @pytest.mark.parametrize("global_shape",
                          global_shapes)  # Test cubes, non-cubes and primes
-def test_tranpose_grad(pdims, global_shape):
+@pytest.mark.parametrize("local_transpose", local_transpose)
+def test_tranpose_grad(pdims, global_shape, local_transpose):
+
+  jaxdecomp.config.update("transpose_axis_contiguous", local_transpose)
 
   global_array, mesh = create_spmd_array(global_shape, pdims)
 
