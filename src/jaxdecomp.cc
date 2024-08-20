@@ -235,13 +235,14 @@ PYBIND11_MODULE(_jaxdecomp, m) {
         });
 
   m.def("build_fft_descriptor", [](jd::decompGridDescConfig_t config, bool forward, bool double_precision, bool adjoint,
-                                   jd::Decomposition decomp) {
+                                   bool contiguous, jd::Decomposition decomp) {
     // Create a real cuDecomp grid descriptor
     cudecompGridDescConfig_t cuconfig;
     cudecompGridDescConfigSet(&cuconfig, &config);
 
     size_t work_size;
-    jd::fftDescriptor fftdesc(cuconfig, double_precision, forward, adjoint, decomp);
+    jd::fftDescriptor fftdesc(cuconfig, double_precision, forward, adjoint, contiguous, decomp);
+
     if (double_precision) {
 
       auto executor = std::make_shared<jd::FourierExecutor<double>>();

@@ -6,6 +6,7 @@ from jax import jit
 from jax._src.typing import Array, ArrayLike
 from jax.lib import xla_client
 
+import jaxdecomp
 from jaxdecomp._src import pfft as _pfft
 
 Shape = Sequence[int]
@@ -78,7 +79,8 @@ def _do_pfft(
   Array
     Transformed array after FFT or inverse FFT.
   """
-  transformed = _pfft(arr, fft_type)
+  local_transpose = jaxdecomp.config.transpose_axis_contiguous
+  transformed = _pfft(arr, fft_type, False, local_transpose)
   transformed *= _fft_norm(
       jnp.array(arr.shape, dtype=transformed.dtype), func_name, norm)
   return transformed
