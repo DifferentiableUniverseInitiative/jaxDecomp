@@ -117,18 +117,16 @@ $ pip install --user .
 
 #### IDRIS [Jean Zay](http://www.idris.fr/eng/jean-zay/cpu/jean-zay-cpu-hw-eng.html) HPE SGI 8600 supercomputer
 
-As of April. 2024, the following works:
+As of September. 2024, the following works:
 
 You need to load modules in that order exactly.
 ```bash
 # Load NVHPC 23.9 because it has cuda 12.2
 module load nvidia-compilers/23.9 cuda/12.2.0 cudnn/8.9.7.29-cuda  openmpi/4.1.5-cuda nccl/2.18.5-1-cuda cmake
-# Installing mpi4py
-CFLAGS=-noswitcherror pip install mpi4py
 # Installing jax
-pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+pip install --upgrade "jax[cuda12]"
 # Installing jaxdecomp
-export CMAKE_PREFIX_PATH=$NVHPC_ROOT/cmake
+export CMAKE_PREFIX_PATH=$NVHPC_ROOT/cmake # Not always needed
 pip install .
 ```
 
@@ -141,7 +139,7 @@ export CRAY_ACCEL_TARGET=nvidia80
 # Installing mpi4py
 MPICC="cc -target-accel=nvidia80 -shared" CC=nvc CFLAGS="-noswitcherror" pip install --force --no-cache-dir --no-binary=mpi4py mpi4py
 # Installing jax
-pip install --upgrade "jax[cuda11_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+pip install --upgrade "jax[cuda12]"
 # Installing jaxdecomp
 export CMAKE_PREFIX_PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/22.5/cmake
 pip install .
