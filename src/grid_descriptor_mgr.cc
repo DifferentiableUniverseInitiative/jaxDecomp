@@ -40,7 +40,7 @@ HRESULT GridDescriptorManager::createFFTExecutor(fftDescriptor& descriptor, size
   }
 
   if (hr == E_FAIL) {
-    hr = executor->Initialize(m_Handle, descriptor.config, work_size, descriptor);
+    hr = executor->Initialize(m_Handle, work_size, descriptor);
     if (SUCCEEDED(hr)) { m_Descriptors64[descriptor] = executor; }
   }
   return hr;
@@ -59,7 +59,7 @@ HRESULT GridDescriptorManager::createFFTExecutor(fftDescriptor& descriptor, size
   }
 
   if (hr == E_FAIL) {
-    hr = executor->Initialize(m_Handle, descriptor.config, work_size, descriptor);
+    hr = executor->Initialize(m_Handle, work_size, descriptor);
     if (SUCCEEDED(hr)) { m_Descriptors32[descriptor] = executor; }
   }
   return hr;

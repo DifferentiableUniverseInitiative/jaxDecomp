@@ -3,6 +3,7 @@ from functools import partial
 
 from jax import core
 from jax._src import dispatch
+from jax._src import mesh as mesh_lib
 from jax._src.interpreters import batching
 from jax.experimental.custom_partitioning import custom_partitioning
 from jax.interpreters import mlir, xla
@@ -174,3 +175,17 @@ def get_axis_size(sharding, index):
     return 1
   else:
     return sharding.mesh.shape[sharding.spec[index]]
+
+
+def get_pdims_from_sharding(sharding):
+  return tuple([get_axis_size(sharding, i) for i in range(len(sharding.spec))])
+
+
+def get_pdims_from_mesh():
+  mesh = mesh_lib.thread_resources.env.physical_mesh
+  if mesh.empty:
+    pdims = (1, 1)
+  else:
+    pdims = mesh.devices.shape[::-1]
+
+  return pdims

@@ -60,17 +60,22 @@ pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
 decomp = [(size, 1), (1, size), pencil_1, pencil_2]
 global_shapes = [(4, 8, 16), (4, 4, 4), (29 * size, 19 * size, 17 * size)
                 ]  # Cubes, non-cubes and primes
+local_transpose = [True, False]
 
 
 # Cartesian product tests
+@pytest.mark.parametrize(
+    "local_transpose", local_transpose)  # Test with and without local transpose
 @pytest.mark.parametrize("pdims",
                          decomp)  # Test with Slab and Pencil decompositions
 @pytest.mark.parametrize("global_shape",
                          global_shapes)  # Test cubes, non-cubes and primes
-def test_fft(pdims, global_shape):
+def test_fft(pdims, global_shape, local_transpose):
 
   print("*" * 80)
-  print(f"Testing with pdims {pdims} and global shape {global_shape}")
+  print(
+      f"Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose}"
+  )
   if pdims[0] == 1:
     penciltype = SLAB_XY
   elif pdims[1] == 1:
@@ -78,6 +83,8 @@ def test_fft(pdims, global_shape):
   else:
     penciltype = PENCILS
   print(f"Decomposition type {penciltype}")
+
+  jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
 
   global_array, mesh = create_spmd_array(global_shape, pdims)
 
@@ -87,25 +94,24 @@ def test_fft(pdims, global_shape):
     # Perform inverse FFT
     rec_array = jaxdecomp.fft.pifft3d(karray)
 
+  print(f"orignal shard {global_array.sharding.spec}")
+  print(f"sharding of karray {karray.sharding.spec}")
+  print(f"sharding of rec_array {rec_array.sharding.spec}")
+
   # Check the forward FFT
   gathered_array = multihost_utils.process_allgather(global_array, tiled=True)
   gathered_karray = multihost_utils.process_allgather(karray, tiled=True)
   gathered_rec_array = multihost_utils.process_allgather(rec_array, tiled=True)
   jax_karray = jnp.fft.fftn(gathered_array)
 
-  # Check reconstructed array
-  assert_allclose(
-      gathered_array.real, gathered_rec_array.real, rtol=1e-7, atol=1e-7)
-  assert_allclose(
-      gathered_array.imag, gathered_rec_array.imag, rtol=1e-7, atol=1e-7)
-
-  print(f"Reconstruction check OK!")
-
   # Check the forward FFT
   if penciltype == SLAB_YZ:
     transpose_back = [2, 0, 1]
   else:
     transpose_back = [1, 2, 0]
+  if not local_transpose:
+    transpose_back = [0, 1, 2]
+
   jax_karray_transposed = jax_karray.transpose(transpose_back)
   assert_allclose(
       gathered_karray.real, jax_karray_transposed.real, rtol=1e-7, atol=1e-7)
@@ -114,19 +120,58 @@ def test_fft(pdims, global_shape):
 
   print(f"FFT with transpose check OK!")
 
+  # Check reconstructed array
+  assert_allclose(
+      gathered_array.real, gathered_rec_array.real, rtol=1e-7, atol=1e-7)
+  assert_allclose(
+      gathered_array.imag, gathered_rec_array.imag, rtol=1e-7, atol=1e-7)
+
+  print(f"Reconstruction check OK!")
+  # Temporary solution because I need to find a way to retrigger the jit compile if the config changes
+  jax.clear_caches()
+
+  # Check the forward FFT
+  if penciltype == SLAB_YZ:
+    transpose_back = [2, 0, 1]
+  else:
+    transpose_back = [1, 2, 0]
+  jax_karray_transposed = jax_karray.transpose(transpose_back)
+  assert_allclose(gathered_ - 7, atol=1e-7)
+  assert_allclose(
+      gathered_karray.imag, jax_karray_transposed.imag, rtol=1e-7, atol=1e-7)
+
+  print(f"FFT with transpose check OK!")
+
 
 # Cartesian product tests
+@pytest.mark.parametrize(
+    "local_transpose", local_transpose)  # Test with and without local transpose
 @pytest.mark.parametrize("pdims",
                          decomp)  # Test with Slab and Pencil decompositions
 @pytest.mark.parametrize("global_shape",
                          global_shapes)  # Test cubes, non-cubes and primes
-def test_grad(pdims, global_shape):
+def test_grad(pdims, global_shape, local_transpose):
 
-  transpose_back = [2, 0, 1]
+  if pdims[0] == 1:
+    penciltype = SLAB_XY
+  elif pdims[1] == 1:
+    penciltype = SLAB_YZ
+  else:
+    penciltype = PENCILS
+
+  # Check the forward FFT
+  if penciltype == SLAB_YZ:
+    transpose_back = [2, 0, 1]
+  else:
+    transpose_back = [1, 2, 0]
+  if not local_transpose:
+    transpose_back = [0, 1, 2]
 
   print("*" * 80)
-  print(f"Testing with pdims {pdims} and global shape {global_shape}")
-
+  print(
+      f"Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose}"
+  )
+  jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
   global_array, mesh = create_spmd_array(global_shape, pdims)
 
   print("-" * 40)
@@ -169,22 +214,30 @@ def test_grad(pdims, global_shape):
 
   @jax.jit
   def inv_local_grad(arr):
-    y = jnp.fft.ifftn(arr).transpose([2, 0, 1])
+    y = jnp.fft.ifftn(arr).transpose(transpose_back)
     return (y * jnp.conjugate(y)).real.sum()
 
   with mesh:
     # Perform distributed FFT
-    ifft_array_grad = jax.grad(inv_spmd_grad)(global_array)
+    karray = jaxdecomp.fft.pfft3d(global_array)
+    ifft_array_grad = jax.grad(inv_spmd_grad)(karray)
     print("Here is the gradient I'm getting", array_grad.shape)
 
   ifft_gathered_grads = multihost_utils.process_allgather(
       ifft_array_grad, tiled=True)
-  ifft_jax_grad = jax.grad(inv_local_grad)(gathered_array)
+  jax_karray = jnp.fft.fftn(gathered_array).transpose(transpose_back)
+
+  ifft_jax_grad = jax.grad(inv_local_grad)(jax_karray)
 
   print(f"Shape of JAX array {ifft_jax_grad.shape}")
 
   # Check the gradients
   assert_allclose(ifft_jax_grad, ifft_gathered_grads, rtol=1e-5, atol=1e-5)
+
+  print("Grad check OK!")
+
+  # Temporary solution because I need to find a way to retrigger the jit compile if the config changes
+  jax.clear_caches()
 
 
 @pytest.mark.skip(reason="vmap is not yet implemented for the 3D FFT")
