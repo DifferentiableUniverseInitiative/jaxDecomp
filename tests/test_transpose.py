@@ -20,6 +20,9 @@ import jaxdecomp
 from jaxdecomp import (transposeXtoY, transposeYtoX, transposeYtoZ,
                        transposeZtoY)
 from jaxdecomp._src.spmd_ops import get_pdims_from_sharding
+from jaxdecomp.jax import (jax_transpose_XtoY, jax_transpose_XtoZ,
+                           jax_transpose_YtoX, jax_transpose_YtoZ,
+                           jax_transpose_ZtoX, jax_transpose_ZtoY)
 
 initialize_distributed()
 rank = jax.process_index()
@@ -217,3 +220,113 @@ def test_tranpose_grad(pdims, global_shape, local_transpose):
   print(f"Shape of JAX array {jax_grad.shape}")
   # Check the gradients
   assert_allclose(jax_grad, gathered_grads, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize("pdims",
+                         decomp)  # Test with Slab and Pencil decompositions
+@pytest.mark.parametrize("global_shape",
+                         global_shapes)  # Test cubes, non-cubes and primes
+@pytest.mark.parametrize("local_transpose", local_transpose)
+def test_jax_transposes(pdims, global_shape, local_transpose):
+
+  jaxdecomp.config.update("transpose_axis_contiguous", local_transpose)
+  global_array, mesh = create_spmd_array(global_shape, pdims)
+  sharding = global_array.sharding
+  print(f"Sharding of the global array {sharding.spec}")
+
+  with mesh:
+
+    jax_transposed_xy = jax_transpose_XtoY(global_array)
+    jax_transposed_yz = jax_transpose_YtoZ(jax_transposed_xy)
+    jax_transposed_zy = jax_transpose_ZtoY(jax_transposed_yz)
+    jax_transposed_yx = jax_transpose_YtoX(jax_transposed_zy)
+    jax_transposed_xz = jax_transpose_XtoZ(global_array)
+    jax_transposed_zx = jax_transpose_ZtoX(jax_transposed_xz)
+
+  with mesh:
+    jd_tranposed_xy = transposeXtoY(global_array)
+    jd_tranposed_yz = transposeYtoZ(jd_tranposed_xy)
+    jd_tranposed_zy = transposeZtoY(jd_tranposed_yz)
+    jd_tranposed_yx = transposeYtoX(jd_tranposed_zy)
+
+  gathered_array = multihost_utils.process_allgather(global_array, tiled=True)
+  # gather JAX transposed
+  g_jax_transposed_xy = multihost_utils.process_allgather(
+      jax_transposed_xy, tiled=True)
+  g_jax_transposed_yz = multihost_utils.process_allgather(
+      jax_transposed_yz, tiled=True)
+  g_jax_transposed_zy = multihost_utils.process_allgather(
+      jax_transposed_zy, tiled=True)
+  g_jax_transposed_yx = multihost_utils.process_allgather(
+      jax_transposed_yx, tiled=True)
+  g_jax_transposed_xz = multihost_utils.process_allgather(
+      jax_transposed_xz, tiled=True)
+  g_jax_transposed_zx = multihost_utils.process_allgather(
+      jax_transposed_zx, tiled=True)
+  # gather JD transposed
+  jd_gathered_xy = multihost_utils.process_allgather(
+      jd_tranposed_xy, tiled=True)
+  jd_gathered_yz = multihost_utils.process_allgather(
+      jd_tranposed_yz, tiled=True)
+  jd_gathered_zy = multihost_utils.process_allgather(
+      jd_tranposed_zy, tiled=True)
+  jd_gathered_yx = multihost_utils.process_allgather(
+      jd_tranposed_yx, tiled=True)
+
+  assert compare_sharding(jax_transposed_xy.sharding, jd_tranposed_xy.sharding)
+  assert compare_sharding(jax_transposed_yz.sharding, jd_tranposed_yz.sharding)
+  assert compare_sharding(jax_transposed_zy.sharding, jd_tranposed_zy.sharding)
+  assert compare_sharding(jax_transposed_yx.sharding, jd_tranposed_yx.sharding)
+
+  assert_array_equal(gathered_array, jd_gathered_xy)
+  assert_array_equal(gathered_array, jd_gathered_yz)
+  assert_array_equal(gathered_array, jd_gathered_zy)
+  assert_array_equal(gathered_array, jd_gathered_yx)
+
+  if local_transpose:
+    forward_tranpose = [2, 0, 1]
+    backward_tranpose = [1, 2, 0]
+    double_forward = [1, 2, 0]
+  else:
+    forward_tranpose = [0, 1, 2]
+    backward_tranpose = [0, 1, 2]
+    double_forward = [0, 1, 2]
+
+  # Test X to Y transpose
+  # It tranposes ZYX to XZY so from 0 1 2 to 2 0 1
+  assert_array_equal(
+      gathered_array.transpose(forward_tranpose), g_jax_transposed_xy)
+  # *********************************************
+  # Test Y to Z transpose
+  # It tranposes XZY to YXZ so from 0 1 2 to 2 0 1 again
+  assert_array_equal(
+      g_jax_transposed_xy.transpose(forward_tranpose), g_jax_transposed_yz)
+  # and from the global array ZYX to YXZ so from 0 1 2 to 1 2 0
+  assert_array_equal(
+      gathered_array.transpose(double_forward), g_jax_transposed_yz)
+  # *********************************************
+  # Test Z to Y transpose
+  # It tranposes YXZ to XZY so from 0 1 2 to 1 2 0
+  assert_array_equal(
+      g_jax_transposed_yz.transpose(backward_tranpose), g_jax_transposed_zy)
+  # The Y pencils should match in forward and backward transposes (despite the inverted grid)
+  # assert_array_equal(gathered_jd_zy, gathered_jd_xy)
+  # *********************************************
+  # Test Y to X transpose
+  # It tranposes XZY to ZYX so from 0 1 2 to 1 2 0
+  assert_array_equal(
+      g_jax_transposed_zy.transpose(backward_tranpose), g_jax_transposed_yx)
+  # The X pencils should match in forward and backward transposes (original array)
+  assert_array_equal(g_jax_transposed_yx, gathered_array)
+
+  # Testing XZ and ZX transposes
+  assert_array_equal(
+      gathered_array.transpose(backward_tranpose), g_jax_transposed_xz)
+  assert_array_equal(
+      g_jax_transposed_xz.transpose(forward_tranpose), g_jax_transposed_zx)
+  assert_array_equal(gathered_array, g_jax_transposed_zx)
+
+  print(f"""
+      JAX transposes {"contiguous" if local_transpose else "non-contiguous"}
+      for pdims {pdims} with global shape {global_shape} are ok!!
+      """)

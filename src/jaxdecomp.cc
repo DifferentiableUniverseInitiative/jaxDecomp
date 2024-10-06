@@ -306,6 +306,8 @@ PYBIND11_MODULE(_jaxdecomp, m) {
       .value("TRANSPOSE_YZ", jd::TransposeType::TRANSPOSE_YZ)
       .value("TRANSPOSE_ZY", jd::TransposeType::TRANSPOSE_ZY)
       .value("TRANSPOSE_YX", jd::TransposeType::TRANSPOSE_YX)
+      .value("TRANSPOSE_XZ", jd::TransposeType::TRANSPOSE_ZX)
+      .value("TRANSPOSE_ZX", jd::TransposeType::TRANSPOSE_XZ)
       .export_values();
 
   py::enum_<jd::Decomposition>(m, "Decomposition")

@@ -7,7 +7,15 @@
 #include <pthread.h>
 namespace jaxdecomp {
 
-enum class TransposeType { TRANSPOSE_XY, TRANSPOSE_YZ, TRANSPOSE_ZY, TRANSPOSE_YX, UNKNOWN_TRANSPOSE };
+enum class TransposeType {
+  TRANSPOSE_XY,
+  TRANSPOSE_YZ,
+  TRANSPOSE_ZY,
+  TRANSPOSE_YX,
+  TRANSPOSE_XZ,
+  TRANSPOSE_ZX,
+  UNKNOWN_TRANSPOSE
+};
 
 class transposeDescriptor {
 public:
