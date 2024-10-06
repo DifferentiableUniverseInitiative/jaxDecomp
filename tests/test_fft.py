@@ -46,6 +46,14 @@ def create_spmd_array(global_shape, pdims):
   return global_array, mesh
 
 
+def print_array(array):
+  print(f"shape {array.shape} rank {rank}")
+  for z in range(array.shape[0]):
+    for y in range(array.shape[1]):
+      for x in range(array.shape[2]):
+        print(f"[{z},{y},{x}] {array[z,y,x]}")
+
+
 pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
 
@@ -121,6 +129,18 @@ def test_fft(pdims, global_shape, local_transpose):
   print(f"Reconstruction check OK!")
   # Temporary solution because I need to find a way to retrigger the jit compile if the config changes
   jax.clear_caches()
+
+  # Check the forward FFT
+  if penciltype == SLAB_YZ:
+    transpose_back = [2, 0, 1]
+  else:
+    transpose_back = [1, 2, 0]
+  jax_karray_transposed = jax_karray.transpose(transpose_back)
+  assert_allclose(gathered_ - 7, atol=1e-7)
+  assert_allclose(
+      gathered_karray.imag, jax_karray_transposed.imag, rtol=1e-7, atol=1e-7)
+
+  print(f"FFT with transpose check OK!")
 
 
 # Cartesian product tests
