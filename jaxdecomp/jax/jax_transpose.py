@@ -1,44 +1,9 @@
-from typing import Any, Callable, Hashable
-
-Specs = Any
-AxisName = Hashable
-
-from functools import partial
-
 from jax import lax
 from jax._src import mesh as mesh_lib
-from jax.experimental.shard_map import shard_map
 from jax.sharding import PartitionSpec as P
 
 import jaxdecomp
-
-
-def autoshmap(f: Callable,
-              in_specs: Specs,
-              out_specs: Specs,
-              check_rep: bool = True,
-              auto: frozenset[AxisName] = frozenset(),
-              in_fourrier_space=False) -> Callable:
-  """Helper function to wrap the provided function in a shard map if
-    the code is being executed in a mesh context."""
-  mesh = mesh_lib.thread_resources.env.physical_mesh
-  if mesh.empty:
-    return f
-  else:
-    if in_fourrier_space and 1 in mesh.devices.shape:
-      in_specs, out_specs = switch_specs((in_specs, out_specs))
-    return shard_map(f, mesh, in_specs, out_specs, check_rep, auto)
-
-
-def switch_specs(specs):
-  if isinstance(specs, P):
-    new_axes = tuple(
-        'y' if ax == 'z' else 'z' if ax == 'y' else ax for ax in specs)
-    return P(*new_axes)
-  elif isinstance(specs, tuple):
-    return tuple(switch_specs(sub_spec) for sub_spec in specs)
-  else:
-    raise TypeError("Element must be either a PartitionSpec or a tuple")
+from jaxdecomp._src.spmd_ops import autoshmap
 
 
 def jax_transpose_XtoY(operand):
