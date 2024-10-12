@@ -265,6 +265,7 @@ class HaloPrimitive(BasePrimitive):
     global_shape = arg_shapes[0].shape
     pdims = (get_axis_size(halo_exchange_sharding,
                            1), get_axis_size(halo_exchange_sharding, 0))
+    print(f"pdims are {pdims}")
 
     shape_without_halo = (global_shape[0] - 2 * pdims[1] * halo_extents[0],
                           global_shape[1] - 2 * pdims[0] * halo_extents[1],
