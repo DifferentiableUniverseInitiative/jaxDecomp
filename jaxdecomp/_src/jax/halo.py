@@ -1,3 +1,4 @@
+from enum import Enum
 from functools import partial
 
 from jax import lax
@@ -9,7 +10,20 @@ from jaxdecomp._src import _jaxdecomp
 from jaxdecomp._src.spmd_ops import autoshmap, get_pencil_type
 
 
-def _halo_exchange_slab_xy(operand, halo_extent):
+class HaloOp(Enum):
+  REDUCE = 1
+  EXCHANGE = 2
+
+
+def reduce(x, hs):
+  x = x.at[hs:hs + hs // 2].add(x[:hs // 2])
+  x = x.at[-(hs + hs // 2):-hs].add(x[-hs // 2:])
+  x = x.at[:, hs:hs + hs // 2].add(x[:, :hs // 2])
+  x = x.at[:, -(hs + hs // 2):-hs].add(x[:, -hs // 2:])
+  return x[hs:-hs, hs:-hs, :]
+
+
+def _halo_slab_xy(operand, halo_extent):
   # pdims are (Py=1,Pz=N)
   # input is (Z / Pz , Y , X) with specs P('z', None)
   z_size = lax.psum(1, 'z')
@@ -37,7 +51,7 @@ def _halo_exchange_slab_xy(operand, halo_extent):
   return operand
 
 
-def _halo_exchange_slab_yz(operand, halo_extent):
+def _halo_slab_yz(operand, halo_extent):
   # pdims are (Py=N,Pz=1)
   # input is (Z , Y /Py, X) with specs P(None), 'y')
   y_size = lax.psum(1, 'y')
@@ -65,7 +79,7 @@ def _halo_exchange_slab_yz(operand, halo_extent):
   return operand
 
 
-def _halo_exchange_pencils(operand, halo_extent):
+def _halo_pencils(operand, halo_extent):
   # pdims are (Py=N,Pz=N)
   # input is (Z/Pz , Y/Py , X) with specs P(None), 'y', 'z')
   y_size = lax.psum(1, 'y')
@@ -172,17 +186,17 @@ def jax_halo_exchange(operand, halo_extent):
       return operand
     case _jaxdecomp.SLAB_XY:
       return autoshmap(
-          partial(_halo_exchange_slab_xy, halo_extent=halo_extent), P('z', 'y'),
+          partial(_halo_slab_xy, halo_extent=halo_extent), P('z', 'y'),
           P('z', 'y'))(
               operand)
     case _jaxdecomp.SLAB_YZ:
       return autoshmap(
-          partial(_halo_exchange_slab_yz, halo_extent=halo_extent), P('z', 'y'),
+          partial(_halo_slab_yz, halo_extent=halo_extent), P('z', 'y'),
           P('z', 'y'))(
               operand)
     case _jaxdecomp.PENCILS:
       return autoshmap(
-          partial(_halo_exchange_pencils, halo_extent=halo_extent), P('z', 'y'),
+          partial(_halo_pencils, halo_extent=halo_extent), P('z', 'y'),
           P('z', 'y'))(
               operand)
     case _:

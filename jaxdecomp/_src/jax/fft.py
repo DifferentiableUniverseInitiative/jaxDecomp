@@ -58,7 +58,7 @@ def _fft_pencils(operand):
     operand = jnp.fft.fft(operand, axis=-1)
     # transpose to (Y / pz, X / py, Z) with specs P('z', 'y')
     operand = lax.all_to_all(
-        operand, 'z', 2, 1, tiled=True).transppose([2, 0, 1])
+        operand, 'z', 2, 1, tiled=True).transpose([2, 0, 1])
     # FFT on the Z axis
     operand = jnp.fft.fft(operand, axis=-1)
   else:
@@ -141,7 +141,7 @@ def _ifft_pencils(operand):
     # transpose to (Y / pz, X / py, Z) with specs P('z', 'y')
     operand = lax.all_to_all(operand, 'z', 0, 1, tiled=True)
     # IFFT on the Z axis
-    operand = jnp.fft.ifft(operand, axis=0)
+    operand = jnp.fft.ifft(operand, axis=1)
     # transpose to (X / py, Z / pz , Y) with specs P('y', 'z')
     operand = lax.all_to_all(operand, 'y', 1, 2, tiled=True)
     # IFFT on the Y axis
@@ -172,7 +172,7 @@ def jax_pfft3d(operand):
         return autoshmap(_fft_pencils, P('z', 'y'), P(None, 'z', 'y'))(operand)
 
 
-def jax_ifft3d(operand):
+def jax_pifft3d(operand):
   if jaxdecomp.config.transpose_axis_contiguous:
     match get_pencil_type():
       case _jaxdecomp.NO_DECOMP:
