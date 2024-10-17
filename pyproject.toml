@@ -18,7 +18,7 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent"
 ]
-dependencies = []
+dependencies = ["jaxtyping"]
 
 [project.optional-dependencies]
 test = ["pytest"]
@@ -34,3 +34,4 @@ wheel.install-dir = "jaxdecomp/_src"
 
 [tool.scikit-build.cmake.define]
 CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
+CMAKE_EXPORT_COMPILE_COMMANDS = "ON"
