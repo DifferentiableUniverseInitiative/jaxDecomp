@@ -20,8 +20,9 @@ from jax.sharding import PartitionSpec as P
 from jaxdecomp._src import _jaxdecomp
 
 
-def get_pencil_type():
-  mesh = mesh_lib.thread_resources.env.physical_mesh
+def get_pencil_type(mesh=None):
+  if mesh is None:
+    mesh = mesh_lib.thread_resources.env.physical_mesh
   if mesh.empty:
     pdims = None
   else:

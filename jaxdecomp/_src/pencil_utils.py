@@ -15,12 +15,12 @@ from jax.sharding import Mesh
 from jax.sharding import PartitionSpec as P
 
 
-def get_transpose_order(fft_type):
+def get_transpose_order(fft_type, mesh=None):
 
   if not jaxdecomp.config.transpose_axis_contiguous:
     return (0, 1, 2)
 
-  pencil_type = get_pencil_type()
+  pencil_type = get_pencil_type(mesh)
   match fft_type:
     case xla_client.FftType.FFT:
       # FFT is X to Y to Z so Z-Pencil is returned

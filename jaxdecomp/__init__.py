@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from typing import Tuple
 
-import jaxdecomp.fft as fft
+from jaxdecomp._src.jax.fftfreq import fftfreq
 from jaxdecomp._src.pencil_utils import get_output_specs
 from jaxdecomp.fft import pfft3d, pifft3d
 from jaxdecomp.halo import halo_exchange
@@ -53,6 +53,7 @@ __all__ = [
     "PENCILS",
     "NO_DECOMP",
     "get_output_specs",
+    "fftfreq",
 ]
 
 
