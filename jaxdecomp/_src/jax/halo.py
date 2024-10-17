@@ -3,8 +3,7 @@ from typing import Tuple
 
 import jax
 from jax import ShapeDtypeStruct, lax
-from jax.core import Primitive, ShapedArray
-from jax.lib import xla_client
+from jax.core import ShapedArray
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxtyping import Array
@@ -23,8 +22,11 @@ def _halo_slab_xy(operand, halo_extent, periodic, x_axis_name):
   upper_halo = operand[halo_extent:halo_extent + halo_extent]
   lower_halo = operand[-(halo_extent + halo_extent):-halo_extent]
 
-  reverse_indexing_z = [(j, (j + 1) % z_size) for j in range(z_size)]
-  forward_indexing_z = [((j + 1) % z_size, j) for j in range(z_size)]
+  permutations = slice(None, None) if periodic else slice(None, -1)
+  reverse_indexing_z = [(j, (j + 1) % z_size) for j in range(z_size)
+                       ][permutations]
+  forward_indexing_z = [((j + 1) % z_size, j) for j in range(z_size)
+                       ][permutations]
 
   # circular shift to the next rank
   exchanged_upper_halo = lax.ppermute(
@@ -51,8 +53,11 @@ def _halo_slab_yz(operand, halo_extent, periodic, y_axis_name):
   right_halo = operand[:, halo_extent:halo_extent + halo_extent]
   left_halo = operand[:, -(halo_extent + halo_extent):-halo_extent]
 
-  reverse_indexing_y = [((j + 1) % y_size, j) for j in range(y_size)]
-  forward_indexing_y = [(j, (j + 1) % y_size) for j in range(y_size)]
+  permutations = slice(None, None) if periodic else slice(None, -1)
+  reverse_indexing_y = [((j + 1) % y_size, j) for j in range(y_size)
+                       ][permutations]
+  forward_indexing_y = [(j, (j + 1) % y_size) for j in range(y_size)
+                       ][permutations]
 
   # circular shift to the next rank
   exchanged_right_halo = lax.ppermute(
@@ -91,10 +96,15 @@ def _halo_pencils(operand, halo_extent, periodic, x_axis_name, y_axis_name):
   lower_left_corner = operand[-(halo_extent + halo_extent):-halo_extent,
                               -(halo_extent + halo_extent):-halo_extent]
 
-  reverse_indexing_z = [(j, (j + 1) % z_size) for j in range(z_size)]
-  forward_indexing_z = [((j + 1) % z_size, j) for j in range(z_size)]
-  reverse_indexing_y = [((j + 1) % y_size, j) for j in range(y_size)]
-  forward_indexing_y = [(j, (j + 1) % y_size) for j in range(y_size)]
+  permutations = slice(None, None) if periodic else slice(None, -1)
+  reverse_indexing_z = [(j, (j + 1) % z_size) for j in range(z_size)
+                       ][permutations]
+  forward_indexing_z = [((j + 1) % z_size, j) for j in range(z_size)
+                       ][permutations]
+  reverse_indexing_y = [((j + 1) % y_size, j) for j in range(y_size)
+                       ][permutations]
+  forward_indexing_y = [(j, (j + 1) % y_size) for j in range(y_size)
+                       ][permutations]
 
   # circular shift to the next rank
   exchanged_upper_halo = lax.ppermute(
