@@ -1,13 +1,19 @@
 #include "jaxdecomp.h"
+#ifdef JD_CUDECOMP_BACKEND
 #include "checks.h"
 #include "fft.h"
 #include "grid_descriptor_mgr.h"
 #include "halo.h"
-#include "helpers.h"
 #include "logger.hpp"
 #include "transpose.h"
 #include <cudecomp.h>
 #include <mpi.h>
+#else
+void print_error() {
+  throw std::runtime_error("This extension was compiled without CUDA support. cuDecomp functions are not supported.");
+}
+#endif
+#include "helpers.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
@@ -23,12 +29,21 @@ namespace jaxdecomp {
 /**
  * @brief Initializes the global handle
  */
-void init() { jd::GridDescriptorManager::getInstance(); };
+void init() {
+#ifdef JD_CUDECOMP_BACKEND
+  jd::GridDescriptorManager::getInstance();
+#endif
+};
 /**
  * @brief Finalizes the cuDecomp library
  */
-void finalize() { jd::GridDescriptorManager::getInstance().finalize(); };
+void finalize() {
+#ifdef JD_CUDECOMP_BACKEND
+  jd::GridDescriptorManager::getInstance().finalize();
+#endif
+};
 
+#ifdef JD_CUDECOMP_BACKEND
 /**
  * @brief Returns Pencil information for a given grid
  */
@@ -194,6 +209,13 @@ void halo(cudaStream_t stream, void** buffers, const char* opaque, size_t opaque
     executor->halo_exchange(handle, descriptor, stream, buffers);
   }
 }
+#else
+void getAutotunedGridConfig() { print_error(); }
+void getPencilInfo() { print_error(); }
+void transpose() { print_error(); }
+void pfft3d() { print_error(); }
+void halo() { print_error(); }
+#endif
 
 // Utility to export ops to XLA
 py::dict Registrations() {
@@ -218,6 +240,7 @@ PYBIND11_MODULE(_jaxdecomp, m) {
   // Utilities for exported ops
   m.def("build_transpose_descriptor",
         [](jd::decompGridDescConfig_t config, jd::TransposeType type, bool double_precision, bool contiguous) {
+#ifdef JD_CUDECOMP_BACKEND
           cudecompGridDescConfig_t cuconfig;
           cudecompGridDescConfigSet(&cuconfig, &config);
           size_t work_size;
@@ -232,10 +255,14 @@ PYBIND11_MODULE(_jaxdecomp, m) {
           }
 
           return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(desc));
+#else
+        print_error();
+#endif
         });
 
   m.def("build_fft_descriptor", [](jd::decompGridDescConfig_t config, bool forward, bool double_precision, bool adjoint,
                                    bool contiguous, jd::Decomposition decomp) {
+#ifdef JD_CUDECOMP_BACKEND
     // Create a real cuDecomp grid descriptor
     cudecompGridDescConfig_t cuconfig;
     cudecompGridDescConfigSet(&cuconfig, &config);
@@ -253,11 +280,15 @@ PYBIND11_MODULE(_jaxdecomp, m) {
       HRESULT hr = jd::GridDescriptorManager::getInstance().createFFTExecutor(fftdesc, work_size, executor);
     }
     return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(fftdesc));
+#else
+        print_error();
+#endif
   });
 
   m.def("build_halo_descriptor",
         [](jd::decompGridDescConfig_t config, bool double_precision, std::array<int32_t, 3> halo_extents,
            std::array<bool, 3> halo_periods, int axis = 0) {
+#ifdef JD_CUDECOMP_BACKEND
           // Create a real cuDecomp grid descriptor
           cudecompGridDescConfig_t cuconfig;
           cudecompGridDescConfigSet(&cuconfig, &config);
@@ -280,6 +311,9 @@ PYBIND11_MODULE(_jaxdecomp, m) {
           }
 
           return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(halo_desc));
+#else
+        print_error();
+#endif
         });
 
   // Exported types
