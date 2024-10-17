@@ -26,7 +26,6 @@ def _fft_slab_xy(operand, fft_type, adjoint, x_axis_name):
   # pdims are (Py=1,Pz=N)
   # input is (Z / Pz , Y , X) with specs P('z', 'y')
   # First FFT ont XY
-  print(f"fft type {fft_type} , x_axis_name {x_axis_name} adjoint {adjoint} ")
   operand = fft2(operand, fft_type, axes=(2, 1), adjoint=adjoint)
   if jaxdecomp.config.transpose_axis_contiguous:
     # transpose to (Y , X/Pz , Z) with specs P('y', 'z')
@@ -45,7 +44,6 @@ def _fft_slab_yz(operand, fft_type, adjoint, y_axis_name):
   # pdims are (Py=N,Pz=1)
   # input is (Z , Y / Py, X) with specs P('z', 'y')
   # First FFT on X
-  print(f"fft type {fft_type} , y_axis_name {y_axis_name} adjoint {adjoint} ")
   operand = fft(operand, fft_type, axis=-1, adjoint=adjoint)
   if jaxdecomp.config.transpose_axis_contiguous:
     # transpose to (X / py, Z , Y) with specs P('y', 'z')
@@ -92,8 +90,6 @@ def _fft_pencils(operand, fft_type, adjoint, x_axis_name, y_axis_name):
 
 def _ifft_slab_xy(operand, fft_type, adjoint, x_axis_name):
 
-  print(f"fft type {fft_type} , x_axis_name {x_axis_name} adjoint {adjoint}")
-
   # pdims are (Py=1,Pz=N)
   if jaxdecomp.config.transpose_axis_contiguous:
     # input is (Y , X/Pz , Z) with specs P('y', 'z')
@@ -117,7 +113,6 @@ def _ifft_slab_xy(operand, fft_type, adjoint, x_axis_name):
 
 def _ifft_slab_yz(operand, fft_type, adjoint, y_axis_name):
 
-  print(f"fft type {fft_type} , y_axis_name {y_axis_name} adjoint {adjoint}")
   # pdims are (Py=N,Pz=1)
   if jaxdecomp.config.transpose_axis_contiguous:
     # input is (X / py, Z , Y) with specs P('y', 'z')
@@ -126,7 +121,6 @@ def _ifft_slab_yz(operand, fft_type, adjoint, y_axis_name):
     # transpose to (Z , Y / Py, X) with specs P('z', 'y')
     operand = lax.all_to_all(
         operand, y_axis_name, 2, 0, tiled=True).transpose([1, 2, 0])
-    print(f"passage")
     # IFFT on X axis
     operand = fft(operand, fft_type, axis=-1, adjoint=adjoint)
   else:
@@ -295,7 +289,6 @@ def pfft(x: Array, fft_type: FftType, adjoint: bool = False) -> Array:
   Primitive
     Result of the operation.
   """
-  print(f"GETTING CALLED")
   output, _ = _pfft_fwd_rule(x, fft_type=fft_type, adjoint=adjoint)
   return output
 

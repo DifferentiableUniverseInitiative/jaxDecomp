@@ -118,7 +118,6 @@ def _do_pfft(func_name: str,
     typ = fft_type
   else:
     raise TypeError(f"Unknown FFT type value '{fft_type}'")
-  print(f"Backend is {backend}")
   if backend.lower() == "cudecomp":
     transformed = _cudecomp_pfft(arr, typ)
   elif backend.lower() == "jax":

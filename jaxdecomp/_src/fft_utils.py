@@ -39,8 +39,6 @@ def _un_normalize_fft(s: Tuple, fft_type: FftType) -> Array:
   if fft_type in FORWARD_FFTs:
     return jnp.array(1)
   else:
-    print(f"will unnormalize {prod(s)}")
-    # return jnp.array(1)
     return jnp.array(prod(s))
 
 
