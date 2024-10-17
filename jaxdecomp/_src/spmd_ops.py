@@ -37,39 +37,16 @@ def get_pencil_type():
     return _jaxdecomp.PENCILS
 
 
-# Inspired by https://github.com/NVIDIA/TransformerEngine/blob/main/transformer_engine/jax/cpp_extensions.py
-def autoshmap(f: Callable,
-              in_specs: Specs,
-              out_specs: Specs,
-              check_rep: bool = True,
-              auto: frozenset[AxisName] = frozenset(),
-              in_fourrier_space=False) -> Callable:
-  """Helper function to wrap the provided function in a shard map if
-    the code is being executed in a mesh context."""
-  mesh = mesh_lib.thread_resources.env.physical_mesh
-  if mesh.empty:
-    return f
-  else:
-    if in_fourrier_space and 1 in mesh.devices.shape:
-      in_specs, out_specs = switch_specs((in_specs, out_specs))
-    return shard_map(f, mesh, in_specs, out_specs, check_rep, auto)
-
-
-def switch_specs(specs):
-  if isinstance(specs, P):
-    new_axes = tuple(
-        'y' if ax == 'z' else 'z' if ax == 'y' else ax for ax in specs)
-    return P(*new_axes)
-  elif isinstance(specs, tuple):
-    return tuple(switch_specs(sub_spec) for sub_spec in specs)
-  else:
-    raise TypeError("Element must be either a PartitionSpec or a tuple")
-
-
 class BasePrimitive(metaclass=ABCMeta):
   """
-    jax primitive
-    """
+  jax primitive
+  """
+  name: str
+  multiple_results: bool
+  impl_static_args: tuple
+  inner_primitive: core.Primitive | None
+  outer_primitive: core.Primitive | None
+  outer_lowering: custom_partitioning
 
   @staticmethod
   @abstractmethod
@@ -137,8 +114,13 @@ class BasePrimitive(metaclass=ABCMeta):
 
 class CustomParPrimitive(metaclass=ABCMeta):
   """
-    SPMD Custom Partitioning wrapper
-    """
+  SPMD Custom Partitioning wrapper
+  """
+
+  name: str
+  multiple_results: bool
+  impl_static_args: tuple
+  outer_lowering: custom_partitioning
 
   @staticmethod
   @abstractmethod
