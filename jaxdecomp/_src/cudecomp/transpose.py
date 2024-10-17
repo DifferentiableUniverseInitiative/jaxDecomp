@@ -41,16 +41,13 @@ class TransposePrimitive(BasePrimitive):
 
   name: str = "transpose"
   multiple_results: bool = False
-  impl_static_args: Tuple[int] = (1, 2)
+  impl_static_args: Tuple[int, int] = (1,)
   inner_primitive: object = None
   outer_primitive: object = None
 
   @staticmethod
-  def abstract(x: ArrayLike,
-               kind: str,
-               pdims: tuple[int, ...],
-               global_shape: tuple[int],
-               local_transpose: bool = True) -> ShapedArray:
+  def abstract(x: ArrayLike, kind: str, pdims: tuple[int, ...],
+               global_shape: tuple[int]) -> ShapedArray:
     """
         Abstract method to describe the shape of the output array after transposition.
 
@@ -71,11 +68,11 @@ class TransposePrimitive(BasePrimitive):
             Abstract shape of the output array after transposition.
         """
     if global_shape == x.shape:
-      return TransposePrimitive.outer_abstract(x, kind, local_transpose)
+      return TransposePrimitive.outer_abstract(x, kind)
     # Make sure that global_shape is divisible by pdims and equals to slice
 
     assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
-    if local_transpose:
+    if jaxdecomp.config.transpose_axis_contiguous:
       match kind:
       # From X to Y the axis are rolled by 1 and pdims are swapped wrt to the input pdims
         case 'x_y':
@@ -98,9 +95,7 @@ class TransposePrimitive(BasePrimitive):
     return ShapedArray(shape, x.dtype)
 
   @staticmethod
-  def outer_abstract(x: jnp.ndarray,
-                     kind: str,
-                     local_transpose: bool = True) -> ShapedArray:
+  def outer_abstract(x: jnp.ndarray, kind: str) -> ShapedArray:
     """
         Abstract method for transposition that does not require knowledge of global shape.
 
@@ -117,7 +112,7 @@ class TransposePrimitive(BasePrimitive):
             Abstract shape of the output array after transposition.
         """
     assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
-    if local_transpose:
+    if jaxdecomp.config.transpose_axis_contiguous:
       match kind:
       # from x to y the axis are rolled by 1 and pdims are swapped wrt to the input pdims
         case 'x_y' | 'y_z':
@@ -135,13 +130,8 @@ class TransposePrimitive(BasePrimitive):
     return ShapedArray(shape, x.dtype)
 
   @staticmethod
-  def lowering(ctx,
-               x: jnp.ndarray,
-               *,
-               kind: str,
-               pdims: tuple[int, ...],
-               global_shape: tuple[int, ...],
-               local_transpose: bool = False):
+  def lowering(ctx, x: jnp.ndarray, *, kind: str, pdims: tuple[int, ...],
+               global_shape: tuple[int, ...]):
     """
         Method to lower the transposition operation to MLIR.
 
@@ -189,6 +179,7 @@ class TransposePrimitive(BasePrimitive):
       case _:
         raise ValueError("Invalid kind")
 
+    local_transpose = jaxdecomp.config.transpose_axis_contiguous
     transpose_shape = transpose_shape if local_transpose else (0, 1, 2)
     # Make sure to get back the original shape of the X-Pencil
     global_shape = tuple([global_shape[i] for i in transpose_shape])
@@ -220,7 +211,7 @@ class TransposePrimitive(BasePrimitive):
     return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
   @staticmethod
-  def impl(x: ArrayLike, kind: str, local_transpose: bool = False):
+  def impl(x: ArrayLike, kind: str):
     """
         Implementation method for the transposition primitive.
 
@@ -240,18 +231,11 @@ class TransposePrimitive(BasePrimitive):
     pdims = (size, 1)  # pdims product must be equal to the number of devices
     global_shape = x.shape
     return TransposePrimitive.inner_primitive.bind(
-        x,
-        kind=kind,
-        pdims=pdims,
-        global_shape=global_shape,
-        local_transpose=local_transpose)
+        x, kind=kind, pdims=pdims, global_shape=global_shape)
 
   @staticmethod
-  def per_shard_impl(x: ArrayLike,
-                     kind: str,
-                     pdims: tuple[int, ...],
-                     global_shape: tuple[int],
-                     local_transpose: bool = True):
+  def per_shard_impl(x: ArrayLike, kind: str, pdims: tuple[int, ...],
+                     global_shape: tuple[int]):
     """
         Per-shard implementation method for the transposition primitive.
 
@@ -272,16 +256,11 @@ class TransposePrimitive(BasePrimitive):
             Result of binding the inner primitive with input arguments.
         """
     return TransposePrimitive.inner_primitive.bind(
-        x,
-        kind=kind,
-        pdims=pdims,
-        global_shape=global_shape,
-        local_transpose=local_transpose)
+        x, kind=kind, pdims=pdims, global_shape=global_shape)
 
   @staticmethod
   def infer_sharding_from_operands(
-      kind: str, local_transpose: bool, mesh: Mesh,
-      arg_infos: Tuple[ShapeDtypeStruct],
+      kind: str, mesh: Mesh, arg_infos: Tuple[ShapeDtypeStruct],
       result_infos: Tuple[ShapedArray]) -> NamedSharding:
     """
         Method to infer sharding information from operands for custom partitioning.
@@ -303,7 +282,7 @@ class TransposePrimitive(BasePrimitive):
             Named sharding information.
         """
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
-    if local_transpose:
+    if jaxdecomp.config.transpose_axis_contiguous:
       transposed_pdims = (input_sharding.spec[1], input_sharding.spec[0], None)
     else:
       match kind:
@@ -325,8 +304,7 @@ class TransposePrimitive(BasePrimitive):
     return NamedSharding(input_sharding.mesh, P(*transposed_pdims))
 
   @staticmethod
-  def partition(kind: str, local_transpose: bool, mesh: Mesh,
-                arg_infos: Tuple[ShapeDtypeStruct],
+  def partition(kind: str, mesh: Mesh, arg_infos: Tuple[ShapeDtypeStruct],
                 result_infos: Tuple[ShapedArray]):
     """
         Method to partition the transposition operation for custom partitioning.
@@ -356,8 +334,7 @@ class TransposePrimitive(BasePrimitive):
         TransposePrimitive.per_shard_impl,
         kind=kind,
         pdims=pdims,
-        global_shape=global_shape,
-        local_transpose=local_transpose)
+        global_shape=global_shape)
 
     return mesh, impl, output_sharding, (input_sharding,)
 
@@ -365,10 +342,8 @@ class TransposePrimitive(BasePrimitive):
 register_primitive(TransposePrimitive)
 
 
-@partial(jax.jit, static_argnums=(1, 2))
-def transpose_impl(x: ArrayLike,
-                   kind: str,
-                   local_transpose: bool = True) -> Array:
+@partial(jax.jit, static_argnums=(1,))
+def transpose_impl(x: ArrayLike, kind: str) -> Array:
   """
     JIT-compiled function for performing transposition using the outer primitive.
 
@@ -378,38 +353,35 @@ def transpose_impl(x: ArrayLike,
         Input array.
     kind : str
         Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
-    local_transpose : Bool
-        Perform a local transpose to make the target axis contiguous.
 
     Returns
     -------
     Array
         Transposed array.
     """
-  return TransposePrimitive.outer_primitive.bind(
-      x, kind=kind, local_transpose=local_transpose)
+  return TransposePrimitive.outer_primitive.bind(x, kind=kind)
 
 
-@partial(jax.custom_vjp, nondiff_argnums=(1, 2))
-def transpose(x: ArrayLike, kind: str, local_transpose: bool = True) -> Array:
-  out, _ = transpose_fwd_rule(x, kind, local_transpose)
+@partial(jax.custom_vjp, nondiff_argnums=(1,))
+def transpose(x: ArrayLike, kind: str) -> Array:
+  out, _ = transpose_fwd_rule(x, kind)
   return out
 
 
-def transpose_fwd_rule(x: ArrayLike, kind: str, local_transpose: bool = True):
-  return transpose_impl(x, kind, local_transpose), None
+def transpose_fwd_rule(x: ArrayLike, kind: str):
+  return transpose_impl(x, kind), None
 
 
-def transpose_bwd_rule(kind: str, local_transpose: bool, _, g):
+def transpose_bwd_rule(kind: str, _, g):
   match kind:
     case 'x_y':
-      return transpose_impl(g, 'y_x', local_transpose),
+      return transpose_impl(g, 'y_x'),
     case 'y_z':
-      return transpose_impl(g, 'z_y', local_transpose),
+      return transpose_impl(g, 'z_y'),
     case 'z_y':
-      return transpose_impl(g, 'y_z', local_transpose),
+      return transpose_impl(g, 'y_z'),
     case 'y_x':
-      return transpose_impl(g, 'x_y', local_transpose),
+      return transpose_impl(g, 'x_y'),
     case _:
       raise ValueError("Invalid kind")
 
@@ -433,8 +405,7 @@ def transposeXtoY(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-  local_transpose = jaxdecomp.config.transpose_axis_contiguous
-  return transpose(x, 'x_y', local_transpose)
+  return transpose(x, 'x_y')
 
 
 def transposeYtoZ(x: ArrayLike) -> Array:
@@ -451,8 +422,7 @@ def transposeYtoZ(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-  local_transpose = jaxdecomp.config.transpose_axis_contiguous
-  return transpose(x, 'y_z', local_transpose)
+  return transpose(x, 'y_z')
 
 
 def transposeZtoY(x: ArrayLike) -> Array:
@@ -469,8 +439,7 @@ def transposeZtoY(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-  local_transpose = jaxdecomp.config.transpose_axis_contiguous
-  return transpose(x, 'z_y', local_transpose)
+  return transpose(x, 'z_y')
 
 
 def transposeYtoX(x: ArrayLike) -> Array:
@@ -487,5 +456,4 @@ def transposeYtoX(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-  local_transpose = jaxdecomp.config.transpose_axis_contiguous
-  return transpose(x, 'y_x', local_transpose)
+  return transpose(x, 'y_x')
