@@ -3,11 +3,11 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Tuple
 
 import jaxdecomp.fft as fft
+from jaxdecomp._src.pencil_utils import get_output_specs
 from jaxdecomp.fft import pfft3d, pifft3d
 from jaxdecomp.halo import halo_exchange
 from jaxdecomp.transpose import (transposeXtoY, transposeXtoZ, transposeYtoX,
                                  transposeYtoZ, transposeZtoX, transposeZtoY)
-from jaxdecomp._src.pencil_utils import get_output_specs
 
 from ._src import (HALO_COMM_MPI, HALO_COMM_MPI_BLOCKING, HALO_COMM_NCCL,
                    HALO_COMM_NVSHMEM, HALO_COMM_NVSHMEM_BLOCKING, NO_DECOMP,
