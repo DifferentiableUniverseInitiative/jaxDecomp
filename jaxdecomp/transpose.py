@@ -1,6 +1,7 @@
+from jaxtyping import Array
+
 from jaxdecomp._src.cudecomp.transpose import transpose as _cudecomp_transpose
 from jaxdecomp._src.jax.transpose import transpose as _jax_transpose
-from jaxtyping import Array
 
 
 def transposeXtoY(x: Array, backend: str = 'JAX') -> Array:

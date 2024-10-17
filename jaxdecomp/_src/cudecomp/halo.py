@@ -8,8 +8,8 @@ from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
 from jax._src.typing import Array
 from jax.core import Primitive, ShapedArray
-from jax.sharding import NamedSharding
-from jax.sharding import PartitionSpec as P, Mesh
+from jax.sharding import Mesh, NamedSharding
+from jax.sharding import PartitionSpec as P
 from jaxlib.hlo_helpers import custom_call
 
 import jaxdecomp
