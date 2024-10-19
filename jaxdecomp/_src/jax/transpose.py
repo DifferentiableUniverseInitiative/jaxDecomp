@@ -2,23 +2,14 @@ from functools import partial
 from typing import Tuple
 
 import jax
-import jax.numpy as jnp
-import jaxlib.mlir.ir as ir
-import numpy as np
 from jax import ShapeDtypeStruct, lax
-from jax._src.interpreters import mlir
-from jax._src.lib.mlir.dialects import hlo
 from jax._src.typing import Array, ArrayLike
 from jax.core import ShapedArray
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
 import jaxdecomp
-from jaxdecomp._src.pencil_utils import get_axis_names_from_kind
-from jaxdecomp._src.spmd_ops import (BasePrimitive, CustomParPrimitive,
-                                     get_pdims_from_mesh,
-                                     get_pdims_from_sharding,
-                                     register_primitive)
+from jaxdecomp._src.spmd_ops import CustomParPrimitive, register_primitive
 
 
 class JAXTransposePrimitive(CustomParPrimitive):
@@ -95,6 +86,7 @@ class JAXTransposePrimitive(CustomParPrimitive):
     Object
         Result of binding the inner primitive with input arguments.
      """
+
     assert (x_axis_name is not None) or (y_axis_name is not None)
     if jaxdecomp.config.transpose_axis_contiguous:
       match kind:
@@ -158,6 +150,7 @@ class JAXTransposePrimitive(CustomParPrimitive):
         NamedSharding
             Named sharding information.
         """
+    del mesh
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     if jaxdecomp.config.transpose_axis_contiguous:
       transposed_pdims = (input_sharding.spec[1], input_sharding.spec[0], None)
@@ -202,10 +195,12 @@ class JAXTransposePrimitive(CustomParPrimitive):
         Tuple
             Tuple containing mesh, implementation function, output sharding, and input sharding.
         """
-    input_sharding = NamedSharding(mesh, P(*arg_infos[0].sharding.spec))
-    output_sharding = NamedSharding(mesh, P(*result_infos.sharding.spec))
 
-    x_axis_name, y_axis_name = mesh.axis_names
+    input_sharding = arg_infos[0].sharding
+    input_mesh = input_sharding.mesh
+    output_sharding = NamedSharding(input_mesh, P(*result_infos.sharding.spec))
+
+    x_axis_name, y_axis_name = input_mesh.axis_names
     impl = partial(
         JAXTransposePrimitive.per_shard_impl,
         kind=kind,

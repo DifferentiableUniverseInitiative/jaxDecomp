@@ -16,9 +16,13 @@ from jaxlib.hlo_helpers import custom_call
 
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
-from jaxdecomp._src.spmd_ops import (BasePrimitive, get_pdims_from_mesh,
-                                     get_pdims_from_sharding,
-                                     register_primitive)
+from jaxdecomp._src.spmd_ops import BasePrimitive, register_primitive
+
+GdimsType = Tuple[int, int, int]
+# Same as FFTs
+# pdims are always two integers
+# but in non contiguous cases we need to represent ('x' , None , 'y')
+PdimsType = Tuple[int, int, int]
 
 
 class TransposePrimitive(BasePrimitive):
@@ -46,8 +50,8 @@ class TransposePrimitive(BasePrimitive):
   outer_primitive: object = None
 
   @staticmethod
-  def abstract(x: ArrayLike, kind: str, pdims: tuple[int, ...],
-               global_shape: tuple[int]) -> ShapedArray:
+  def abstract(x: ArrayLike, kind: str, pdims: PdimsType,
+               global_shape: GdimsType) -> ShapedArray:
     """
         Abstract method to describe the shape of the output array after transposition.
 
@@ -130,8 +134,8 @@ class TransposePrimitive(BasePrimitive):
     return ShapedArray(shape, x.dtype)
 
   @staticmethod
-  def lowering(ctx, x: jnp.ndarray, *, kind: str, pdims: tuple[int, ...],
-               global_shape: tuple[int, ...]):
+  def lowering(ctx, x: Array, *, kind: str, pdims: PdimsType,
+               global_shape: GdimsType):
     """
         Method to lower the transposition operation to MLIR.
 
@@ -183,7 +187,6 @@ class TransposePrimitive(BasePrimitive):
     transpose_shape = transpose_shape if local_transpose else (0, 1, 2)
     # Make sure to get back the original shape of the X-Pencil
     global_shape = tuple([global_shape[i] for i in transpose_shape])
-    pdims = get_pdims_from_mesh()
 
     config = _jaxdecomp.GridConfig()
     config.pdims = pdims
@@ -211,7 +214,7 @@ class TransposePrimitive(BasePrimitive):
     return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
   @staticmethod
-  def impl(x: ArrayLike, kind: str):
+  def impl(x: Array, kind: str):
     """
         Implementation method for the transposition primitive.
 
@@ -227,34 +230,37 @@ class TransposePrimitive(BasePrimitive):
         Object
             Result of binding the inner primitive with input arguments.
         """
-    size = jax.device_count()
-    pdims = (size, 1)  # pdims product must be equal to the number of devices
-    global_shape = x.shape
-    return TransposePrimitive.inner_primitive.bind(
-        x, kind=kind, pdims=pdims, global_shape=global_shape)
+    match kind:
+      case 'x_y' | 'y_z':
+        return x.transpose([2, 0, 1])
+      case 'y_x' | 'z_y':
+        return x.transpose([1, 2, 0])
+      case _:
+        raise ValueError(
+            "Invalid kind (x_z and z_x not supported with cudecomp)")
 
   @staticmethod
-  def per_shard_impl(x: ArrayLike, kind: str, pdims: tuple[int, ...],
-                     global_shape: tuple[int]):
+  def per_shard_impl(x: ArrayLike, kind: str, pdims: PdimsType,
+                     global_shape: GdimsType):
     """
-        Per-shard implementation method for the transposition primitive.
+    Per-shard implementation method for the transposition primitive.
 
-        Parameters
-        ----------
-        x : ArrayLike
-            Input array.
-        kind : str
-            Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
-        pdims : tuple[int]
-            Partition dimensions.
-        global_shape : tuple[int]
-            Global shape of the input array.
+    Parameters
+    ----------
+    x : ArrayLike
+        Input array.
+    kind : str
+        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+    pdims : tuple[int]
+        Partition dimensions.
+    global_shape : tuple[int]
+        Global shape of the input array.
 
-        Returns
-        -------
-        Object
-            Result of binding the inner primitive with input arguments.
-        """
+    Returns
+    -------
+    Object
+        Result of binding the inner primitive with input arguments.
+    """
     return TransposePrimitive.inner_primitive.bind(
         x, kind=kind, pdims=pdims, global_shape=global_shape)
 
@@ -263,24 +269,26 @@ class TransposePrimitive(BasePrimitive):
       kind: str, mesh: Mesh, arg_infos: Tuple[ShapeDtypeStruct],
       result_infos: Tuple[ShapedArray]) -> NamedSharding:
     """
-        Method to infer sharding information from operands for custom partitioning.
+    Method to infer sharding information from operands for custom partitioning.
 
-        Parameters
-        ----------
-        kind : str
-            Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
-        mesh : Mesh
-            Sharding mesh information.
-        arg_infos : Tuple[ShapeDtypeStruct]
-            Tuple of ShapeDtypeStruct for input operands.
-        result_infos : Tuple[ShapedArray]
-            Tuple of ShapedArray for result information.
+    Parameters
+    ----------
+    kind : str
+        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+    mesh : Mesh
+        Sharding mesh information.
+    arg_infos : Tuple[ShapeDtypeStruct]
+        Tuple of ShapeDtypeStruct for input operands.
+    result_infos : Tuple[ShapedArray]
+        Tuple of ShapedArray for result information.
 
-        Returns
-        -------
-        NamedSharding
-            Named sharding information.
-        """
+    Returns
+    -------
+    NamedSharding
+        Named sharding information.
+    """
+    del mesh
+
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     if jaxdecomp.config.transpose_axis_contiguous:
       transposed_pdims = (input_sharding.spec[1], input_sharding.spec[0], None)
@@ -307,28 +315,29 @@ class TransposePrimitive(BasePrimitive):
   def partition(kind: str, mesh: Mesh, arg_infos: Tuple[ShapeDtypeStruct],
                 result_infos: Tuple[ShapedArray]):
     """
-        Method to partition the transposition operation for custom partitioning.
+    Method to partition the transposition operation for custom partitioning.
 
-        Parameters
-        ----------
-        kind : str
-            Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
-        mesh : Mesh
-            Sharding mesh information.
-        arg_infos : Tuple[ShapeDtypeStruct]
-            Tuple of ShapeDtypeStruct for input operands.
-        result_infos : Tuple[ShapedArray]
-            Tuple of ShapedArray for result information.
+    Parameters
+    ----------
+    kind : str
+        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+    mesh : Mesh
+        Sharding mesh information.
+    arg_infos : Tuple[ShapeDtypeStruct]
+        Tuple of ShapeDtypeStruct for input operands.
+    result_infos : Tuple[ShapedArray]
+        Tuple of ShapedArray for result information.
 
-        Returns
-        -------
-        Tuple
-            Tuple containing mesh, implementation function, output sharding, and input sharding.
-        """
-    input_sharding = NamedSharding(mesh, P(*arg_infos[0].sharding.spec))
-    output_sharding = NamedSharding(mesh, P(*result_infos.sharding.spec))
+    Returns
+    -------
+    Tuple
+        Tuple containing mesh, implementation function, output sharding, and input sharding.
+    """
+    input_mesh = arg_infos[0].sharding.mesh
+    input_sharding = NamedSharding(input_mesh, P(*arg_infos[0].sharding.spec))
+    output_sharding = NamedSharding(input_mesh, P(*result_infos.sharding.spec))
     global_shape = arg_infos[0].shape
-    pdims = get_pdims_from_sharding(output_sharding)
+    pdims = input_mesh.devices.shape[::-1]
 
     impl = partial(
         TransposePrimitive.per_shard_impl,
