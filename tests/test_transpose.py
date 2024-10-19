@@ -25,7 +25,7 @@ pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
 
 decomp = [(size, 1), (1, size), pencil_1, pencil_2]
-global_shapes = [(4, 8, 16), (4, 4, 4), (29 * size, 19 * size, 17 * size)]
+global_shapes = [(8, 16, 32), (8, 8, 8), (29 * size, 19 * size, 17 * size)]
 # Cubes, non-cubes and primes
 local_transpose = [False, True]
 
