@@ -77,6 +77,8 @@ class TestFFTs:
       transpose_back = [1, 2, 0]
     if not local_transpose:
       transpose_back = [0, 1, 2]
+    elif jaxdecomp.config.transpose_axis_contiguous_2:
+      transpose_back = [1, 2, 0]
 
     # Check reconstructed array
     assert_allclose(
@@ -138,6 +140,8 @@ class TestFFTsGrad:
       transpose_back = [1, 2, 0]
     if not local_transpose:
       transpose_back = [0, 1, 2]
+    elif jaxdecomp.config.transpose_axis_contiguous_2:
+      transpose_back = [1, 2, 0]
 
     print("*" * 80)
     # Cartesian product tests
