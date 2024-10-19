@@ -9,6 +9,7 @@ from jax.lib import xla_client
 
 import jaxdecomp
 from jaxdecomp._src.cudecomp.fft import pfft as _cudecomp_pfft
+from jaxdecomp._src.jax import fftfreq as _fftfreq
 from jaxdecomp._src.jax.fft import pfft as _jax_pfft
 
 Shape = Sequence[int]
@@ -171,3 +172,15 @@ def pifft3d(a: ArrayLike,
   """
   return _do_pfft(
       "ifft", xla_client.FftType.IFFT, a, norm=norm, backend=backend)
+
+
+def fftfreq3d(array, d=1.0, dtype=None):
+  return _fftfreq.fftfreq3d(array, d=d, dtype=dtype)
+
+
+def rfftfreq3d(array, d=1.0, dtype=None):
+  return _fftfreq.rfftfreq3d(array, d=d, dtype=dtype)
+
+
+def fftfreq3d_shard(array, d=1.0, dtype=None):
+  return _fftfreq.fftfreq3d_shard(array, d=d, dtype=dtype)
