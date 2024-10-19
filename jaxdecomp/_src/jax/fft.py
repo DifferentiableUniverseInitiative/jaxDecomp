@@ -2,9 +2,7 @@ from functools import partial
 from typing import Tuple
 
 import jax
-import jax.numpy as jnp
 from jax import lax
-from jax import numpy as jnp
 from jax._src.api import ShapeDtypeStruct
 from jax._src.core import ShapedArray
 from jax._src.typing import Array, ArrayLike
@@ -14,7 +12,8 @@ from jax.sharding import PartitionSpec as P
 
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
-from jaxdecomp._src.fft_utils import COMPLEX, FORWARD_FFTs, fft, fft2, fftn
+from jaxdecomp._src.fft_utils import COMPLEX  # yapf: disable
+from jaxdecomp._src.fft_utils import ADJOINT, FORWARD_FFTs, fft, fft2, fftn
 from jaxdecomp._src.pencil_utils import get_output_specs, get_transpose_order
 from jaxdecomp._src.spmd_ops import (CustomParPrimitive, get_pencil_type,
                                      register_primitive)
@@ -51,6 +50,9 @@ def _fft_slab_yz(operand, fft_type, adjoint, y_axis_name):
         operand, y_axis_name, 2, 1, tiled=True).transpose([2, 0, 1])
     # FFT on YZ plane
     operand = fft2(operand, COMPLEX(fft_type), axes=(2, 1), adjoint=adjoint)
+
+    if jaxdecomp.config.transpose_axis_contiguous_2:
+      operand = operand.transpose([2, 0, 1])
   else:
     # transpose to (Z , Y , X / py) with specs P('z', None, 'y')
     operand = lax.all_to_all(operand, y_axis_name, 2, 1, tiled=True)
@@ -115,6 +117,11 @@ def _ifft_slab_yz(operand, fft_type, adjoint, y_axis_name):
 
   # pdims are (Py=N,Pz=1)
   if jaxdecomp.config.transpose_axis_contiguous:
+
+    # TODO wassim : this is kept only for benchmarking purposes
+    # it should be removed in the future
+    if jaxdecomp.config.transpose_axis_contiguous_2:
+      operand = operand.transpose([1, 2, 0])
     # input is (X / py, Z , Y) with specs P('y', 'z')
     # First IFFT
     operand = fft2(operand, COMPLEX(fft_type), axes=(2, 1), adjoint=adjoint)
@@ -169,27 +176,25 @@ def _ifft_pencils(operand, fft_type, adjoint, x_axis_name, y_axis_name):
 class JAXFFTPrimitive(CustomParPrimitive):
   name = 'jax_fft'
   multiple_results = False
-  impl_static_args: Tuple[int, int] = (1, 2)
+  impl_static_args: Tuple[int, ...] = (1, 2)
   outer_primitive = None
 
   @staticmethod
   def impl(x, fft_type, adjoint):
 
     assert isinstance(fft_type, FftType)
-
+    # TODO(This uses global mesh and should not)
     transpose_order = get_transpose_order(fft_type)
     return fftn(x, fft_type, adjoint=adjoint).transpose(transpose_order)
 
   @staticmethod
-  def per_shard_impl(x: ArrayLike,
-                     fft_type: int | tuple[int],
-                     adjoint,
-                     x_axis_name=None,
-                     y_axis_name=None) -> Array:
+  def per_shard_impl(x: ArrayLike, fft_type: FftType, adjoint: bool,
+                     mesh: Mesh) -> Array:
 
+    x_axis_name, y_axis_name = mesh.axis_names
     assert isinstance(fft_type, FftType)
     assert (x_axis_name is not None) or (y_axis_name is not None)
-    pencil_type = get_pencil_type()
+    pencil_type = get_pencil_type(mesh)
     if fft_type in FORWARD_FFTs:
       match pencil_type:
         case _jaxdecomp.SLAB_XY:
@@ -216,30 +221,29 @@ class JAXFFTPrimitive(CustomParPrimitive):
                                    arg_infos: Tuple[ShapeDtypeStruct],
                                    result_infos: Tuple[ShapedArray]):
 
-    del adjoint, result_infos
+    del adjoint, result_infos, mesh
 
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     spec = input_sharding.spec
-    transposed_specs = get_output_specs(fft_type, spec, 'jax')
+    transposed_specs = get_output_specs(
+        fft_type, spec, mesh=input_sharding.mesh, backend='jax')
 
-    return NamedSharding(mesh, P(*transposed_specs))
+    return NamedSharding(input_sharding.mesh, P(*transposed_specs))
 
   @staticmethod
   def partition(fft_type: FftType, adjoint: bool, mesh: Mesh,
                 arg_infos: Tuple[ShapeDtypeStruct],
                 result_infos: Tuple[ShapedArray]):
 
-    x_axis_name, y_axis_name = mesh.axis_names
-
-    input_sharding = NamedSharding(mesh, P(*arg_infos[0].sharding.spec))
-    output_sharding = NamedSharding(mesh, P(*result_infos.sharding.spec))
+    input_mesh = arg_infos[0].sharding.mesh
+    input_sharding = NamedSharding(input_mesh, P(*arg_infos[0].sharding.spec))
+    output_sharding = NamedSharding(input_mesh, P(*result_infos.sharding.spec))
 
     impl = partial(
         JAXFFTPrimitive.per_shard_impl,
         fft_type=fft_type,
         adjoint=adjoint,
-        x_axis_name=x_axis_name,
-        y_axis_name=y_axis_name)
+        mesh=input_mesh)
 
     return mesh, impl, output_sharding, (input_sharding,)
 
@@ -336,13 +340,7 @@ def _pfft_bwd_rule(fft_type: FftType, adjoint: bool, _,
   Tuple[Primitive]
     Result of the operation.
   """
-  assert fft_type in [FftType.FFT, FftType.IFFT]
-  if fft_type == FftType.FFT:
-    fft_type = FftType.IFFT
-  elif fft_type == FftType.IFFT:
-    fft_type = FftType.FFT
-
-  return pfft_impl(g, fft_type, not adjoint),
+  return pfft_impl(g, ADJOINT(fft_type), not adjoint),
 
 
 pfft.defvjp(_pfft_fwd_rule, _pfft_bwd_rule)

@@ -25,6 +25,8 @@ from jaxdecomp._src.spmd_ops import (BasePrimitive, get_pdims_from_sharding,
 
 FftType = xla_client.FftType
 GdimsType = Tuple[int, int, int]
+# pdims is only two integers
+# but in some cases we need to represent ('x' , None , 'y') as (Nx , 1 , Ny)
 PdimsType = Tuple[int, int, int]
 
 
@@ -75,8 +77,7 @@ class FFTPrimitive(BasePrimitive):
     return ShapedArray(output_shape, x.dtype)
 
   @staticmethod
-  def outer_abstract(x: Array, fft_type: xla_client.FftType,
-                     adjoint: bool) -> ShapedArray:
+  def outer_abstract(x: Array, fft_type: FftType, adjoint: bool) -> ShapedArray:
     """
     Abstract function for outer FFT operation.
 
@@ -228,12 +229,23 @@ class FFTPrimitive(BasePrimitive):
     Primitive
       Result of the operation.
     """
-    return FFTPrimitive.inner_primitive.bind(
+
+    # TODO transpose_axis_contiguous_2 must be removed after benchmarking
+    if fft_type == FftType.IFFT and pdims[0] == 1:
+      if jaxdecomp.config.transpose_axis_contiguous_2 and jaxdecomp.config.transpose_axis_contiguous:
+        x = x.transpose([1, 2, 0])
+
+    out = FFTPrimitive.inner_primitive.bind(
         x,
         fft_type=fft_type,
         pdims=pdims,
         global_shape=global_shape,
         adjoint=adjoint)
+    if fft_type == FftType.FFT and pdims[0] == 1:
+      if jaxdecomp.config.transpose_axis_contiguous_2 and jaxdecomp.config.transpose_axis_contiguous:
+        out = out.transpose([2, 0, 1])
+
+    return out
 
   @staticmethod
   def infer_sharding_from_operands(
@@ -261,14 +273,17 @@ class FFTPrimitive(BasePrimitive):
     NamedSharding
       Sharding information for the result.
     """
+    del adjoint, mesh, result_infos
+
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     spec = input_sharding.spec
+    input_mesh = input_sharding.mesh
     transposed_specs = get_output_specs(fft_type, spec, 'cudecomp')
-    return NamedSharding(mesh, P(*transposed_specs))
+    return NamedSharding(input_mesh, P(*transposed_specs))
 
   @staticmethod
   def partition(
-      fft_type: xla_client.FftType, adjoint: bool, mesh: Mesh,
+      fft_type: FftType, adjoint: bool, mesh: Mesh,
       arg_shapes: Tuple[ShapeDtypeStruct], result_shape: ShapeDtypeStruct
   ) -> Tuple[Mesh, partial, NamedSharding, Tuple[NamedSharding]]:
     """
@@ -292,8 +307,9 @@ class FFTPrimitive(BasePrimitive):
     Tuple[Mesh, partial, NamedSharding, Tuple[NamedSharding]]
       Mesh, lowered function, output sharding, and input operand sharding.
     """
-    input_sharding = NamedSharding(mesh, P(*arg_shapes[0].sharding.spec))
-    output_sharding = NamedSharding(mesh, P(*result_shape.sharding.spec))
+    input_mesh = arg_shapes[0].sharding.mesh
+    input_sharding = NamedSharding(input_mesh, P(*arg_shapes[0].sharding.spec))
+    output_sharding = NamedSharding(input_mesh, P(*result_shape.sharding.spec))
     global_shape = arg_shapes[0].shape
     pdims = get_pdims_from_sharding(output_sharding)
 
