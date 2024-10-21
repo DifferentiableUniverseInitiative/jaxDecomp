@@ -3,7 +3,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Tuple
 
 from jaxdecomp._src.pencil_utils import get_output_specs
-from jaxdecomp.fft import fftfreq3d_shard, pfft3d, pifft3d
+from jaxdecomp.fft import fftfreq3d, pfft3d, pifft3d, rfftfreq3d
 from jaxdecomp.halo import halo_exchange
 from jaxdecomp.transpose import (transposeXtoY, transposeXtoZ, transposeYtoX,
                                  transposeYtoZ, transposeZtoX, transposeZtoY)
@@ -52,7 +52,8 @@ __all__ = [
     "PENCILS",
     "NO_DECOMP",
     "get_output_specs",
-    "fftfreq3d_shard",
+    "fftfreq3d",
+    "rfftfreq3d",
 ]
 
 

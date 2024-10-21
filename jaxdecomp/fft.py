@@ -174,13 +174,9 @@ def pifft3d(a: ArrayLike,
       "ifft", xla_client.FftType.IFFT, a, norm=norm, backend=backend)
 
 
-def fftfreq3d(array, d=1.0, dtype=None):
-  return _fftfreq.fftfreq3d(array, d=d, dtype=dtype)
+def fftfreq3d(array, d=1.0):
+  return _fftfreq.fftfreq3d(array, d=d)
 
 
-def rfftfreq3d(array, d=1.0, dtype=None):
-  return _fftfreq.rfftfreq3d(array, d=d, dtype=dtype)
-
-
-def fftfreq3d_shard(array, d=1.0, dtype=None):
-  return _fftfreq.fftfreq3d_shard(array, d=d, dtype=dtype)
+def rfftfreq3d(array, d=1.0):
+  return _fftfreq.rfftfreq3d(array, d=d)
