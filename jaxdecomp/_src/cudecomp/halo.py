@@ -267,7 +267,7 @@ class HaloPrimitive(BasePrimitive):
 
     shape_without_halo = (global_shape[0] - 2 * pdims[1] * halo_extents[0],
                           global_shape[1] - 2 * pdims[0] * halo_extents[1],
-                          global_shape[2] - 2 * halo_extents[2])
+                          global_shape[2])
 
     impl = partial(
         HaloPrimitive.per_shard_impl,
