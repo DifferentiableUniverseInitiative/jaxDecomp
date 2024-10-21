@@ -7,27 +7,30 @@ import jax
 
 size = jax.device_count()
 from functools import partial
-from jax import lax
+from itertools import product
+from math import prod
+
 import jax.numpy as jnp
 import pytest
+from jax import lax
 from jax.experimental.multihost_utils import process_allgather
 from jax.experimental.shard_map import shard_map
 from jax.sharding import PartitionSpec as P
 from numpy.testing import assert_allclose, assert_array_equal
-from itertools import product
+
 import jaxdecomp
 from jaxdecomp import slice_pad, slice_unpad
 from jaxdecomp._src.spmd_ops import get_pencil_type
-from functools import partial
-from math import prod
+
 pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
 pdims = [(1, size), (size, 1), pencil_1, pencil_2]
 
+
 def split_into_grid(array, pdims):
-    """
+  """
     Splits the array into a 2D grid using vsplit and hsplit based on pdims.
-    
+
     Args:
         array: The array to be split.
         pdims: A tuple (vertical_splits, horizontal_splits) defining how to split the array.
@@ -35,18 +38,20 @@ def split_into_grid(array, pdims):
     Returns:
         A 2D list of lists where each element is a sub-array.
     """
-    # First, vsplit into vertical splits (rows)
-    vertical_splits = jnp.vsplit(array, pdims[1])
-    
-    # For each vertical split, hsplit into horizontal splits (columns)
-    grid = [jnp.hsplit(vsplit, pdims[0]) for vsplit in vertical_splits]
-    
-    return grid
+  # First, vsplit into vertical splits (rows)
+  vertical_splits = jnp.vsplit(array, pdims[1])
+
+  # For each vertical split, hsplit into horizontal splits (columns)
+  grid = [jnp.hsplit(vsplit, pdims[0]) for vsplit in vertical_splits]
+
+  return grid
+
 
 all_gather = partial(process_allgather, tiled=True)
 
+
 @pytest.mark.skipif(not is_on_cluster(), reason="Only run on cluster")
-@pytest.mark.parametrize("pdims", pdims)  
+@pytest.mark.parametrize("pdims", pdims)
 # Test with Slab and Pencil decompositions
 def test_halo_against_cudecomp(pdims):
 
@@ -78,9 +83,15 @@ def test_halo_against_cudecomp(pdims):
     # perform halo exchange
     updated_array = pad(global_array)
     jax_exchanged = jaxdecomp.halo_exchange(
-        updated_array, halo_extents=halo_extents, halo_periods=periodic, backend="JAX")
+        updated_array,
+        halo_extents=halo_extents,
+        halo_periods=periodic,
+        backend="JAX")
     cudecomp_exchanged = jaxdecomp.halo_exchange(
-        updated_array, halo_extents=halo_extents, halo_periods=periodic, backend="CUDECOMP")
+        updated_array,
+        halo_extents=halo_extents,
+        halo_periods=periodic,
+        backend="CUDECOMP")
 
   g_array = all_gather(updated_array)
   g_jax_exchanged = all_gather(jax_exchanged)
@@ -91,16 +102,17 @@ def test_halo_against_cudecomp(pdims):
 
   assert_array_equal(g_jax_exchanged, g_cudecomp_exchanged)
 
+
 pdims = [pdims[0]]
+
 
 class TestHaloExchange:
 
-  def run_test(self,global_shape , pdims , backend):
+  def run_test(self, global_shape, pdims, backend):
     print("*" * 80)
     print(f"Testing with pdims {pdims}")
 
     jnp.set_printoptions(linewidth=200)
-
 
     global_array, mesh = create_ones_spmd_array(global_shape, pdims)
     halo_size = 2
@@ -113,7 +125,7 @@ class TestHaloExchange:
 
     @partial(shard_map, mesh=mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
     def pad(arr):
-      return jnp.pad(arr, padding, mode='linear_ramp', end_values=20) 
+      return jnp.pad(arr, padding, mode='linear_ramp', end_values=20)
 
     @partial(shard_map, mesh=mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
     def multiply(arr):
@@ -125,7 +137,7 @@ class TestHaloExchange:
 
       arr += aranged
 
-      return arr 
+      return arr
 
     with mesh:
       # perform halo exchange
@@ -144,12 +156,10 @@ class TestHaloExchange:
 
     # Gather array from all processes
     # gathered_array = multihost_utils.process_allgather(global_array,tiled=True)
-    exchanged_gathered_array = all_gather(
-        exchanged_array, tiled=True)
+    exchanged_gathered_array = all_gather(exchanged_array, tiled=True)
     periodic_exchanged_gathered_array = all_gather(
         periodic_exchanged_array, tiled=True)
-    padded_gathered_array = all_gather(
-        padded_array, tiled=True)
+    padded_gathered_array = all_gather(padded_array, tiled=True)
 
     gathered_array_slices = split_into_grid(padded_gathered_array, pdims)
     gathered_exchanged_slices = split_into_grid(exchanged_gathered_array, pdims)
@@ -159,10 +169,10 @@ class TestHaloExchange:
     print(f"len gathered array slices {len(gathered_array_slices)}")
     print(f"len Y gathered array slices {len(gathered_array_slices[0])}")
 
-    next_index = lambda x , pdims : x + 1 if x < pdims - 1 else 0
-    prev_index = lambda x , pdims : x - 1 if x > 0 else pdims - 1
+    next_index = lambda x, pdims: x + 1 if x < pdims - 1 else 0
+    prev_index = lambda x, pdims: x - 1 if x > 0 else pdims - 1
 
-    for z_slice , y_slice in product(range(pdims[1]), range(pdims[0])):
+    for z_slice, y_slice in product(range(pdims[1]), range(pdims[0])):
 
       print(f"z {z_slice} y {y_slice}")
       original_slice = gathered_array_slices[z_slice][y_slice]
@@ -201,9 +211,11 @@ class TestHaloExchange:
       # if left right padding check the left right slices
       if pdims[1] > 1:
         # Check the left padding
-        assert_array_equal(current_slice[:, :halo_size], left_slice[:, -halo_size:])
+        assert_array_equal(current_slice[:, :halo_size],
+                           left_slice[:, -halo_size:])
         # Check the right padding
-        assert_array_equal(current_slice[:, -halo_size:], right_slice[:, :halo_size])
+        assert_array_equal(current_slice[:, -halo_size:],
+                           right_slice[:, :halo_size])
 
       # if both padded check the corners
       if pdims[0] > 1 and pdims[1] > 1:
@@ -220,14 +232,11 @@ class TestHaloExchange:
         assert_array_equal(current_slice[-halo_size:, -halo_size:],
                            lower_right_corner[:halo_size, :halo_size])
 
-      
   @pytest.mark.skipif(not is_on_cluster(), reason="Only run on cluster")
   @pytest.mark.parametrize("pdims", pdims)
-  def test_cudecomp_halo(self,pdims):
+  def test_cudecomp_halo(self, pdims):
     self.run_test((16, 16, 16), pdims, "CUDECOMP")
 
   @pytest.mark.parametrize("pdims", pdims)
-  def test_jax_halo(self,pdims):
+  def test_jax_halo(self, pdims):
     self.run_test((16, 16, 16), pdims, "JAX")
-
-

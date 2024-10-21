@@ -25,7 +25,6 @@ global_shapes = [(8, 16, 32), (8, 8, 8), (29 * size, 19 * size, 17 * size)
 local_transpose = [True, False]
 
 
-
 class TestFFTs:
 
   def run_test(self, pdims, global_shape, local_transpose, backend):

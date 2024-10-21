@@ -16,7 +16,8 @@ from jaxlib.hlo_helpers import custom_call
 
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
-from jaxdecomp._src.spmd_ops import BasePrimitive, register_primitive , get_pdims_from_sharding
+from jaxdecomp._src.spmd_ops import (BasePrimitive, get_pdims_from_sharding,
+                                     register_primitive)
 
 GdimsType = Tuple[int, int, int]
 # Same as FFTs
@@ -50,7 +51,7 @@ class TransposePrimitive(BasePrimitive):
   outer_primitive: object = None
 
   @staticmethod
-  def abstract(x: ArrayLike, kind: str, pdims: PdimsType,out_pdims:PdimsType,
+  def abstract(x: ArrayLike, kind: str, pdims: PdimsType, out_pdims: PdimsType,
                global_shape: GdimsType) -> ShapedArray:
     """
     Abstract method to describe the shape of the output array after transposition.
@@ -136,8 +137,8 @@ class TransposePrimitive(BasePrimitive):
     return ShapedArray(shape, x.dtype)
 
   @staticmethod
-  def lowering(ctx, x: Array, *, kind: str, pdims: PdimsType,out_pdims:PdimsType,
-               global_shape: GdimsType):
+  def lowering(ctx, x: Array, *, kind: str, pdims: PdimsType,
+               out_pdims: PdimsType, global_shape: GdimsType):
     """
         Method to lower the transposition operation to MLIR.
 
@@ -242,8 +243,8 @@ class TransposePrimitive(BasePrimitive):
             "Invalid kind (x_z and z_x not supported with cudecomp)")
 
   @staticmethod
-  def per_shard_impl(x: ArrayLike, kind: str, pdims: PdimsType,out_pdims:PdimsType,
-                     global_shape: GdimsType):
+  def per_shard_impl(x: ArrayLike, kind: str, pdims: PdimsType,
+                     out_pdims: PdimsType, global_shape: GdimsType):
     """
     Per-shard implementation method for the transposition primitive.
 
@@ -264,7 +265,11 @@ class TransposePrimitive(BasePrimitive):
         Result of binding the inner primitive with input arguments.
     """
     return TransposePrimitive.inner_primitive.bind(
-        x, kind=kind, pdims=pdims,out_pdims=out_pdims, global_shape=global_shape)
+        x,
+        kind=kind,
+        pdims=pdims,
+        out_pdims=out_pdims,
+        global_shape=global_shape)
 
   @staticmethod
   def infer_sharding_from_operands(
@@ -345,7 +350,7 @@ class TransposePrimitive(BasePrimitive):
         TransposePrimitive.per_shard_impl,
         kind=kind,
         pdims=original_pdims,
-        out_pdims=out_pdims , 
+        out_pdims=out_pdims,
         global_shape=global_shape)
 
     return mesh, impl, output_sharding, (input_sharding,)

@@ -65,7 +65,7 @@ def get_transpose_order(fft_type, mesh=None) -> tuple[int, int, int]:
   return transpose_shape
 
 
-def get_lowering_args(fft_type, global_shape,mesh):
+def get_lowering_args(fft_type, global_shape, mesh):
   pencil_type = get_pencil_type(mesh)
   pdims = get_pdims_from_mesh(mesh)
 

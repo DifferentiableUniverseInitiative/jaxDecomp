@@ -43,7 +43,8 @@ class FFTPrimitive(BasePrimitive):
 
   @staticmethod
   def abstract(x: Array, fft_type: FftType, pdims: PdimsType,
-               global_shape: GdimsType, adjoint: bool,mesh : Mesh) -> ShapedArray:
+               global_shape: GdimsType, adjoint: bool,
+               mesh: Mesh) -> ShapedArray:
     """
     Abstract function to compute the shape of FFT output.
 
@@ -104,7 +105,7 @@ class FFTPrimitive(BasePrimitive):
 
   @staticmethod
   def lowering(ctx, a: Array, *, fft_type: xla_client.FftType, pdims: PdimsType,
-               global_shape: GdimsType, adjoint: bool,mesh : Mesh):
+               global_shape: GdimsType, adjoint: bool, mesh: Mesh):
     """
     Lowering function for FFT primitive.
 
@@ -142,7 +143,7 @@ class FFTPrimitive(BasePrimitive):
 
     # Get original global shape
     pencil_type = get_pencil_type(mesh)
-    pdims, global_shape = get_lowering_args(fft_type, global_shape,mesh)
+    pdims, global_shape = get_lowering_args(fft_type, global_shape, mesh)
     print(f"lowering with pdims {pdims} and globalshape {global_shape}")
     local_transpose = jaxdecomp.config.transpose_axis_contiguous
     # Compute the descriptor for our FFT
@@ -278,7 +279,7 @@ class FFTPrimitive(BasePrimitive):
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     spec = input_sharding.spec
     input_mesh = input_sharding.mesh
-    transposed_specs = get_output_specs(fft_type, spec, input_mesh,'cudecomp')
+    transposed_specs = get_output_specs(fft_type, spec, input_mesh, 'cudecomp')
     return NamedSharding(input_mesh, P(*transposed_specs))
 
   @staticmethod
