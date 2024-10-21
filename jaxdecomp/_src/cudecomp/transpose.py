@@ -132,8 +132,6 @@ class TransposePrimitive(BasePrimitive):
     shape = (x.shape[transpose_shape[0]], x.shape[transpose_shape[1]],
              x.shape[transpose_shape[2]])
 
-    print(f"shape {shape}")
-
     return ShapedArray(shape, x.dtype)
 
   @staticmethod

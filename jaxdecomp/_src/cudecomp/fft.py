@@ -144,7 +144,6 @@ class FFTPrimitive(BasePrimitive):
     # Get original global shape
     pencil_type = get_pencil_type(mesh)
     pdims, global_shape = get_lowering_args(fft_type, global_shape, mesh)
-    print(f"lowering with pdims {pdims} and globalshape {global_shape}")
     local_transpose = jaxdecomp.config.transpose_axis_contiguous
     # Compute the descriptor for our FFT
     config = _jaxdecomp.GridConfig()

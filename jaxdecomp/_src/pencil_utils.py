@@ -43,7 +43,6 @@ def get_transpose_order(fft_type, mesh=None) -> tuple[int, int, int]:
           transpose_shape = (0, 1, 2)
         case _:
           raise TypeError("Unknown pencil type")
-      print(f"transpose_shape is {transpose_shape}")
     case xla_client.FftType.IFFT:
       # IFFT is Z to X to Y so X-Pencil is returned
       # In YZ slab case we only need one transposition back to get the X-Pencil
@@ -115,7 +114,6 @@ def get_output_specs(fft_type, spec, mesh=None, backend='JAX'):
         transposed_specs = spec
       case _:
         raise TypeError("Unknown pencil type")
-    print(f"transposed_specs is {transposed_specs}")
   else:
     is_distributed = lambda x: x is not None and x != 1
     match fft_type:
