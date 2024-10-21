@@ -43,11 +43,10 @@ class TestTransposes:
     jaxdecomp.config.update("transpose_axis_contiguous", local_transpose)
     global_array, mesh = create_spmd_array(global_shape, pdims)
 
-    with mesh:
-      jd_tranposed_xy = transposeXtoY(global_array, backend=backend)
-      jd_tranposed_yz = transposeYtoZ(jd_tranposed_xy, backend=backend)
-      jd_tranposed_zy = transposeZtoY(jd_tranposed_yz, backend=backend)
-      jd_tranposed_yx = transposeYtoX(jd_tranposed_zy, backend=backend)
+    jd_tranposed_xy = transposeXtoY(global_array, backend=backend)
+    jd_tranposed_yz = transposeYtoZ(jd_tranposed_xy, backend=backend)
+    jd_tranposed_zy = transposeZtoY(jd_tranposed_yz, backend=backend)
+    jd_tranposed_yx = transposeYtoX(jd_tranposed_zy, backend=backend)
 
     print(f"jd_tranposed_xy shape {jd_tranposed_xy.shape}")
     print(f"jd_tranposed_yz shape {jd_tranposed_yz.shape}")
@@ -190,9 +189,8 @@ class TestTransposesGrad:
       y = (jax_transposed_yx * jnp.conjugate(jax_transposed_yx)).real.sum()
       return y
 
-    with mesh:
-      array_grad = jax.grad(jaxdecomp_transpose)(global_array)
-      print("Here is the gradient I'm getting", array_grad.shape)
+    array_grad = jax.grad(jaxdecomp_transpose)(global_array)
+    print("Here is the gradient I'm getting", array_grad.shape)
 
     gathered_array = process_allgather(global_array, tiled=True)
     gathered_grads = process_allgather(array_grad, tiled=True)
