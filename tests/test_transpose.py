@@ -11,16 +11,18 @@ import pytest
 
 jax.config.update("jax_enable_x64", True)
 
+from functools import partial
+
 import jax.numpy as jnp
 from jax.experimental.multihost_utils import process_allgather
 from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
 from numpy.testing import assert_allclose, assert_array_equal
-from functools import partial
 
 import jaxdecomp
 from jaxdecomp import (transposeXtoY, transposeYtoX, transposeYtoZ,
                        transposeZtoY)
+
 all_gather = partial(process_allgather, tiled=True)
 
 pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
