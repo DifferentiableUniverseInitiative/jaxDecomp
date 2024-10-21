@@ -15,6 +15,9 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
+set(PYBIND11_FINDPYTHON ON)
+find_package(pybind11 CONFIG REQUIRED)
+
 # Check for CUDA
 include(CheckLanguage)
 check_language(CUDA)
@@ -36,10 +39,6 @@ if(CMAKE_CUDA_COMPILER AND JD_CUDECOMP_BACKEND)
 
   # 70: Volta, 80: Ampere, 89: RTX 4060
   set(CUDECOMP_CUDA_CC_LIST "70;80;89" CACHE STRING "List of CUDA compute capabilities to build cuDecomp for.")
-
-  # Add pybind11 and cuDecomp subdirectories
-  add_subdirectory(pybind11)
-
 
   find_package(NVHPC REQUIRED COMPONENTS MATH MPI NCCL)
 
@@ -89,7 +88,6 @@ if(CMAKE_CUDA_COMPILER AND JD_CUDECOMP_BACKEND)
   set_target_properties(_jaxdecomp PROPERTIES LINKER_LANGUAGE CXX)
   target_compile_definitions(_jaxdecomp PRIVATE JD_CUDECOMP_BACKEND)
 else()
-  add_subdirectory(pybind11)
   pybind11_add_module(_jaxdecomp src/jaxdecomp.cc)
   target_include_directories(_jaxdecomp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/include)
   target_compile_definitions(_jaxdecomp PRIVATE JD_JAX_BACKEND)
