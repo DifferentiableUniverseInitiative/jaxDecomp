@@ -35,6 +35,4 @@ jobs:
         cd tests
         export JAX_PLATFORM_NAME=cpu
         export XLA_FLAGS='--xla_force_host_platform_device_count=8'
-        pytest test_fft.py
-        pytest test_halo.py
-        pytest test_transpose.py
+        pytest -v
