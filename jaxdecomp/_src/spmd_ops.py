@@ -219,8 +219,7 @@ def get_pdims_from_sharding(sharding):
   return tuple([get_axis_size(sharding, i) for i in range(len(sharding.spec))])
 
 
-def get_pdims_from_mesh():
-  mesh = mesh_lib.thread_resources.env.physical_mesh
+def get_pdims_from_mesh(mesh):
   if mesh.empty:
     pdims = (1, 1)
   else:

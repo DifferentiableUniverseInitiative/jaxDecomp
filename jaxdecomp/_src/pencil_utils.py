@@ -65,9 +65,9 @@ def get_transpose_order(fft_type, mesh=None) -> tuple[int, int, int]:
   return transpose_shape
 
 
-def get_lowering_args(fft_type, global_shape):
-  pencil_type = get_pencil_type()
-  pdims = get_pdims_from_mesh()
+def get_lowering_args(fft_type, global_shape,mesh):
+  pencil_type = get_pencil_type(mesh)
+  pdims = get_pdims_from_mesh(mesh)
 
   if jaxdecomp.config.transpose_axis_contiguous:
     match fft_type:
@@ -82,7 +82,10 @@ def get_lowering_args(fft_type, global_shape):
           transpose_back_shape = (0, 1, 2)
           pdims = pdims[::-1]
         elif pencil_type == _jaxdecomp.SLAB_YZ:
-          transpose_back_shape = (1, 2, 0)
+          if jaxdecomp.config.transpose_axis_contiguous_2:
+            transpose_back_shape = (2, 0, 1)
+          else:
+            transpose_back_shape = (1, 2, 0)
         else:
           transpose_back_shape = (2, 0, 1)
       case _:
