@@ -16,7 +16,7 @@ from jaxlib.hlo_helpers import custom_call
 
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
-from jaxdecomp._src.spmd_ops import BasePrimitive, register_primitive
+from jaxdecomp._src.spmd_ops import BasePrimitive, register_primitive , get_pdims_from_sharding
 
 GdimsType = Tuple[int, int, int]
 # Same as FFTs
@@ -50,27 +50,27 @@ class TransposePrimitive(BasePrimitive):
   outer_primitive: object = None
 
   @staticmethod
-  def abstract(x: ArrayLike, kind: str, pdims: PdimsType,
+  def abstract(x: ArrayLike, kind: str, pdims: PdimsType,out_pdims:PdimsType,
                global_shape: GdimsType) -> ShapedArray:
     """
-        Abstract method to describe the shape of the output array after transposition.
+    Abstract method to describe the shape of the output array after transposition.
 
-        Parameters
-        ----------
-        x : ArrayLike
-            Input array.
-        kind : str
-            Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
-        pdims : tuple[int]
-            Partition dimensions.
-        global_shape : tuple[int]
-            Global shape of the input array.
+    Parameters
+    ----------
+    x : ArrayLike
+        Input array.
+    kind : str
+        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+    pdims : tuple[int]
+        Partition dimensions.
+    global_shape : tuple[int]
+        Global shape of the input array.
 
-        Returns
-        -------
-        ShapedArray
-            Abstract shape of the output array after transposition.
-        """
+    Returns
+    -------
+    ShapedArray
+        Abstract shape of the output array after transposition.
+    """
     if global_shape == x.shape:
       return TransposePrimitive.outer_abstract(x, kind)
     # Make sure that global_shape is divisible by pdims and equals to slice
@@ -92,29 +92,29 @@ class TransposePrimitive(BasePrimitive):
     else:
       transpose_shape = (0, 1, 2)
 
-    shape = (global_shape[transpose_shape[0]] // pdims[0],
-             global_shape[transpose_shape[1]] // pdims[1],
-             global_shape[transpose_shape[2]] // pdims[2])
+    shape = (global_shape[transpose_shape[0]] // out_pdims[0],
+             global_shape[transpose_shape[1]] // out_pdims[1],
+             global_shape[transpose_shape[2]] // out_pdims[2])
 
     return ShapedArray(shape, x.dtype)
 
   @staticmethod
   def outer_abstract(x: jnp.ndarray, kind: str) -> ShapedArray:
     """
-        Abstract method for transposition that does not require knowledge of global shape.
+    Abstract method for transposition that does not require knowledge of global shape.
 
-        Parameters
-        ----------
-        x : ArrayLike
-            Input array.
-        kind : str
-            Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+    Parameters
+    ----------
+    x : ArrayLike
+        Input array.
+    kind : str
+        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
 
-        Returns
-        -------
-        ShapedArray
-            Abstract shape of the output array after transposition.
-        """
+    Returns
+    -------
+    ShapedArray
+        Abstract shape of the output array after transposition.
+    """
     assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
     if jaxdecomp.config.transpose_axis_contiguous:
       match kind:
@@ -131,10 +131,12 @@ class TransposePrimitive(BasePrimitive):
     shape = (x.shape[transpose_shape[0]], x.shape[transpose_shape[1]],
              x.shape[transpose_shape[2]])
 
+    print(f"shape {shape}")
+
     return ShapedArray(shape, x.dtype)
 
   @staticmethod
-  def lowering(ctx, x: Array, *, kind: str, pdims: PdimsType,
+  def lowering(ctx, x: Array, *, kind: str, pdims: PdimsType,out_pdims:PdimsType,
                global_shape: GdimsType):
     """
         Method to lower the transposition operation to MLIR.
@@ -240,7 +242,7 @@ class TransposePrimitive(BasePrimitive):
             "Invalid kind (x_z and z_x not supported with cudecomp)")
 
   @staticmethod
-  def per_shard_impl(x: ArrayLike, kind: str, pdims: PdimsType,
+  def per_shard_impl(x: ArrayLike, kind: str, pdims: PdimsType,out_pdims:PdimsType,
                      global_shape: GdimsType):
     """
     Per-shard implementation method for the transposition primitive.
@@ -262,7 +264,7 @@ class TransposePrimitive(BasePrimitive):
         Result of binding the inner primitive with input arguments.
     """
     return TransposePrimitive.inner_primitive.bind(
-        x, kind=kind, pdims=pdims, global_shape=global_shape)
+        x, kind=kind, pdims=pdims,out_pdims=out_pdims, global_shape=global_shape)
 
   @staticmethod
   def infer_sharding_from_operands(
@@ -337,12 +339,13 @@ class TransposePrimitive(BasePrimitive):
     input_sharding = NamedSharding(input_mesh, P(*arg_infos[0].sharding.spec))
     output_sharding = NamedSharding(input_mesh, P(*result_infos.sharding.spec))
     global_shape = arg_infos[0].shape
-    pdims = input_mesh.devices.shape[::-1]
-
+    original_pdims = input_mesh.devices.shape[::-1]
+    out_pdims = get_pdims_from_sharding(output_sharding)
     impl = partial(
         TransposePrimitive.per_shard_impl,
         kind=kind,
-        pdims=pdims,
+        pdims=original_pdims,
+        out_pdims=out_pdims , 
         global_shape=global_shape)
 
     return mesh, impl, output_sharding, (input_sharding,)
