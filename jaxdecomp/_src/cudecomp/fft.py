@@ -43,7 +43,7 @@ class FFTPrimitive(BasePrimitive):
 
   @staticmethod
   def abstract(x: Array, fft_type: FftType, pdims: PdimsType,
-               global_shape: GdimsType, adjoint: bool) -> ShapedArray:
+               global_shape: GdimsType, adjoint: bool,mesh : Mesh) -> ShapedArray:
     """
     Abstract function to compute the shape of FFT output.
 
@@ -104,7 +104,7 @@ class FFTPrimitive(BasePrimitive):
 
   @staticmethod
   def lowering(ctx, a: Array, *, fft_type: xla_client.FftType, pdims: PdimsType,
-               global_shape: GdimsType, adjoint: bool):
+               global_shape: GdimsType, adjoint: bool,mesh : Mesh):
     """
     Lowering function for FFT primitive.
 
@@ -141,8 +141,9 @@ class FFTPrimitive(BasePrimitive):
     is_double = np.finfo(dtype).dtype == np.float64
 
     # Get original global shape
-    pencil_type = get_pencil_type()
-    pdims, global_shape = get_lowering_args(fft_type, global_shape)
+    pencil_type = get_pencil_type(mesh)
+    pdims, global_shape = get_lowering_args(fft_type, global_shape,mesh)
+    print(f"lowering with pdims {pdims} and globalshape {global_shape}")
     local_transpose = jaxdecomp.config.transpose_axis_contiguous
     # Compute the descriptor for our FFT
     config = _jaxdecomp.GridConfig()
@@ -207,7 +208,8 @@ class FFTPrimitive(BasePrimitive):
                      fft_type: FftType,
                      pdims: PdimsType,
                      global_shape: GdimsType,
-                     adjoint: bool): # yapf: disable
+                     adjoint: bool,
+                     mesh : Mesh): # yapf: disable
     """
     Implementation function for per-shard FFT primitive.
 
@@ -240,10 +242,8 @@ class FFTPrimitive(BasePrimitive):
         fft_type=fft_type,
         pdims=pdims,
         global_shape=global_shape,
-        adjoint=adjoint)
-    if fft_type == FftType.FFT and pdims[0] == 1:
-      if jaxdecomp.config.transpose_axis_contiguous_2 and jaxdecomp.config.transpose_axis_contiguous:
-        out = out.transpose([2, 0, 1])
+        adjoint=adjoint,
+        mesh=mesh)
 
     return out
 
@@ -278,7 +278,7 @@ class FFTPrimitive(BasePrimitive):
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     spec = input_sharding.spec
     input_mesh = input_sharding.mesh
-    transposed_specs = get_output_specs(fft_type, spec, 'cudecomp')
+    transposed_specs = get_output_specs(fft_type, spec, input_mesh,'cudecomp')
     return NamedSharding(input_mesh, P(*transposed_specs))
 
   @staticmethod
@@ -318,7 +318,8 @@ class FFTPrimitive(BasePrimitive):
         fft_type=fft_type,
         pdims=pdims,
         global_shape=global_shape,
-        adjoint=adjoint)
+        adjoint=adjoint,
+        mesh=input_mesh)
 
     return mesh, impl, output_sharding, (input_sharding,)
 
