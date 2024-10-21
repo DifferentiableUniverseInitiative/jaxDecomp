@@ -24,8 +24,6 @@ global_shapes = [(8, 16, 32), (8, 8, 8), (29 * size, 19 * size, 17 * size)
                 ]  # Cubes, non-cubes and primes
 local_transpose = [True, False]
 
-# Third has gotten a precision hit I don't know why
-# global_shapes = global_shapes[:2]
 
 
 class TestFFTs:
@@ -49,10 +47,9 @@ class TestFFTs:
     global_array, mesh = create_spmd_array(global_shape, pdims)
 
     # Perform distributed FFT
-    with mesh:
-      karray = jaxdecomp.fft.pfft3d(global_array, backend=backend)
-      # Perform inverse FFT
-      rec_array = jaxdecomp.fft.pifft3d(karray, backend=backend)
+    karray = jaxdecomp.fft.pfft3d(global_array, backend=backend)
+    # Perform inverse FFT
+    rec_array = jaxdecomp.fft.pifft3d(karray, backend=backend)
 
     print(f"orignal shard {global_array.sharding.spec}")
     print(f"sharding of karray {karray.sharding.spec}")
@@ -167,10 +164,9 @@ class TestFFTsGrad:
       y = (y * jnp.conjugate(y)).real.sum()
       return y
 
-    with mesh:
-      # Perform distributed FFT
-      array_grad = jax.grad(spmd_grad)(global_array)
-      print("Here is the gradient I'm getting", array_grad.shape)
+    # Perform distributed FFT
+    array_grad = jax.grad(spmd_grad)(global_array)
+    print("Here is the gradient I'm getting", array_grad.shape)
 
     gathered_array = multihost_utils.process_allgather(global_array, tiled=True)
     gathered_grads = multihost_utils.process_allgather(array_grad, tiled=True)
@@ -194,11 +190,10 @@ class TestFFTsGrad:
       y = jnp.fft.ifftn(arr).transpose(transpose_back)
       return (y * jnp.conjugate(y)).real.sum()
 
-    with mesh:
-      # Perform distributed FFT
-      karray = jaxdecomp.fft.pfft3d(global_array, backend=backend)
-      ifft_array_grad = jax.grad(inv_spmd_grad)(karray)
-      print("Here is the gradient I'm getting", array_grad.shape)
+    # Perform distributed FFT
+    karray = jaxdecomp.fft.pfft3d(global_array, backend=backend)
+    ifft_array_grad = jax.grad(inv_spmd_grad)(karray)
+    print("Here is the gradient I'm getting", array_grad.shape)
 
     ifft_gathered_grads = multihost_utils.process_allgather(
         ifft_array_grad, tiled=True)
