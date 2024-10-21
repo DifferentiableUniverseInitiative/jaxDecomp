@@ -1,19 +1,53 @@
 from abc import ABCMeta, abstractmethod
 from functools import partial
+from typing import Any, Callable, Hashable
 
 from jax import core
 from jax._src import dispatch
+from jax._src import mesh as mesh_lib
 from jax._src.interpreters import batching
 from jax.experimental.custom_partitioning import custom_partitioning
 from jax.interpreters import mlir, xla
 
-# Inspired by https://github.com/NVIDIA/TransformerEngine/blob/main/transformer_engine/jax/cpp_extensions.py
+Specs = Any
+AxisName = Hashable
+
+from functools import partial
+
+from jax.experimental.shard_map import shard_map
+from jax.sharding import PartitionSpec as P
+
+from jaxdecomp._src import _jaxdecomp
+
+
+def get_pencil_type(mesh=None):
+  if mesh is None:
+    mesh = mesh_lib.thread_resources.env.physical_mesh
+  if mesh.empty:
+    pdims = None
+  else:
+    pdims = mesh.devices.shape[::-1]
+
+  if pdims == (1, 1) or pdims == None:
+    return _jaxdecomp.NO_DECOMP
+  elif pdims[0] == 1:
+    return _jaxdecomp.SLAB_XY
+  elif pdims[1] == 1:
+    return _jaxdecomp.SLAB_YZ
+  else:
+    return _jaxdecomp.PENCILS
 
 
 class BasePrimitive(metaclass=ABCMeta):
   """
-    jax primitive
-    """
+  jax primitive
+  """
+  name: str
+  multiple_results: bool
+  impl_static_args: tuple
+  inner_primitive: core.Primitive | None
+  outer_primitive: core.Primitive | None
+  outer_lowering: custom_partitioning
 
   @staticmethod
   @abstractmethod
@@ -81,8 +115,13 @@ class BasePrimitive(metaclass=ABCMeta):
 
 class CustomParPrimitive(metaclass=ABCMeta):
   """
-    SPMD Custom Partitioning wrapper
-    """
+  SPMD Custom Partitioning wrapper
+  """
+
+  name: str
+  multiple_results: bool
+  impl_static_args: tuple
+  outer_lowering: custom_partitioning
 
   @staticmethod
   @abstractmethod
@@ -174,3 +213,16 @@ def get_axis_size(sharding, index):
     return 1
   else:
     return sharding.mesh.shape[sharding.spec[index]]
+
+
+def get_pdims_from_sharding(sharding):
+  return tuple([get_axis_size(sharding, i) for i in range(len(sharding.spec))])
+
+
+def get_pdims_from_mesh(mesh):
+  if mesh.empty:
+    pdims = (1, 1)
+  else:
+    pdims = mesh.devices.shape[::-1]
+
+  return pdims

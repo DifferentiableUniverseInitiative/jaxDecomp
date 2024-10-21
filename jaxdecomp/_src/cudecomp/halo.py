@@ -1,4 +1,3 @@
-import os
 from functools import partial
 from typing import Tuple
 
@@ -8,8 +7,8 @@ import numpy as np
 from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
 from jax._src.typing import Array
-from jax.core import Primitive, ShapedArray
-from jax.sharding import NamedSharding
+from jax.core import ShapedArray
+from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxlib.hlo_helpers import custom_call
 
@@ -17,6 +16,11 @@ import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
 from jaxdecomp._src.spmd_ops import (BasePrimitive, get_axis_size,
                                      register_primitive)
+
+GdimsType = Tuple[int, int, int]
+PdimsType = Tuple[int, int]
+HaloExtentType = Tuple[int, int]
+Periodicity = Tuple[bool, bool]
 
 
 class HaloPrimitive(BasePrimitive):
@@ -31,35 +35,36 @@ class HaloPrimitive(BasePrimitive):
   outer_primitive = None
 
   @staticmethod
-  def abstract(x: Array, halo_extents: Tuple[int, int, int],
-               halo_periods: Tuple[bool, bool, bool], pdims: Tuple[int, int],
-               global_shape: Tuple[int, int, int]) -> Array:
+  def abstract(x: Array, halo_extents: HaloExtentType,
+               halo_periods: Periodicity, pdims: PdimsType,
+               global_shape: GdimsType) -> Array:
     """
-        Abstract function for determining the shape and dtype after the halo exchange operation.
+    Abstract function for determining the shape and dtype after the halo exchange operation.
 
-        Parameters
-        ----------
-        x : Array
-            Input array.
-        halo_extents : Tuple[int, int, int]
-            Extents of the halo in x, y, and z dimensions.
-        halo_periods : Tuple[bool, bool, bool]
-            Periodicity of the halo in x, y, and z dimensions.
-        pdims : Tuple[int, int]
-            Processor dimensions.
-        global_shape : Tuple[int, int, int]
-            Global shape of the array.
+    Parameters
+    ----------
+    x : Array
+        Input array.
+    halo_extents : Tuple[int, int, int]
+        Extents of the halo in x, y, and z dimensions.
+    halo_periods : Tuple[bool, bool, bool]
+        Periodicity of the halo in x, y, and z dimensions.
+    pdims : Tuple[int, int]
+        Processor dimensions.
+    global_shape : Tuple[int, int, int]
+        Global shape of the array.
 
-        Returns
-        -------
-        Array
-            Abstract array after the halo exchange operation.
-        """
+    Returns
+    -------
+    Array
+        Abstract array after the halo exchange operation.
+    """
+    del halo_extents, halo_periods, pdims, global_shape
     return x.update(shape=x.shape, dtype=x.dtype)
 
   @staticmethod
-  def outer_abstract(x: Array, halo_extents: Tuple[int, int, int],
-                     halo_periods: Tuple[bool, bool, bool]) -> Array:
+  def outer_abstract(x: Array, halo_extents: HaloExtentType,
+                     halo_periods: Periodicity) -> Array:
     """
         Abstract function for determining the shape and dtype without considering inner details.
 
@@ -77,12 +82,13 @@ class HaloPrimitive(BasePrimitive):
         Array
             Abstract array after the halo exchange operation.
         """
+    del halo_extents, halo_periods
     return x.update(shape=x.shape, dtype=x.dtype)
 
   @staticmethod
-  def lowering(ctx, x: Array, halo_extents: Tuple[int, int, int],
-               halo_periods: Tuple[bool, bool, bool], pdims: Tuple[int, int],
-               global_shape: Tuple[int, int, int]) -> Array:
+  def lowering(ctx, x: Array, halo_extents: HaloExtentType,
+               halo_periods: Periodicity, pdims: PdimsType,
+               global_shape: GdimsType) -> Array:
     """
         Lowering function to generate the MLIR representation for halo exchange.
 
@@ -118,9 +124,12 @@ class HaloPrimitive(BasePrimitive):
     config.gdims = global_shape[::-1]
     config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
     config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
+    lowered_halo_extents = (*halo_extents, 0)
+    lowered_halo_periods = (*halo_periods, True)
 
     workspace_size, opaque = _jaxdecomp.build_halo_descriptor(
-        config, is_double, halo_extents[::-1], halo_periods[::-1], 0)
+        config, is_double, lowered_halo_extents[::-1],
+        lowered_halo_periods[::-1], 0)
     layout = tuple(range(n - 1, -1, -1))
 
     workspace = mlir.full_like_aval(
@@ -140,8 +149,8 @@ class HaloPrimitive(BasePrimitive):
     return out.results
 
   @staticmethod
-  def impl(x: Array, halo_extents: Tuple[int, int, int],
-           halo_periods: Tuple[bool, bool, bool]) -> Primitive:
+  def impl(x: Array, halo_extents: HaloExtentType,
+           halo_periods: Periodicity) -> Array:
     """
         Implementation function for performing halo exchange.
 
@@ -159,22 +168,13 @@ class HaloPrimitive(BasePrimitive):
         Primitive
             Inner primitive bound with input parameters.
         """
-    pdims = (1, jax.device_count())
-    global_shape = x.shape
-
-    return HaloPrimitive.inner_primitive.bind(
-        x,
-        halo_extents=halo_extents,
-        halo_periods=halo_periods,
-        pdims=pdims,
-        global_shape=global_shape,
-    )
+    del halo_extents, halo_periods
+    return x
 
   @staticmethod
-  def per_shard_impl(x: Array, halo_extents: Tuple[int, int, int],
-                     halo_periods: Tuple[bool, bool, bool],
-                     pdims: Tuple[int, int], global_shape: Tuple[int, int,
-                                                                 int]) -> Array:
+  def per_shard_impl(x: Array, halo_extents: HaloExtentType,
+                     halo_periods: Periodicity, pdims: PdimsType,
+                     global_shape: GdimsType) -> Array:
     """
         Implementation function for performing halo exchange per shard.
 
@@ -207,38 +207,39 @@ class HaloPrimitive(BasePrimitive):
 
   @staticmethod
   def infer_sharding_from_operands(
-      halo_extents: Tuple[int, int, int], halo_periods: Tuple[bool, bool, bool],
+      halo_extents: HaloExtentType, halo_periods: Periodicity,
       mesh: NamedSharding, arg_infos: Tuple[ShapeDtypeStruct],
       result_infos: Tuple[ShapedArray]) -> NamedSharding:
     """
-        Infer sharding information for halo exchange operation.
+    Infer sharding information for halo exchange operation.
 
-        Parameters
-        ----------
-        halo_extents : Tuple[int, int, int]
-            Extents of the halo in x, y, and z dimensions.
-        halo_periods : Tuple[bool, bool, bool]
-            Periodicity of the halo in x, y, and z dimensions.
-        mesh : NamedSharding
-            Mesh object for sharding.
-        arg_shapes : Tuple[ir.ShapeDtypeStruct]
-            Shapes and dtypes of input operands.
-        result_shape : ir.ShapedArray
-            Shape and dtype of the output result.
+    Parameters
+    ----------
+    halo_extents : Tuple[int, int, int]
+        Extents of the halo in x, y, and z dimensions.
+    halo_periods : Tuple[bool, bool, bool]
+        Periodicity of the halo in x, y, and z dimensions.
+    mesh : NamedSharding
+        Mesh object for sharding.
+    arg_shapes : Tuple[ir.ShapeDtypeStruct]
+        Shapes and dtypes of input operands.
+    result_shape : ir.ShapedArray
+        Shape and dtype of the output result.
 
-        Returns
-        -------
-        NamedSharding
-            Sharding information for halo exchange operation.
-        """
+    Returns
+    -------
+    NamedSharding
+        Sharding information for halo exchange operation.
+    """
+    del halo_extents, halo_periods, result_infos, mesh
     halo_exchange_sharding = arg_infos[0].sharding
-    return NamedSharding(mesh, P(*halo_exchange_sharding.spec))
+    input_mesh = halo_exchange_sharding.mesh
+    return NamedSharding(input_mesh, P(*halo_exchange_sharding.spec))
 
   @staticmethod
-  def partition(
-      halo_extents: Tuple[int, int, int], halo_periods: Tuple[bool, bool, bool],
-      mesh: NamedSharding, arg_shapes: Tuple[ShapeDtypeStruct],
-      result_shape: ShapeDtypeStruct) -> Tuple[NamedSharding, partial]:
+  def partition(halo_extents: HaloExtentType, halo_periods: Periodicity,
+                mesh: Mesh, arg_shapes: Tuple[ShapeDtypeStruct],
+                result_shape: ShapeDtypeStruct):
     """
         Partition function for halo exchange operation.
 
@@ -260,15 +261,13 @@ class HaloPrimitive(BasePrimitive):
         Tuple[NamedSharding, partial]
             Mesh object, implementation function, sharding information, and its tuple.
         """
-    halo_exchange_sharding = NamedSharding(mesh,
-                                           P(*arg_shapes[0].sharding.spec))
+    halo_exchange_sharding = arg_shapes[0].sharding
     global_shape = arg_shapes[0].shape
-    pdims = (get_axis_size(halo_exchange_sharding,
-                           1), get_axis_size(halo_exchange_sharding, 0))
+    pdims = (get_axis_size(halo_exchange_sharding,1), get_axis_size(halo_exchange_sharding, 0)) # yapf: disable
 
     shape_without_halo = (global_shape[0] - 2 * pdims[1] * halo_extents[0],
                           global_shape[1] - 2 * pdims[0] * halo_extents[1],
-                          global_shape[2] - 2 * halo_extents[2])
+                          global_shape[2])
 
     impl = partial(
         HaloPrimitive.per_shard_impl,
@@ -283,8 +282,9 @@ class HaloPrimitive(BasePrimitive):
 register_primitive(HaloPrimitive)
 
 
-def halo_p_lower(x: Array, halo_extents: Tuple[int, int, int],
-                 halo_periods: Tuple[bool, bool, bool]) -> Primitive:
+@partial(jax.jit, static_argnums=(1, 2))
+def halo_p_lower(x: Array, halo_extents: HaloExtentType,
+                 halo_periods: Periodicity) -> Array:
   """
     Lowering function for the halo exchange operation.
 
@@ -311,8 +311,8 @@ def halo_p_lower(x: Array, halo_extents: Tuple[int, int, int],
 
 # Custom Partitioning
 @partial(jax.custom_vjp, nondiff_argnums=(1, 2))
-def halo_exchange(x: Array, halo_extents: Tuple[int, int, int],
-                  halo_periods: Tuple[bool, bool, bool]) -> Array:
+def halo_exchange(x: Array, halo_extents: HaloExtentType,
+                  halo_periods: Periodicity) -> Array:
   """
     Halo exchange operation with custom VJP.
 
@@ -334,8 +334,8 @@ def halo_exchange(x: Array, halo_extents: Tuple[int, int, int],
   return output
 
 
-def _halo_fwd_rule(x: Array, halo_extents: Tuple[int, int, int],
-                   halo_periods: Tuple[bool, bool, bool]) -> Tuple[Array, None]:
+def _halo_fwd_rule(x: Array, halo_extents: HaloExtentType,
+                   halo_periods: Periodicity) -> Tuple[Array, None]:
   """
     Forward rule for the halo exchange operation.
 
@@ -356,9 +356,8 @@ def _halo_fwd_rule(x: Array, halo_extents: Tuple[int, int, int],
   return halo_p_lower(x, halo_extents, halo_periods), None
 
 
-def _halo_bwd_rule(halo_extents: Tuple[int, int, int],
-                   halo_periods: Tuple[bool, bool,
-                                       bool], ctx, g: Array) -> Tuple[Array]:
+def _halo_bwd_rule(halo_extents: HaloExtentType, halo_periods: Periodicity, _,
+                   g: Array) -> Tuple[Array]:
   """
     Backward rule for the halo exchange operation.
 
@@ -383,6 +382,3 @@ def _halo_bwd_rule(halo_extents: Tuple[int, int, int],
 
 # Define VJP for custom halo_exchange operation
 halo_exchange.defvjp(_halo_fwd_rule, _halo_bwd_rule)
-
-# JIT compile the halo_exchange operation
-halo_exchange = jax.jit(halo_exchange, static_argnums=(1, 2))
