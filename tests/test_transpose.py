@@ -9,17 +9,19 @@ size = jax.device_count()
 
 import pytest
 
-jax.config.update("jax_enable_x64", False)
+jax.config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
 from jax.experimental.multihost_utils import process_allgather
 from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
 from numpy.testing import assert_allclose, assert_array_equal
+from functools import partial
 
 import jaxdecomp
 from jaxdecomp import (transposeXtoY, transposeYtoX, transposeYtoZ,
                        transposeZtoY)
+all_gather = partial(process_allgather, tiled=True)
 
 pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
@@ -77,12 +79,12 @@ class TestTransposes:
     assert compare_sharding(jd_tranposed_zy.sharding, y_pencil_sharding)
     assert compare_sharding(jd_tranposed_yx.sharding, original_sharding)
 
-    gathered_array = process_allgather(global_array, tiled=True)
+    gathered_array = all_gather(global_array)
 
-    gathered_jd_xy = process_allgather(jd_tranposed_xy, tiled=True)
-    gathered_jd_yz = process_allgather(jd_tranposed_yz, tiled=True)
-    gathered_jd_zy = process_allgather(jd_tranposed_zy, tiled=True)
-    gathered_jd_yx = process_allgather(jd_tranposed_yx, tiled=True)
+    gathered_jd_xy = all_gather(jd_tranposed_xy)
+    gathered_jd_yz = all_gather(jd_tranposed_yz)
+    gathered_jd_zy = all_gather(jd_tranposed_zy)
+    gathered_jd_yx = all_gather(jd_tranposed_yx)
 
     # Explanation :
     # Tranposing forward is a shift axis to the right so ZYX to XZY to YXZ (2 0 1)
@@ -192,8 +194,8 @@ class TestTransposesGrad:
     array_grad = jax.grad(jaxdecomp_transpose)(global_array)
     print("Here is the gradient I'm getting", array_grad.shape)
 
-    gathered_array = process_allgather(global_array, tiled=True)
-    gathered_grads = process_allgather(array_grad, tiled=True)
+    gathered_array = all_gather(global_array)
+    gathered_grads = all_gather(array_grad)
     jax_grad = jax.grad(jax_transpose)(gathered_array)
 
     print(f"Shape of JAX array {jax_grad.shape}")

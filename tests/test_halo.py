@@ -103,9 +103,6 @@ def test_halo_against_cudecomp(pdims):
   assert_array_equal(g_jax_exchanged, g_cudecomp_exchanged)
 
 
-pdims = [pdims[0]]
-
-
 class TestHaloExchange:
 
   def run_test(self, global_shape, pdims, backend):

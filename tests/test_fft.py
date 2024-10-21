@@ -8,13 +8,17 @@ size = jax.device_count()
 
 jax.config.update("jax_enable_x64", True)
 
+from functools import partial
+
 import jax.numpy as jnp
 import pytest
-from jax.experimental import multihost_utils
+from jax.experimental.multihost_utils import process_allgather
 from numpy.testing import assert_allclose
 
 import jaxdecomp
 from jaxdecomp._src import PENCILS, SLAB_XY, SLAB_YZ
+
+all_gather = partial(process_allgather, tiled=True)
 
 pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
@@ -59,10 +63,9 @@ class TestFFTs:
     # assert compare_sharding(global_array.sharding, dist_jax_rec_array.sharding)
 
     # Check the forward FFT
-    gathered_array = multihost_utils.process_allgather(global_array, tiled=True)
-    gathered_karray = multihost_utils.process_allgather(karray, tiled=True)
-    gathered_rec_array = multihost_utils.process_allgather(
-        rec_array, tiled=True)
+    gathered_array = all_gather(global_array)
+    gathered_karray = all_gather(karray)
+    gathered_rec_array = all_gather(rec_array)
 
     jax_karray = jnp.fft.fftn(gathered_array)
     jax_rec_array = jnp.fft.ifftn(jax_karray, norm='forward')
@@ -167,8 +170,8 @@ class TestFFTsGrad:
     array_grad = jax.grad(spmd_grad)(global_array)
     print("Here is the gradient I'm getting", array_grad.shape)
 
-    gathered_array = multihost_utils.process_allgather(global_array, tiled=True)
-    gathered_grads = multihost_utils.process_allgather(array_grad, tiled=True)
+    gathered_array = all_gather(global_array)
+    gathered_grads = all_gather(array_grad)
     jax_grad = jax.grad(local_grad)(gathered_array)
 
     print(f"Shape of JAX array {jax_grad.shape}")
@@ -194,8 +197,7 @@ class TestFFTsGrad:
     ifft_array_grad = jax.grad(inv_spmd_grad)(karray)
     print("Here is the gradient I'm getting", array_grad.shape)
 
-    ifft_gathered_grads = multihost_utils.process_allgather(
-        ifft_array_grad, tiled=True)
+    ifft_gathered_grads = all_gather(ifft_array_grad)
     jax_karray = jnp.fft.fftn(gathered_array).transpose(transpose_back)
 
     ifft_jax_grad = jax.grad(inv_local_grad)(jax_karray)
