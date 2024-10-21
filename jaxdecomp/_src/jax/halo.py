@@ -30,9 +30,9 @@ def _halo_slab_xy(operand, halo_extents: HaloExtentType,
   lower_halo = operand[-(halo_extent + halo_extent):-halo_extent]
 
   permutations = slice(None, None) if periodic else slice(None, -1)
-  reverse_indexing_z = [(j, (j + 1) % z_size) for j in range(z_size)
+  forward_indexing_z = [(j, (j + 1) % z_size) for j in range(z_size)
                        ][permutations]
-  forward_indexing_z = [((j + 1) % z_size, j) for j in range(z_size)
+  reverse_indexing_z = [((j + 1) % z_size, j) for j in range(z_size)
                        ][permutations]
 
   # circular shift to the next rank
