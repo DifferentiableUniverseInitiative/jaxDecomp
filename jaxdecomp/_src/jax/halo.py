@@ -113,9 +113,9 @@ def _halo_pencils(operand, halo_extents: HaloExtentType,
 
   permutations_x = slice(None, None) if periodic_x else slice(None, -1)
   permutations_y = slice(None, None) if periodic_y else slice(None, -1)
-  reverse_indexing_z = [(j, (j + 1) % z_size) for j in range(z_size)
+  reverse_indexing_z = [((j + 1) % z_size, j) for j in range(z_size)
                        ][permutations_x]
-  forward_indexing_z = [((j + 1) % z_size, j) for j in range(z_size)
+  forward_indexing_z = [(j, (j + 1) % z_size) for j in range(z_size)
                        ][permutations_x]
   reverse_indexing_y = [((j + 1) % y_size, j) for j in range(y_size)
                        ][permutations_y]

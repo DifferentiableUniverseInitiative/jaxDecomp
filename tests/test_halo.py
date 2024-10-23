@@ -108,10 +108,6 @@ class TestHaloExchange:
     print("*" * 80)
     print(f"Testing with pdims {pdims}")
 
-    if pdims == pencil_2:
-      pytest.skip("Skipping pencil_2 for now")
-
-
     jnp.set_printoptions(linewidth=200)
 
     global_array, mesh = create_ones_spmd_array(global_shape, pdims)
@@ -202,7 +198,7 @@ class TestHaloExchange:
 
 
     # if up down padding check the up down slices
-      if pdims[1] > 1 and pdims[0] == 1:
+      if pdims[1] > 1:
         # Check the upper padding
         assert_array_equal(current_slice[:halo_size], up_slice[-2 * halo_size:-halo_size])
         # Check the lower padding
@@ -210,7 +206,7 @@ class TestHaloExchange:
 
 
       # if left right padding check the left right slices
-      if pdims[0] > 1 and pdims[1] == 1:
+      if pdims[0] > 1:
         # Check the left padding
         assert_array_equal(current_slice[:, :halo_size],
                            left_slice[:, -2 * halo_size:-halo_size:])
