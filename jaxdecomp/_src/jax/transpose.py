@@ -150,7 +150,7 @@ class JAXTransposePrimitive(CustomParPrimitive):
         NamedSharding
             Named sharding information.
         """
-    del mesh
+    del mesh, result_infos
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     if jaxdecomp.config.transpose_axis_contiguous:
       transposed_pdims = (input_sharding.spec[1], input_sharding.spec[0], None)
@@ -177,28 +177,28 @@ class JAXTransposePrimitive(CustomParPrimitive):
   def partition(kind: str, mesh: Mesh, arg_infos: Tuple[ShapeDtypeStruct],
                 result_infos: Tuple[ShapedArray]):
     """
-        Method to partition the transposition operation for custom partitioning.
+    Method to partition the transposition operation for custom partitioning.
 
-        Parameters
-        ----------
-        kind : str
-            Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
-        mesh : Mesh
-            Sharding mesh information.
-        arg_infos : Tuple[ShapeDtypeStruct]
-            Tuple of ShapeDtypeStruct for input operands.
-        result_infos : Tuple[ShapedArray]
-            Tuple of ShapedArray for result information.
+    Parameters
+    ----------
+    kind : str
+        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+    mesh : Mesh
+        Sharding mesh information.
+    arg_infos : Tuple[ShapeDtypeStruct]
+        Tuple of ShapeDtypeStruct for input operands.
+    result_infos : Tuple[ShapedArray]
+        Tuple of ShapedArray for result information.
 
-        Returns
-        -------
-        Tuple
-            Tuple containing mesh, implementation function, output sharding, and input sharding.
-        """
+    Returns
+    -------
+    Tuple
+        Tuple containing mesh, implementation function, output sharding, and input sharding.
+    """
 
-    input_sharding = arg_infos[0].sharding
-    input_mesh = input_sharding.mesh
-    output_sharding = NamedSharding(input_mesh, P(*result_infos.sharding.spec))
+    input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
+    output_sharding: NamedSharding = result_infos.sharding  # type: ignore
+    input_mesh: Mesh = arg_infos[0].sharding.mesh  # type: ignore
 
     x_axis_name, y_axis_name = input_mesh.axis_names
     impl = partial(

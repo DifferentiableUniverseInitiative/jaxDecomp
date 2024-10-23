@@ -1,8 +1,7 @@
 from functools import partial
-from typing import Tuple
+from typing import Any, Tuple
 
 import jax
-import jax.numpy as jnp
 import jaxlib.mlir.ir as ir
 import numpy as np
 from jax import ShapeDtypeStruct
@@ -18,40 +17,36 @@ import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
 from jaxdecomp._src.spmd_ops import (BasePrimitive, get_pdims_from_sharding,
                                      register_primitive)
-
-GdimsType = Tuple[int, int, int]
-# Same as FFTs
-# pdims are always two integers
-# but in non contiguous cases we need to represent ('x' , None , 'y')
-PdimsType = Tuple[int, int, int]
+from jaxdecomp.typing import GdimsType, TransposablePdimsType
 
 
 class TransposePrimitive(BasePrimitive):
   """
-    jax primitive for transposing arrays with different partitioning strategies.
+  JAX primitive for transposing arrays with different partitioning strategies.
 
-    attributes
-    ----------
-    name : str
-        Name of the primitive ("transpose").
-    multiple_results : bool
-        Boolean indicating if the primitive returns multiple results (False).
-    impl_static_args : tuple
-        Static arguments for the implementation (tuple containing (1,)).
-    inner_primitive : object
-        Inner core.Primitive object for the primitive.
-    outer_primitive : object
-        Outer core.Primitive object for the primitive.
-    """
+  Attributes
+  ----------
+  name : str
+      Name of the primitive ("transpose").
+  multiple_results : bool
+      Boolean indicating if the primitive returns multiple results (False).
+  impl_static_args : tuple
+      Static arguments for the implementation (tuple containing (1,)).
+  inner_primitive : object
+      Inner core.Primitive object for the primitive.
+  outer_primitive : object
+      Outer core.Primitive object for the primitive.
+  """
 
   name: str = "transpose"
   multiple_results: bool = False
-  impl_static_args: Tuple[int, int] = (1,)
-  inner_primitive: object = None
-  outer_primitive: object = None
+  impl_static_args: Tuple[int] = (1,)
+  inner_primitive: Any = None
+  outer_primitive: Any = None
 
   @staticmethod
-  def abstract(x: ArrayLike, kind: str, pdims: PdimsType, out_pdims: PdimsType,
+  def abstract(x: Array, kind: str, pdims: TransposablePdimsType,
+               out_pdims: TransposablePdimsType,
                global_shape: GdimsType) -> ShapedArray:
     """
     Abstract method to describe the shape of the output array after transposition.
@@ -62,9 +57,11 @@ class TransposePrimitive(BasePrimitive):
         Input array.
     kind : str
         Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
-    pdims : tuple[int]
+    pdims : PdimsType
         Partition dimensions.
-    global_shape : tuple[int]
+    out_pdims : PdimsType
+        Output partition dimensions.
+    global_shape : GdimsType
         Global shape of the input array.
 
     Returns
@@ -72,21 +69,17 @@ class TransposePrimitive(BasePrimitive):
     ShapedArray
         Abstract shape of the output array after transposition.
     """
+    del pdims
     if global_shape == x.shape:
       return TransposePrimitive.outer_abstract(x, kind)
-    # Make sure that global_shape is divisible by pdims and equals to slice
 
     assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
+
     if jaxdecomp.config.transpose_axis_contiguous:
       match kind:
-      # From X to Y the axis are rolled by 1 and pdims are swapped wrt to the input pdims
-        case 'x_y':
+        case 'x_y' | 'y_z':
           transpose_shape = (2, 0, 1)
-        case 'y_z':
-          transpose_shape = (2, 0, 1)
-        case 'z_y':
-          transpose_shape = (1, 2, 0)
-        case 'y_x':
+        case 'z_y' | 'y_x':
           transpose_shape = (1, 2, 0)
         case _:
           raise ValueError("Invalid kind")
@@ -100,7 +93,7 @@ class TransposePrimitive(BasePrimitive):
     return ShapedArray(shape, x.dtype)
 
   @staticmethod
-  def outer_abstract(x: jnp.ndarray, kind: str) -> ShapedArray:
+  def outer_abstract(x: Array, kind: str) -> ShapedArray:
     """
     Abstract method for transposition that does not require knowledge of global shape.
 
@@ -117,12 +110,12 @@ class TransposePrimitive(BasePrimitive):
         Abstract shape of the output array after transposition.
     """
     assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
+
     if jaxdecomp.config.transpose_axis_contiguous:
       match kind:
-      # from x to y the axis are rolled by 1 and pdims are swapped wrt to the input pdims
         case 'x_y' | 'y_z':
           transpose_shape = (2, 0, 1)
-        case 'y_x' | 'z_y':
+        case 'z_y' | 'y_x':
           transpose_shape = (1, 2, 0)
         case _:
           raise ValueError("Invalid kind")
@@ -135,29 +128,33 @@ class TransposePrimitive(BasePrimitive):
     return ShapedArray(shape, x.dtype)
 
   @staticmethod
-  def lowering(ctx, x: Array, *, kind: str, pdims: PdimsType,
-               out_pdims: PdimsType, global_shape: GdimsType):
+  def lowering(ctx: Any, x: ir.Value, *, kind: str,
+               pdims: TransposablePdimsType, out_pdims: TransposablePdimsType,
+               global_shape: GdimsType) -> ir.OpResultList:
     """
-        Method to lower the transposition operation to MLIR.
+    Method to lower the transposition operation to MLIR.
 
-        Parameters
-        ----------
-        ctx : object
-            Context for the operation.
-        x : ArrayLike
-            Input array.
-        kind : str
-            Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
-        pdims : tuple[int]
-            Partition dimensions.
-        global_shape : tuple[int]
-            Global shape of the input array.
+    Parameters
+    ----------
+    ctx : object
+        Context for the operation.
+    x : Array
+        Input array.
+    kind : str
+        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+    pdims : PdimsType
+        Partition dimensions.
+    out_pdims : PdimsType
+        Output partition dimensions.
+    global_shape : GdimsType
+        Global shape of the input array.
 
-        Returns
-        -------
-        List
-            List of lowered results.
-        """
+    Returns
+    -------
+    ir.OpResultList
+        Lowered MLIR results.
+    """
+    del out_pdims
     assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
     (aval_in,) = ctx.avals_in
     (aval_out,) = ctx.avals_out
@@ -167,7 +164,6 @@ class TransposePrimitive(BasePrimitive):
 
     layout = tuple(range(len(x_type.shape) - 1, -1, -1))
 
-    # Recover original global shape
     match kind:
       case 'x_y':
         transpose_shape = (0, 1, 2)
@@ -186,8 +182,9 @@ class TransposePrimitive(BasePrimitive):
 
     local_transpose = jaxdecomp.config.transpose_axis_contiguous
     transpose_shape = transpose_shape if local_transpose else (0, 1, 2)
-    # Make sure to get back the original shape of the X-Pencil
-    global_shape = tuple([global_shape[i] for i in transpose_shape])
+    global_shape = (global_shape[transpose_shape[0]],
+                    global_shape[transpose_shape[1]],
+                    global_shape[transpose_shape[2]])
 
     config = _jaxdecomp.GridConfig()
     config.pdims = pdims
@@ -199,7 +196,7 @@ class TransposePrimitive(BasePrimitive):
         config, transpose_type, is_double, local_transpose)
 
     workspace = mlir.full_like_aval(
-        ctx, 0, jax.core.ShapedArray(shape=[workspace_size], dtype=np.byte))
+        ctx, 0, ShapedArray(shape=[workspace_size], dtype=np.byte))
 
     result = custom_call(
         "transpose",
@@ -211,26 +208,25 @@ class TransposePrimitive(BasePrimitive):
         operand_output_aliases={0: 0},
         backend_config=opaque,
     )
-    # Finally we reshape the arry to the expected shape.
     return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
   @staticmethod
-  def impl(x: Array, kind: str):
+  def impl(x: Array, kind: str) -> Array:
     """
-        Implementation method for the transposition primitive.
+    Implementation method for the transposition primitive.
 
-        Parameters
-        ----------
-        x : ArrayLike
-            Input array.
-        kind : str
-            Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+    Parameters
+    ----------
+    x : Array
+        Input array.
+    kind : str
+        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
 
-        Returns
-        -------
-        Object
-            Result of binding the inner primitive with input arguments.
-        """
+    Returns
+    -------
+    Array
+        Transposed array.
+    """
     match kind:
       case 'x_y' | 'y_z':
         return x.transpose([2, 0, 1])
@@ -241,8 +237,9 @@ class TransposePrimitive(BasePrimitive):
             "Invalid kind (x_z and z_x not supported with cudecomp)")
 
   @staticmethod
-  def per_shard_impl(x: ArrayLike, kind: str, pdims: PdimsType,
-                     out_pdims: PdimsType, global_shape: GdimsType):
+  def per_shard_impl(x: ArrayLike, kind: str, pdims: TransposablePdimsType,
+                     out_pdims: TransposablePdimsType,
+                     global_shape: GdimsType) -> Array:
     """
     Per-shard implementation method for the transposition primitive.
 
@@ -252,15 +249,17 @@ class TransposePrimitive(BasePrimitive):
         Input array.
     kind : str
         Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
-    pdims : tuple[int]
+    pdims : PdimsType
         Partition dimensions.
-    global_shape : tuple[int]
+    out_pdims : PdimsType
+        Output partition dimensions.
+    global_shape : GdimsType
         Global shape of the input array.
 
     Returns
     -------
-    Object
-        Result of binding the inner primitive with input arguments.
+    Array
+        Transposed array bound to the inner primitive.
     """
     return TransposePrimitive.inner_primitive.bind(
         x,
@@ -292,7 +291,7 @@ class TransposePrimitive(BasePrimitive):
     NamedSharding
         Named sharding information.
     """
-    del mesh
+    del mesh, result_infos
 
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     if jaxdecomp.config.transpose_axis_contiguous:
@@ -338,12 +337,13 @@ class TransposePrimitive(BasePrimitive):
     Tuple
         Tuple containing mesh, implementation function, output sharding, and input sharding.
     """
-    input_mesh = arg_infos[0].sharding.mesh
-    input_sharding = NamedSharding(input_mesh, P(*arg_infos[0].sharding.spec))
-    output_sharding = NamedSharding(input_mesh, P(*result_infos.sharding.spec))
+    input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
+    output_sharding: NamedSharding = result_infos.sharding  # type: ignore
+    input_mesh: Mesh = arg_infos[0].sharding.mesh  # type: ignore
     global_shape = arg_infos[0].shape
-    original_pdims = input_mesh.devices.shape[::-1]
+    original_pdims: TransposablePdimsType = input_mesh.devices.shape[::-1] # type: ignore # yapf: disable
     out_pdims = get_pdims_from_sharding(output_sharding)
+
     impl = partial(
         TransposePrimitive.per_shard_impl,
         kind=kind,
@@ -360,34 +360,79 @@ register_primitive(TransposePrimitive)
 @partial(jax.jit, static_argnums=(1,))
 def transpose_impl(x: ArrayLike, kind: str) -> Array:
   """
-    JIT-compiled function for performing transposition using the outer primitive.
+  JIT-compiled function for performing transposition using the outer primitive.
 
-    Parameters
-    ----------
-    x : ArrayLike
-        Input array.
-    kind : str
-        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+  Parameters
+  ----------
+  x : ArrayLike
+      Input array.
+  kind : str
+      Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
 
-    Returns
-    -------
-    Array
-        Transposed array.
-    """
+  Returns
+  -------
+  Array
+      Transposed array.
+  """
   return TransposePrimitive.outer_primitive.bind(x, kind=kind)
 
 
 @partial(jax.custom_vjp, nondiff_argnums=(1,))
 def transpose(x: ArrayLike, kind: str) -> Array:
+  """
+  Custom VJP transposition function.
+
+  Parameters
+  ----------
+  x : ArrayLike
+      Input array.
+  kind : str
+      Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+
+  Returns
+  -------
+  Array
+      Transposed array with custom VJP.
+  """
   out, _ = transpose_fwd_rule(x, kind)
   return out
 
 
-def transpose_fwd_rule(x: ArrayLike, kind: str):
+def transpose_fwd_rule(x: ArrayLike, kind: str) -> Tuple[Array, None]:
+  """
+  Forward rule for transposition with custom VJP.
+
+  Parameters
+  ----------
+  x : ArrayLike
+      Input array.
+  kind : str
+      Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+
+  Returns
+  -------
+  Tuple[Array, None]
+      Transposed array and None as residual.
+  """
   return transpose_impl(x, kind), None
 
 
-def transpose_bwd_rule(kind: str, _, g):
+def transpose_bwd_rule(kind: str, _, g: Array) -> Tuple[Array]:
+  """
+  Backward rule for transposition with custom VJP.
+
+  Parameters
+  ----------
+  kind : str
+      Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+  g : Array
+      Gradient of the output array.
+
+  Returns
+  -------
+  Tuple[Array]
+        Transposed gradient.
+    """
   match kind:
     case 'x_y':
       return transpose_impl(g, 'y_x'),
