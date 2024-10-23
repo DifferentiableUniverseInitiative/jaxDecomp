@@ -1,5 +1,5 @@
 [build-system]
-requires = [ "scikit-build-core","pybind11"]
+requires = ["scikit-build-core", "pybind11"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -19,6 +19,8 @@ classifiers = [
   "Operating System :: OS Independent"
 ]
 dependencies = ["jaxtyping"]
+packages = ["jaxdecomp"]
+package-dir = {"" = "src"}
 
 [project.optional-dependencies]
 test = ["pytest"]
@@ -29,9 +31,9 @@ cmake.version = ">=3.25"
 build-dir = "build/{wheel_tag}"
 wheel.py-api = "py3"
 cmake.build-type = "Release"
-# Add any additional configurations for scikit-build if necessary
 wheel.install-dir = "jaxdecomp/_src"
 
 [tool.scikit-build.cmake.define]
 CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
 CMAKE_EXPORT_COMPILE_COMMANDS = "ON"
+
