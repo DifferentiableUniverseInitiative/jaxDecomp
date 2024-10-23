@@ -196,14 +196,14 @@ class TestHaloExchange:
       print(f"down slice \n{down_slice[:,:,0]}")
       print("--" * 40)
 
-
-    # if up down padding check the up down slices
+      # if up down padding check the up down slices
       if pdims[1] > 1:
         # Check the upper padding
-        assert_array_equal(current_slice[:halo_size], up_slice[-2 * halo_size:-halo_size])
+        assert_array_equal(current_slice[:halo_size],
+                           up_slice[-2 * halo_size:-halo_size])
         # Check the lower padding
-        assert_array_equal(current_slice[-halo_size:], down_slice[halo_size:halo_size * 2])
-
+        assert_array_equal(current_slice[-halo_size:],
+                           down_slice[halo_size:halo_size * 2])
 
       # if left right padding check the left right slices
       if pdims[0] > 1:
@@ -216,17 +216,25 @@ class TestHaloExchange:
       # if both padded check the corners
       if pdims[0] > 1 and pdims[1] > 1:
         # Check the upper left corner
-        assert_array_equal(current_slice[:halo_size, :halo_size],
-                           upper_left_corner[-2 * halo_size:-halo_size,-2 * halo_size:-halo_size])
+        assert_array_equal(
+            current_slice[:halo_size, :halo_size],
+            upper_left_corner[-2 * halo_size:-halo_size,
+                              -2 * halo_size:-halo_size])
         # Check the upper right corner
-        assert_array_equal(current_slice[:halo_size, -halo_size:],
-                           upper_right_corner[-2 * halo_size:-halo_size, halo_size:halo_size * 2])
+        assert_array_equal(
+            current_slice[:halo_size, -halo_size:],
+            upper_right_corner[-2 * halo_size:-halo_size,
+                               halo_size:halo_size * 2])
         # Check the lower left corner
-        assert_array_equal(current_slice[-halo_size:, :halo_size],
-                           lower_left_corner[halo_size:halo_size * 2, -2 * halo_size:-halo_size])
+        assert_array_equal(
+            current_slice[-halo_size:, :halo_size],
+            lower_left_corner[halo_size:halo_size * 2,
+                              -2 * halo_size:-halo_size])
         # Check the lower right corner
-        assert_array_equal(current_slice[-halo_size:, -halo_size:],
-                           lower_right_corner[halo_size:halo_size * 2, halo_size:halo_size * 2])
+        assert_array_equal(
+            current_slice[-halo_size:, -halo_size:],
+            lower_right_corner[halo_size:halo_size * 2,
+                               halo_size:halo_size * 2])
 
   @pytest.mark.skipif(not is_on_cluster(), reason="Only run on cluster")
   @pytest.mark.parametrize("pdims", pdims)
