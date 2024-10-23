@@ -16,8 +16,7 @@ from ._src import (HALO_COMM_MPI, HALO_COMM_MPI_BLOCKING, HALO_COMM_NCCL,
                    TRANSPOSE_COMM_NVSHMEM, TRANSPOSE_COMM_NVSHMEM_PL,
                    TRANSPOSE_XY, TRANSPOSE_YX, TRANSPOSE_YZ, TRANSPOSE_ZY,
                    HaloCommBackend, TransposeCommBackend, finalize,
-                   get_autotuned_config, get_pencil_info, init, make_config,
-                   slice_pad, slice_unpad)
+                   get_autotuned_config, get_pencil_info, init, make_config)
 
 try:
   __version__ = version("jaxDecomp")
@@ -33,8 +32,6 @@ __all__ = [
     "get_autotuned_config",
     "make_config",
     "halo_exchange",
-    "slice_pad",
-    "slice_unpad",
     "pfft3d",
     "pifft3d",
     "transposeXtoY",
