@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from functools import partial
-from typing import Any, Callable, Hashable
+from typing import Any, Hashable, Optional, Tuple, Type, Union
 
 from jax import core
 from jax._src import dispatch
@@ -8,19 +8,27 @@ from jax._src import mesh as mesh_lib
 from jax._src.interpreters import batching
 from jax.experimental.custom_partitioning import custom_partitioning
 from jax.interpreters import mlir, xla
+from jax.sharding import Mesh, NamedSharding
+
+from jaxdecomp._src import _jaxdecomp
+from jaxdecomp.typing import PdimsType, TransposablePdimsType
 
 Specs = Any
 AxisName = Hashable
 
-from functools import partial
 
-from jax.experimental.shard_map import shard_map
-from jax.sharding import PartitionSpec as P
+def get_pencil_type(mesh: Optional[Mesh] = None) -> str:
+  """Returns the pencil decomposition type based on the mesh configuration.
 
-from jaxdecomp._src import _jaxdecomp
+    Args:
+        mesh: The device mesh (Optional[Mesh]). If not provided, uses the current physical mesh.
 
+    Returns:
+        A string representing the pencil decomposition type.
 
-def get_pencil_type(mesh=None):
+    Raises:
+        ValueError: If an unknown pencil type is encountered.
+    """
   if mesh is None:
     mesh = mesh_lib.thread_resources.env.physical_mesh
   if mesh.empty:
@@ -28,7 +36,7 @@ def get_pencil_type(mesh=None):
   else:
     pdims = mesh.devices.shape[::-1]
 
-  if pdims == (1, 1) or pdims == None:
+  if pdims == (1, 1) or pdims is None:
     return _jaxdecomp.NO_DECOMP
   elif pdims[0] == 1:
     return _jaxdecomp.SLAB_XY
@@ -40,130 +48,135 @@ def get_pencil_type(mesh=None):
 
 class BasePrimitive(metaclass=ABCMeta):
   """
-  jax primitive
-  """
+    Base class for JAX primitives.
+    """
   name: str
   multiple_results: bool
-  impl_static_args: tuple
-  inner_primitive: core.Primitive | None
-  outer_primitive: core.Primitive | None
+  impl_static_args: Tuple[Any, ...]
+  inner_primitive: Optional[core.Primitive]
+  outer_primitive: Optional[core.Primitive]
   outer_lowering: custom_partitioning
 
   @staticmethod
   @abstractmethod
-  def abstract():
+  def abstract(*args, **kwargs) -> Any:
     """
-        to describe computing graph
+        Describes the abstract evaluation of the primitive in the JAX computation graph.
         """
     return NotImplemented
 
   @classmethod
-  def outer_abstract(cls, *args, **kwargs):
+  def outer_abstract(cls, *args, **kwargs) -> Any:
     """
-        optional abstract wrapper to eliminate workspace tensors
+        Optional abstract wrapper to eliminate workspace tensors.
         """
     return cls.abstract(*args, **kwargs)
 
   @staticmethod
   @abstractmethod
-  def lowering():
+  def lowering(*args, **kwargs) -> Any:
     """
-        to describe MLIR
+        Describes the MLIR lowering of the primitive.
         """
     return NotImplemented
 
   @staticmethod
   @abstractmethod
-  def impl():
+  def impl(*args, **kwargs) -> Any:
     """
-        to describe implementation
+        Describes the implementation of the primitive.
         """
     return NotImplemented
 
   @staticmethod
   @abstractmethod
-  def per_shard_impl():
+  def per_shard_impl(*args, **kwargs) -> Any:
     """
-        to describe per_shard_impl for custom_partitioning
+        Describes the per-shard implementation for custom partitioning.
         """
     return NotImplemented
 
   @staticmethod
   @abstractmethod
-  def batcher():
+  def batcher(*args, **kwargs) -> Any:
     """
-        to describe batch rules for vmap
+        Describes the batch rules for vmap.
         """
     return NotImplemented
 
   @staticmethod
   @abstractmethod
-  def infer_sharding_from_operands():
+  def infer_sharding_from_operands(*args, **kwargs) -> Any:
     """
-        to describe infer_sharding_from_operands for custom_partitioning
+        Infers sharding from the operands for custom partitioning.
         """
     return NotImplemented
 
   @staticmethod
   @abstractmethod
-  def partition():
+  def partition(*args, **kwargs) -> Any:
     """
-        to describe partition for custom_partitioning
+        Describes the partitioning logic for custom partitioning.
         """
     return NotImplemented
 
 
 class CustomParPrimitive(metaclass=ABCMeta):
   """
-  SPMD Custom Partitioning wrapper
-  """
-
+    SPMD Custom Partitioning wrapper.
+    """
   name: str
   multiple_results: bool
-  impl_static_args: tuple
+  impl_static_args: Tuple[Any, ...]
   outer_lowering: custom_partitioning
 
   @staticmethod
   @abstractmethod
-  def impl():
+  def impl(*args, **kwargs) -> Any:
     """
-        to describe implementation
+        Describes the implementation of the primitive.
         """
     return NotImplemented
 
   @staticmethod
   @abstractmethod
-  def per_shard_impl():
+  def per_shard_impl(*args, **kwargs) -> Any:
     """
-        to describe per_shard_impl for custom_partitioning
+        Describes the per-shard implementation for custom partitioning.
         """
     return NotImplemented
 
   @staticmethod
   @abstractmethod
-  def infer_sharding_from_operands():
+  def infer_sharding_from_operands(*args, **kwargs) -> Any:
     """
-        to describe infer_sharding_from_operands for custom_partitioning
+        Infers sharding from the operands for custom partitioning.
         """
     return NotImplemented
 
   @staticmethod
   @abstractmethod
-  def partition():
+  def partition(*args, **kwargs) -> Any:
     """
-        to describe partition for custom_partitioning
+        Describes the partitioning logic for custom partitioning.
         """
     return NotImplemented
 
 
-def register_primitive(cls):
+def register_primitive(
+    cls: Type[Union[BasePrimitive, CustomParPrimitive]]) -> None:
   """
-    register jax primitive
-    """
+    Registers a JAX primitive.
 
+    Args:
+        cls: The primitive class to register, either a BasePrimitive or CustomParPrimitive.
+
+    Raises:
+        ValueError: If the class is not a BasePrimitive or CustomParPrimitive.
+    """
   if issubclass(cls, BasePrimitive):
 
-    def name_of_wrapper_p():
+    def name_of_wrapper_p() -> str:
       return cls.name + "_wrapper"
 
     inner_p = core.Primitive(cls.name)
@@ -191,7 +204,6 @@ def register_primitive(cls):
     cls.outer_primitive = outer_p
 
   elif issubclass(cls, CustomParPrimitive):
-
     outer_p_lower = custom_partitioning(
         cls.impl, static_argnums=cls.impl_static_args)
     outer_p_lower.def_partition(
@@ -204,25 +216,49 @@ def register_primitive(cls):
         "register_primitive only accepts BasePrimitive or CustomParPrimitive")
 
 
-# helper functions
+def get_axis_size(sharding: NamedSharding, index: int) -> int:
+  """Returns the size of the axis for a given sharding spec.
 
+    Args:
+        sharding: The sharding specification (PartitionSpec).
+        index: The index of the axis.
 
-def get_axis_size(sharding, index):
+    Returns:
+        The size of the axis (int).
+    """
   axis_name = sharding.spec[index]
-  if axis_name == None:
+  if axis_name is None:
     return 1
   else:
     return sharding.mesh.shape[sharding.spec[index]]
 
 
-def get_pdims_from_sharding(sharding):
-  return tuple([get_axis_size(sharding, i) for i in range(len(sharding.spec))])
+def get_pdims_from_sharding(sharding: NamedSharding) -> TransposablePdimsType:
+  """Returns the processor dimensions from a sharding specification.
+
+    Args:
+        sharding: The sharding specification (PartitionSpec).
+
+    Returns:
+        A tuple of processor dimensions (Tuple[int, ...]).
+    """
+  return tuple([get_axis_size(sharding, i) for i in range(len(sharding.spec))
+               ])  # type: ignore
 
 
-def get_pdims_from_mesh(mesh):
-  if mesh.empty:
+def get_pdims_from_mesh(mesh: Optional[Mesh]) -> PdimsType:
+  """Returns the processor dimensions from the device mesh.
+
+    Args:
+        mesh: The device mesh (Mesh).
+
+    Returns:
+        A tuple of processor dimensions (Tuple[int, int]).
+    """
+  if mesh is None or mesh.empty:
     pdims = (1, 1)
   else:
     pdims = mesh.devices.shape[::-1]
+    assert (len(pdims) == 2)
 
   return pdims

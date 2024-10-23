@@ -1,17 +1,28 @@
+from math import prod
+from typing import Tuple, TypeAlias
+
 from jax import numpy as jnp
 from jax.lib import xla_client
+from jaxtyping import Array
 
-FftType = xla_client.FftType
+FftType: TypeAlias = xla_client.FftType
+
 FORWARD_FFTs = {FftType.FFT, FftType.RFFT}
 INVERSE_FFTs = {FftType.IFFT, FftType.IRFFT}
 
-from math import prod
-from typing import Tuple
-
-from jaxtyping import Array
-
 
 def ADJOINT(fft_type: FftType) -> FftType:
+  """Returns the adjoint (inverse) of the given FFT type.
+
+    Args:
+        fft_type: The type of FFT (FftType).
+
+    Returns:
+        The adjoint (inverse) FFT type (FftType).
+
+    Raises:
+        ValueError: If an unknown FFT type is provided.
+    """
   match fft_type:
     case FftType.FFT:
       return FftType.IFFT
@@ -26,6 +37,17 @@ def ADJOINT(fft_type: FftType) -> FftType:
 
 
 def COMPLEX(fft_type: FftType) -> FftType:
+  """Returns the complex equivalent of the given FFT type.
+
+    Args:
+        fft_type: The type of FFT (FftType).
+
+    Returns:
+        The complex FFT type (FftType).
+
+    Raises:
+        ValueError: If an unknown FFT type is provided.
+    """
   match fft_type:
     case FftType.RFFT | FftType.FFT:
       return FftType.FFT
@@ -35,7 +57,16 @@ def COMPLEX(fft_type: FftType) -> FftType:
       raise ValueError(f"Unknown FFT type '{fft_type}'")
 
 
-def _un_normalize_fft(s: Tuple, fft_type: FftType) -> Array:
+def _un_normalize_fft(s: Tuple[int, ...], fft_type: FftType) -> Array:
+  """Computes the un-normalization factor for the FFT.
+
+    Args:
+        s: Shape of the array (Tuple[int, ...]).
+        fft_type: The type of FFT (FftType).
+
+    Returns:
+        The un-normalization factor (Array).
+    """
   if fft_type in FORWARD_FFTs:
     return jnp.array(1)
   else:
@@ -43,6 +74,19 @@ def _un_normalize_fft(s: Tuple, fft_type: FftType) -> Array:
 
 
 def fftn(a: Array, fft_type: FftType, adjoint: bool) -> Array:
+  """Performs an n-dimensional FFT on the input array.
+
+    Args:
+        a: Input array (Array).
+        fft_type: The type of FFT (FftType).
+        adjoint: Whether to apply the adjoint (inverse) FFT (bool).
+
+    Returns:
+        The transformed array (Array).
+
+    Raises:
+        ValueError: If an unknown FFT type is provided.
+    """
   if fft_type in FORWARD_FFTs:
     axes = tuple(range(0, 3))
   else:
@@ -69,7 +113,20 @@ def fftn(a: Array, fft_type: FftType, adjoint: bool) -> Array:
 
 
 def fft(a: Array, fft_type: FftType, axis: int, adjoint: bool) -> Array:
+  """Performs a 1-dimensional FFT along the specified axis of the input array.
 
+    Args:
+        a: Input array (Array).
+        fft_type: The type of FFT (FftType).
+        axis: The axis along which to compute the FFT (int).
+        adjoint: Whether to apply the adjoint (inverse) FFT (bool).
+
+    Returns:
+        The transformed array (Array).
+
+    Raises:
+        ValueError: If an unknown FFT type is provided.
+    """
   if adjoint:
     fft_type = ADJOINT(fft_type)
 
@@ -92,7 +149,20 @@ def fft(a: Array, fft_type: FftType, axis: int, adjoint: bool) -> Array:
 
 def fft2(a: Array, fft_type: FftType, axes: Tuple[int, int],
          adjoint: bool) -> Array:
+  """Performs a 2-dimensional FFT along the specified axes of the input array.
 
+    Args:
+        a: Input array (Array).
+        fft_type: The type of FFT (FftType).
+        axes: The axes along which to compute the FFT (Tuple[int, int]).
+        adjoint: Whether to apply the adjoint (inverse) FFT (bool).
+
+    Returns:
+        The transformed array (Array).
+
+    Raises:
+        ValueError: If an unknown FFT type is provided.
+    """
   if adjoint:
     fft_type = ADJOINT(fft_type)
 

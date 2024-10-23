@@ -1,21 +1,34 @@
+from typing import Optional, Tuple
+
 import jax
-from jax import numpy as jnp
 from jax.lib import xla_client
+from jax.sharding import Mesh
+from jax.sharding import PartitionSpec as P
 
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
-from jaxdecomp._src.fft_utils import FORWARD_FFTs
+from jaxdecomp._src.fft_utils import FftType, FORWARD_FFTs
 from jaxdecomp._src.spmd_ops import get_pdims_from_mesh, get_pencil_type
+from jaxdecomp.typing import GdimsType, PdimsType, TransposablePdimsType
 
-FftType = xla_client.FftType
 
+def get_transpose_order(fft_type: FftType,
+                        mesh: Optional[Mesh] = None) -> Tuple[int, int, int]:
+  """Returns the transpose order based on the FFT type and mesh configuration.
 
-def get_transpose_order(fft_type, mesh=None) -> tuple[int, int, int]:
+    Args:
+        fft_type: The type of FFT (FftType).
+        mesh: The device mesh (Optional[Mesh]).
 
-  # TODO this should no longer use the global mesh
-  # the parameter transpose_axis_contiguous_2 should be removed after benchmarking
+    Returns:
+        A tuple representing the transpose order (Tuple[int, int, int]).
+
+    Raises:
+        TypeError: If an unknown FFT type or pencil type is encountered.
+    """
   if not jaxdecomp.config.transpose_axis_contiguous:
     return (0, 1, 2)
+
   if mesh is None:
     match fft_type:
       case FftType.FFT | FftType.RFFT:
@@ -24,47 +37,55 @@ def get_transpose_order(fft_type, mesh=None) -> tuple[int, int, int]:
         return (2, 0, 1)
       case _:
         raise TypeError(
-            "only complex FFTs are currently supported through pfft.")
+            "Only complex FFTs are currently supported through pfft.")
 
   pencil_type = get_pencil_type(mesh)
   match fft_type:
-    case xla_client.FftType.FFT:
-      # FFT is X to Y to Z so Z-Pencil is returned
-      # Except if we are doing a YZ slab in which case we return a Y-Pencil
+    case FftType.FFT:
       match pencil_type:
         case _jaxdecomp.SLAB_YZ:
           if jaxdecomp.config.transpose_axis_contiguous_2:
-            transpose_shape = (1, 2, 0)
+            return (1, 2, 0)
           else:
-            transpose_shape = (2, 0, 1)
+            return (2, 0, 1)
         case _jaxdecomp.SLAB_XY | _jaxdecomp.PENCILS:
-          transpose_shape = (1, 2, 0)
+          return (1, 2, 0)
         case _jaxdecomp.NO_DECOMP:
-          transpose_shape = (0, 1, 2)
+          return (0, 1, 2)
         case _:
           raise TypeError("Unknown pencil type")
-    case xla_client.FftType.IFFT:
-      # IFFT is Z to X to Y so X-Pencil is returned
-      # In YZ slab case we only need one transposition back to get the X-Pencil
+    case FftType.IFFT:
       match pencil_type:
         case _jaxdecomp.SLAB_YZ:
           if jaxdecomp.config.transpose_axis_contiguous_2:
-            transpose_shape = (2, 0, 1)
+            return (2, 0, 1)
           else:
-            transpose_shape = (1, 2, 0)
+            return (1, 2, 0)
         case _jaxdecomp.SLAB_XY | _jaxdecomp.PENCILS:
-          transpose_shape = (2, 0, 1)
+          return (2, 0, 1)
         case _jaxdecomp.NO_DECOMP:
-          transpose_shape = (0, 1, 2)
+          return (0, 1, 2)
         case _:
           raise TypeError("Unknown pencil type")
     case _:
-      raise TypeError("only complex FFTs are currently supported through pfft.")
-
-  return transpose_shape
+      raise TypeError("Only complex FFTs are currently supported through pfft.")
 
 
-def get_lowering_args(fft_type, global_shape, mesh):
+def get_lowering_args(fft_type: FftType, global_shape: GdimsType,
+                      mesh: Mesh) -> Tuple[PdimsType, GdimsType]:
+  """Returns the lowering arguments based on FFT type, global shape, and mesh.
+
+    Args:
+        fft_type: The type of FFT (FftType).
+        global_shape: The global shape of the array (GdimsType).
+        mesh: The device mesh (Mesh).
+
+    Returns:
+        A tuple containing pdims (processor dimensions) and the new global shape (GdimsType).
+
+    Raises:
+        TypeError: If an unknown FFT type is encountered.
+    """
   pencil_type = get_pencil_type(mesh)
   pdims = get_pdims_from_mesh(mesh)
 
@@ -93,14 +114,35 @@ def get_lowering_args(fft_type, global_shape, mesh):
   else:
     transpose_back_shape = (0, 1, 2)
   # Make sure to get back the original shape of the X-Pencil
-  global_shape = tuple([global_shape[i] for i in transpose_back_shape])
+  global_shape = (global_shape[transpose_back_shape[0]],
+                  global_shape[transpose_back_shape[1]],
+                  global_shape[transpose_back_shape[2]])
+  assert len(pdims) == 2
 
   return pdims, global_shape
 
 
-def get_output_specs(fft_type, spec, mesh=None, backend='JAX'):
+def get_output_specs(
+    fft_type: FftType,
+    spec: P,
+    mesh: Optional[Mesh] = None,
+    backend: str = 'JAX') -> Tuple[Optional[int], Optional[int], Optional[int]]:
+  """Returns the output specs based on FFT type, spec, and mesh.
+
+    Args:
+        fft_type: The type of FFT (FftType).
+        spec: The input specs (PartitionSpec).
+        mesh: The device mesh (Optional[Mesh]).
+        backend: The backend to use (str).
+
+    Returns:
+        The transposed output specs (TransposablePdimsType).
+
+    Raises:
+        TypeError: If an unknown FFT or pencil type is encountered.
+        ValueError: If invalid sharding or distributed specs are provided.
+    """
   pencil_type = get_pencil_type(mesh)
-  # transposed_specs = None
   if jaxdecomp.config.transpose_axis_contiguous:
     match pencil_type:
       case _jaxdecomp.SLAB_XY:
@@ -136,7 +178,7 @@ def get_output_specs(fft_type, spec, mesh=None, backend='JAX'):
           case _:
             raise TypeError("Unknown pencil type")
 
-      case xla_client.FftType.IFFT | xla_client.FftType.IRFFT:
+      case FftType.IFFT | FftType.IRFFT:
         match pencil_type:
           case _jaxdecomp.SLAB_XY:
             # if (is_distributed(spec[0]) or is_distributed(spec[2])):
@@ -178,11 +220,25 @@ def get_output_specs(fft_type, spec, mesh=None, backend='JAX'):
   return transposed_specs
 
 
-def get_axis_names(fft_type, specs):
+def get_axis_names(fft_type: FftType,
+                   specs: TransposablePdimsType) -> Tuple[int, int]:
+  """Returns the axis names based on the FFT type and specs.
 
+    Args:
+        fft_type: The type of FFT (FftType).
+        specs: The specs for each axis (TransposablePdimsType).
+
+    Returns:
+        A tuple of axis names (Tuple[int, int]).
+
+    Raises:
+        TypeError: If an unknown pencil type is encountered.
+    """
   pencil_type = get_pencil_type()
+
   if fft_type in FORWARD_FFTs:
     return specs[0], specs[1]
+
   if jaxdecomp.config.transpose_axis_contiguous:
     match pencil_type:
       case _jaxdecomp.SLAB_XY | _jaxdecomp.SLAB_YZ:
@@ -203,7 +259,20 @@ def get_axis_names(fft_type, specs):
         raise TypeError("Unknown pencil type")
 
 
-def get_axis_names_from_kind(kind: str, input_spec):
+def get_axis_names_from_kind(
+    kind: str, input_spec: TransposablePdimsType) -> Tuple[int, int]:
+  """Returns the axis names based on the kind and input specs.
+
+    Args:
+        kind: The kind of axis decomposition (str).
+        input_spec: The input specs (TransposablePdimsType).
+
+    Returns:
+        A tuple of axis names (Tuple[int, int]).
+
+    Raises:
+        ValueError: If an invalid kind is provided.
+    """
   if jaxdecomp.config.transpose_axis_contiguous:
     match kind:
       case 'x_y' | 'z_y' | 'x_z':
