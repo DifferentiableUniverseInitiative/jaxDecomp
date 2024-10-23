@@ -1,12 +1,10 @@
-from enum import Enum
 from functools import partial
-from typing import Tuple, Union
+from typing import Tuple
 
 import jax
 import jaxlib.mlir.ir as ir
 import numpy as np
 from jax import ShapeDtypeStruct
-from jax._src import mesh as mesh_lib
 from jax._src.interpreters import mlir
 from jax._src.lib.mlir.dialects import hlo
 from jax._src.numpy.util import promote_dtypes_complex
@@ -19,58 +17,17 @@ from jaxlib.hlo_helpers import custom_call
 
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
-from jaxdecomp._src.spmd_ops import (BasePrimitive, get_axis_size,
+from jaxdecomp._src.fft_utils import fftn
+from jaxdecomp._src.pencil_utils import (get_lowering_args, get_output_specs,
+                                         get_pencil_type, get_transpose_order)
+from jaxdecomp._src.spmd_ops import (BasePrimitive, get_pdims_from_sharding,
                                      register_primitive)
 
 FftType = xla_client.FftType
-
-
-def get_pencil_type():
-  mesh = mesh_lib.thread_resources.env.physical_mesh
-  if mesh.empty:
-    pdims = None
-  else:
-    pdims = mesh.devices.shape[::-1]
-
-  if pdims == (1, 1) or pdims == None:
-    return _jaxdecomp.NO_DECOMP
-  elif pdims[0] == 1:
-    return _jaxdecomp.SLAB_XY
-  elif pdims[1] == 1:
-    return _jaxdecomp.SLAB_YZ
-  else:
-    return _jaxdecomp.PENCILS
-
-
-def _str_to_fft_type(s: str) -> xla_client.FftType:
-  """
-  Convert a string to an FFT type enum.
-
-  Parameters
-  ----------
-  s : str
-    String representation of FFT type.
-
-  Returns
-  -------
-  xla_client.FftType
-    Corresponding FFT type enum.
-
-  Raises
-  ------
-  ValueError
-    If the string `s` does not match known FFT types.
-  """
-  if s in ("fft", "FFT"):
-    return xla_client.FftType.FFT
-  elif s in ("ifft", "IFFT"):
-    return xla_client.FftType.IFFT
-  elif s in ("rfft", "RFFT"):
-    return xla_client.FftType.RFFT
-  elif s in ("irfft", "IRFFT"):
-    return xla_client.FftType.IRFFT
-  else:
-    raise ValueError(f"Unknown FFT type '{s}'")
+GdimsType = Tuple[int, int, int]
+# pdims is only two integers
+# but in some cases we need to represent ('x' , None , 'y') as (Nx , 1 , Ny)
+PdimsType = Tuple[int, int, int]
 
 
 class FFTPrimitive(BasePrimitive):
@@ -85,9 +42,9 @@ class FFTPrimitive(BasePrimitive):
   outer_primitive = None
 
   @staticmethod
-  def abstract(x: Array, fft_type: xla_client.FftType, pdims: Tuple[int, int],
-               global_shape: Tuple[int, int,
-                                   int], adjoint: bool) -> ShapedArray:
+  def abstract(x: Array, fft_type: FftType, pdims: PdimsType,
+               global_shape: GdimsType, adjoint: bool,
+               mesh: Mesh) -> ShapedArray:
     """
     Abstract function to compute the shape of FFT output.
 
@@ -112,54 +69,16 @@ class FFTPrimitive(BasePrimitive):
     if global_shape == x.shape:
       return FFTPrimitive.outer_abstract(x, fft_type=fft_type, adjoint=adjoint)
 
-    pencil_type = get_pencil_type()
-    match fft_type:
-      case xla_client.FftType.FFT:
-        # FFT is X to Y to Z so Z-Pencil is returned
-        # Except if we are doing a YZ slab in which case we return a Y-Pencil
-        match pencil_type:
-          case _jaxdecomp.SLAB_YZ:
-            transpose_shape = (2, 0, 1)
-            transposed_pdims = pdims[::-1]
-          case _jaxdecomp.SLAB_XY:
-            transpose_shape = (1, 2, 0)
-            transposed_pdims = pdims
-          case _jaxdecomp.PENCILS:
-            transpose_shape = (1, 2, 0)
-            transposed_pdims = pdims
-          case _jaxdecomp.NO_DECOMP:
-            transpose_shape = (0, 1, 2)
-            transposed_pdims = (1, 1)
+    transpose_shape = get_transpose_order(fft_type)
 
-      case xla_client.FftType.IFFT:
-        # IFFT is Z to X to Y so X-Pencil is returned
-        # In YZ slab case we only need one transposition back to get the X-Pencil
-        match pencil_type:
-          case _jaxdecomp.SLAB_YZ:
-            transpose_shape = (1, 2, 0)
-            transposed_pdims = pdims
-          case _jaxdecomp.SLAB_XY:
-            transpose_shape = (2, 0, 1)
-            transposed_pdims = pdims[::-1]
-          case _jaxdecomp.PENCILS:
-            transpose_shape = (2, 0, 1)
-            transposed_pdims = pdims
-          case _jaxdecomp.NO_DECOMP:
-            transpose_shape = (0, 1, 2)
-            transposed_pdims = (1, 1)
-      case _:
-        raise TypeError(
-            "only complex FFTs are currently supported through pfft.")
-
-    output_shape = (global_shape[transpose_shape[0]] // transposed_pdims[1],
-                    global_shape[transpose_shape[1]] // transposed_pdims[0],
-                    global_shape[transpose_shape[2]])
+    output_shape = (global_shape[transpose_shape[0]] // pdims[0],
+                    global_shape[transpose_shape[1]] // pdims[1],
+                    global_shape[transpose_shape[2]] // pdims[2])
 
     return ShapedArray(output_shape, x.dtype)
 
   @staticmethod
-  def outer_abstract(x: Array, fft_type: xla_client.FftType,
-                     adjoint: bool) -> ShapedArray:
+  def outer_abstract(x: Array, fft_type: FftType, adjoint: bool) -> ShapedArray:
     """
     Abstract function for outer FFT operation.
 
@@ -177,39 +96,16 @@ class FFTPrimitive(BasePrimitive):
     ShapedArray
       Shape of the output array.
     """
+    del adjoint
 
-    # TODO(Wassim) we should not get here if we do not have a context mesh
-    pencil_type = get_pencil_type()
-    match fft_type:
-      case xla_client.FftType.FFT:
-        # FFT is X to Y to Z so Z-Pencil is returned
-        # Except if we are doing a YZ slab in which case we return a Y-Pencil
-        match pencil_type:
-          case _jaxdecomp.SLAB_XY | _jaxdecomp.PENCILS:
-            transpose_shape = (1, 2, 0)
-          case _jaxdecomp.SLAB_YZ:
-            transpose_shape = (2, 0, 1)
-
-      case xla_client.FftType.IFFT:
-        # IFFT is Z to X to Y so X-Pencil is returned
-        # In YZ slab case we only need one transposition back to get the X-Pencil
-        match pencil_type:
-          case _jaxdecomp.SLAB_XY | _jaxdecomp.PENCILS:
-            transpose_shape = (2, 0, 1)
-          case _jaxdecomp.SLAB_YZ:
-            transpose_shape = (1, 2, 0)
-
-      case _:
-        raise TypeError(
-            "only complex FFTs are currently supported through pfft.")
+    transpose_shape = get_transpose_order(fft_type)
 
     output_shape = tuple([x.shape[i] for i in transpose_shape])
     return ShapedArray(output_shape, x.dtype)
 
   @staticmethod
-  def lowering(ctx, a: Array, *, fft_type: xla_client.FftType,
-               pdims: Tuple[int, int], global_shape: Tuple[int, int,
-                                                           int], adjoint: bool):
+  def lowering(ctx, a: Array, *, fft_type: xla_client.FftType, pdims: PdimsType,
+               global_shape: GdimsType, adjoint: bool, mesh: Mesh):
     """
     Lowering function for FFT primitive.
 
@@ -246,25 +142,9 @@ class FFTPrimitive(BasePrimitive):
     is_double = np.finfo(dtype).dtype == np.float64
 
     # Get original global shape
-    pencil_type = get_pencil_type()
-    match fft_type:
-      case xla_client.FftType.FFT:
-        if pencil_type == _jaxdecomp.SLAB_XY:
-          transpose_back_shape = (1, 2, 0)
-        else:
-          transpose_back_shape = (0, 1, 2)
-      case xla_client.FftType.IFFT:
-        if pencil_type == _jaxdecomp.SLAB_XY:
-          transpose_back_shape = (0, 1, 2)
-        elif pencil_type == _jaxdecomp.SLAB_YZ:
-          transpose_back_shape = (1, 2, 0)
-        else:
-          transpose_back_shape = (2, 0, 1)
-      case _:
-        raise TypeError(
-            "only complex FFTs are currently supported through pfft.")
-    # Make sure to get back the original shape of the X-Pencil
-    global_shape = tuple([global_shape[i] for i in transpose_back_shape])
+    pencil_type = get_pencil_type(mesh)
+    pdims, global_shape = get_lowering_args(fft_type, global_shape, mesh)
+    local_transpose = jaxdecomp.config.transpose_axis_contiguous
     # Compute the descriptor for our FFT
     config = _jaxdecomp.GridConfig()
     config.pdims = pdims
@@ -272,7 +152,7 @@ class FFTPrimitive(BasePrimitive):
     config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
     config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
     workspace_size, opaque = _jaxdecomp.build_fft_descriptor(
-        config, forward, is_double, adjoint, pencil_type)
+        config, forward, is_double, adjoint, local_transpose, pencil_type)
 
     n = len(a_type.shape)
     layout = tuple(range(n - 1, -1, -1))
@@ -298,7 +178,7 @@ class FFTPrimitive(BasePrimitive):
     return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
   @staticmethod
-  def impl(x: Array, fft_type: Union[str, xla_client.FftType], adjoint: bool):
+  def impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:
     """
     Implementation function for FFT primitive.
 
@@ -316,31 +196,20 @@ class FFTPrimitive(BasePrimitive):
     Primitive
       Result of the operation.
     """
-    if isinstance(fft_type, str):
-      typ = _str_to_fft_type(fft_type)
-    elif isinstance(fft_type, xla_client.FftType):
-      typ = fft_type
-    else:
-      raise TypeError(f"Unknown FFT type value '{fft_type}'")
+    assert isinstance(fft_type, xla_client.FftType)
 
-    if typ in [xla_client.FftType.RFFT, xla_client.FftType.IRFFT]:
-      raise TypeError("only complex FFTs are currently supported through pfft.")
+    transpose_order = get_transpose_order(fft_type)
 
-    # TODO (Wassim) this should call jnp.fft.fftn so it works in single device
-    pdims = (1, jax.device_count())
-    global_shape = x.shape
-
-    return FFTPrimitive.inner_primitive.bind(
-        x,
-        fft_type=typ,
-        pdims=pdims,
-        global_shape=global_shape,
-        adjoint=adjoint)
+    return fftn(
+        x, fft_type=fft_type, adjoint=adjoint).transpose(transpose_order)
 
   @staticmethod
-  def per_shard_impl(x: Array, fft_type: xla_client.FftType, pdims: Tuple[int,
-                                                                          int],
-                     global_shape: Tuple[int, int, int], adjoint: bool):
+  def per_shard_impl(x: Array,
+                     fft_type: FftType,
+                     pdims: PdimsType,
+                     global_shape: GdimsType,
+                     adjoint: bool,
+                     mesh : Mesh): # yapf: disable
     """
     Implementation function for per-shard FFT primitive.
 
@@ -362,12 +231,21 @@ class FFTPrimitive(BasePrimitive):
     Primitive
       Result of the operation.
     """
-    return FFTPrimitive.inner_primitive.bind(
+
+    # TODO transpose_axis_contiguous_2 must be removed after benchmarking
+    if fft_type == FftType.IFFT and pdims[0] == 1:
+      if jaxdecomp.config.transpose_axis_contiguous_2 and jaxdecomp.config.transpose_axis_contiguous:
+        x = x.transpose([1, 2, 0])
+
+    out = FFTPrimitive.inner_primitive.bind(
         x,
         fft_type=fft_type,
         pdims=pdims,
         global_shape=global_shape,
-        adjoint=adjoint)
+        adjoint=adjoint,
+        mesh=mesh)
+
+    return out
 
   @staticmethod
   def infer_sharding_from_operands(
@@ -395,20 +273,17 @@ class FFTPrimitive(BasePrimitive):
     NamedSharding
       Sharding information for the result.
     """
-    input_sharding = arg_infos[0].sharding
-    pencil_type = get_pencil_type()
-    match pencil_type:
-      case _jaxdecomp.SLAB_XY | _jaxdecomp.SLAB_YZ:
-        transposed_specs = (input_sharding.spec[1], input_sharding.spec[0],
-                            None)
-      case _jaxdecomp.PENCILS:
-        transposed_specs = input_sharding.spec
+    del adjoint, mesh, result_infos
 
-    return NamedSharding(mesh, P(*transposed_specs))
+    input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
+    spec = input_sharding.spec
+    input_mesh = input_sharding.mesh
+    transposed_specs = get_output_specs(fft_type, spec, input_mesh, 'cudecomp')
+    return NamedSharding(input_mesh, P(*transposed_specs))
 
   @staticmethod
   def partition(
-      fft_type: xla_client.FftType, adjoint: bool, mesh: Mesh,
+      fft_type: FftType, adjoint: bool, mesh: Mesh,
       arg_shapes: Tuple[ShapeDtypeStruct], result_shape: ShapeDtypeStruct
   ) -> Tuple[Mesh, partial, NamedSharding, Tuple[NamedSharding]]:
     """
@@ -432,26 +307,19 @@ class FFTPrimitive(BasePrimitive):
     Tuple[Mesh, partial, NamedSharding, Tuple[NamedSharding]]
       Mesh, lowered function, output sharding, and input operand sharding.
     """
-    input_sharding = NamedSharding(mesh, P(*arg_shapes[0].sharding.spec))
-    output_sharding = NamedSharding(mesh, P(*result_shape.sharding.spec))
+    input_mesh = arg_shapes[0].sharding.mesh
+    input_sharding = NamedSharding(input_mesh, P(*arg_shapes[0].sharding.spec))
+    output_sharding = NamedSharding(input_mesh, P(*result_shape.sharding.spec))
     global_shape = arg_shapes[0].shape
-
-    pencil_type = get_pencil_type()
-    if (pencil_type == _jaxdecomp.SLAB_XY and fft_type == FftType.IFFT) or \
-       (pencil_type == _jaxdecomp.SLAB_YZ and  fft_type == FftType.FFT or \
-        pencil_type == _jaxdecomp.PENCILS): #yapf: disable
-      pdims = (get_axis_size(input_sharding,
-                             1), get_axis_size(input_sharding, 0))
-    else:
-      pdims = (get_axis_size(input_sharding,
-                             0), get_axis_size(input_sharding, 1))
+    pdims = get_pdims_from_sharding(output_sharding)
 
     impl = partial(
         FFTPrimitive.per_shard_impl,
         fft_type=fft_type,
         pdims=pdims,
         global_shape=global_shape,
-        adjoint=adjoint)
+        adjoint=adjoint,
+        mesh=input_mesh)
 
     return mesh, impl, output_sharding, (input_sharding,)
 
@@ -459,8 +327,8 @@ class FFTPrimitive(BasePrimitive):
 register_primitive(FFTPrimitive)
 
 
-def pfft_p_lower(x: Array, fft_type: Union[str, xla_client.FftType],
-                 adjoint: bool) -> Primitive:
+@partial(jax.jit, static_argnums=(1, 2))
+def pfft_impl(x: Array, fft_type: FftType, adjoint: bool) -> Primitive:
   """
   Lowering function for pfft primitive.
 
@@ -485,9 +353,7 @@ def pfft_p_lower(x: Array, fft_type: Union[str, xla_client.FftType],
 
 
 @partial(jax.custom_vjp, nondiff_argnums=(1, 2))
-def pfft(x: Array,
-         fft_type: Union[str, xla_client.FftType],
-         adjoint: bool = False) -> Primitive:
+def pfft(x: Array, fft_type: FftType, adjoint: bool = False) -> Primitive:
   """
   Custom VJP definition for pfft.
 
@@ -509,9 +375,8 @@ def pfft(x: Array,
   return output
 
 
-def _pfft_fwd_rule(x: Array,
-                   fft_type: Union[str, xla_client.FftType],
-                   adjoint: bool = False) -> Tuple[Primitive, None]:
+def _pfft_fwd_rule(x: Array, fft_type: FftType,
+                   adjoint: bool) -> Tuple[Primitive, None]:
   """
   Forward rule for pfft.
 
@@ -529,10 +394,10 @@ def _pfft_fwd_rule(x: Array,
   Tuple[Primitive, None]
     Result of the operation and None (no residuals).
   """
-  return pfft_p_lower(x, fft_type=fft_type, adjoint=adjoint), None
+  return pfft_impl(x, fft_type=fft_type, adjoint=adjoint), None
 
 
-def _pfft_bwd_rule(fft_type: Union[str, xla_client.FftType], adjoint: bool, ctx,
+def _pfft_bwd_rule(fft_type: FftType, adjoint: bool, _,
                    g: Primitive) -> Tuple[Primitive]:
   """
   Backward rule for pfft.
@@ -559,7 +424,7 @@ def _pfft_bwd_rule(fft_type: Union[str, xla_client.FftType], adjoint: bool, ctx,
   elif fft_type == FftType.IFFT:
     fft_type = FftType.FFT
 
-  return pfft_p_lower(g, fft_type, ~adjoint),
+  return pfft_impl(g, fft_type, not adjoint),
 
 
 pfft.defvjp(_pfft_fwd_rule, _pfft_bwd_rule)
