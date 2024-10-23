@@ -19,8 +19,6 @@ from jax.sharding import PartitionSpec as P
 from numpy.testing import assert_allclose, assert_array_equal
 
 import jaxdecomp
-from jaxdecomp import slice_pad, slice_unpad
-from jaxdecomp._src.spmd_ops import get_pencil_type
 
 pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100

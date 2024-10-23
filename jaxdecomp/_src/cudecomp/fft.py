@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Tuple
+from typing import Any, Tuple
 
 import jax
 import jaxlib.mlir.ir as ir
@@ -8,41 +8,35 @@ from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
 from jax._src.lib.mlir.dialects import hlo
 from jax._src.numpy.util import promote_dtypes_complex
-from jax._src.typing import Array
 from jax.core import Primitive, ShapedArray
-from jax.lib import xla_client
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxlib.hlo_helpers import custom_call
+from jaxtyping import Array
 
 import jaxdecomp
 from jaxdecomp._src import _jaxdecomp
-from jaxdecomp._src.fft_utils import fftn
+from jaxdecomp._src.fft_utils import FftType, fftn
 from jaxdecomp._src.pencil_utils import (get_lowering_args, get_output_specs,
                                          get_pencil_type, get_transpose_order)
 from jaxdecomp._src.spmd_ops import (BasePrimitive, get_pdims_from_sharding,
                                      register_primitive)
-
-FftType = xla_client.FftType
-GdimsType = Tuple[int, int, int]
-# pdims is only two integers
-# but in some cases we need to represent ('x' , None , 'y') as (Nx , 1 , Ny)
-PdimsType = Tuple[int, int, int]
+from jaxdecomp.typing import GdimsType, PdimsType, TransposablePdimsType
 
 
 class FFTPrimitive(BasePrimitive):
   """
-  Custom primitive for FFT operations.
-  """
+    Custom primitive for FFT operations.
+    """
 
-  name = "fft"
-  multiple_results = False
-  impl_static_args = (1, 2)
-  inner_primitive = None
-  outer_primitive = None
+  name: str = "fft"
+  multiple_results: bool = False
+  impl_static_args: Tuple[int, int] = (1, 2)
+  inner_primitive: Any = None
+  outer_primitive: Any = None
 
   @staticmethod
-  def abstract(x: Array, fft_type: FftType, pdims: PdimsType,
+  def abstract(x: Array, fft_type: FftType, pdims: TransposablePdimsType,
                global_shape: GdimsType, adjoint: bool,
                mesh: Mesh) -> ShapedArray:
     """
@@ -51,21 +45,24 @@ class FFTPrimitive(BasePrimitive):
     Parameters
     ----------
     x : Array
-      Input array.
-    fft_type : xla_client.FftType
-      Type of FFT operation.
-    pdims : Tuple[int, int]
-      Parallel dimensions.
-    global_shape : Tuple[int, int, int]
-      Global shape of the array.
+        Input array.
+    fft_type : FftType
+        Type of FFT operation (forward or inverse).
+    pdims : TransposablePdimsType
+        Parallel dimensions.
+    global_shape : GdimsType
+        Global shape of the array.
     adjoint : bool
-      Whether to compute the adjoint FFT.
+        Whether to compute the adjoint FFT.
+    mesh : Mesh
+        The device mesh.
 
     Returns
     -------
     ShapedArray
-      Shape of the output array.
+        Shape of the output array.
     """
+    del mesh
     if global_shape == x.shape:
       return FFTPrimitive.outer_abstract(x, fft_type=fft_type, adjoint=adjoint)
 
@@ -85,16 +82,16 @@ class FFTPrimitive(BasePrimitive):
     Parameters
     ----------
     x : Array
-      Input array.
-    fft_type : xla_client.FftType
-      Type of FFT operation.
+        Input array.
+    fft_type : FftType
+        Type of FFT operation (forward or inverse).
     adjoint : bool
-      Whether to compute the adjoint FFT.
+        Whether to compute the adjoint FFT.
 
     Returns
     -------
     ShapedArray
-      Shape of the output array.
+        Shape of the output array.
     """
     del adjoint
 
@@ -104,48 +101,49 @@ class FFTPrimitive(BasePrimitive):
     return ShapedArray(output_shape, x.dtype)
 
   @staticmethod
-  def lowering(ctx, a: Array, *, fft_type: xla_client.FftType, pdims: PdimsType,
-               global_shape: GdimsType, adjoint: bool, mesh: Mesh):
+  def lowering(ctx, a: ir.Value, *, fft_type: FftType, pdims: PdimsType,
+               global_shape: GdimsType, adjoint: bool,
+               mesh: Mesh) -> ir.OpResultList:
     """
     Lowering function for FFT primitive.
 
     Parameters
     ----------
     ctx
-      Context.
-    a : Primitive
-      Input primitive.
-    fft_type : xla_client.FftType
-      Type of FFT operation.
-    pdims : Tuple[int, int]
-      Parallel dimensions.
-    global_shape : Tuple[int, int, int]
-      Global shape of the array.
+        Context.
+    a : Array
+        Input array.
+    fft_type : FftType
+        Type of FFT operation (forward or inverse).
+    pdims : TransposablePdimsType
+        Parallel dimensions.
+    global_shape : GdimsType
+        Global shape of the array.
     adjoint : bool
-      Whether to compute the adjoint FFT.
+        Whether to compute the adjoint FFT.
+    mesh : Mesh
+        The device mesh.
 
     Returns
     -------
     list
-      List of results from the operation.
+        List of results from the operation.
     """
     (x_aval,) = ctx.avals_in
     (aval_out,) = ctx.avals_out
     dtype = x_aval.dtype
     a_type = ir.RankedTensorType(a.type)
-    # We currently only support complex FFTs through this interface, so let's check the fft type
+
     assert fft_type in (
         FftType.FFT, FftType.IFFT), "Only complex FFTs are currently supported"
 
-    # Figure out which fft we want
     forward = fft_type in (FftType.FFT,)
     is_double = np.finfo(dtype).dtype == np.float64
 
-    # Get original global shape
     pencil_type = get_pencil_type(mesh)
     pdims, global_shape = get_lowering_args(fft_type, global_shape, mesh)
     local_transpose = jaxdecomp.config.transpose_axis_contiguous
-    # Compute the descriptor for our FFT
+
     config = _jaxdecomp.GridConfig()
     config.pdims = pdims
     config.gdims = global_shape[::-1]
@@ -157,12 +155,9 @@ class FFTPrimitive(BasePrimitive):
     n = len(a_type.shape)
     layout = tuple(range(n - 1, -1, -1))
 
-    # We ask XLA to allocate a workspace for this operation.
     workspace = mlir.full_like_aval(
-        ctx, 0, jax.core.ShapedArray(shape=[workspace_size], dtype=np.byte))
+        ctx, 0, ShapedArray(shape=[workspace_size], dtype=np.byte))
 
-    # Run the custom op with same input and output shape, so that we can perform operations
-    # inplace.
     result = custom_call(
         "pfft3d",
         result_types=[a_type],
@@ -174,7 +169,6 @@ class FFTPrimitive(BasePrimitive):
         backend_config=opaque,
     )
 
-    # Finally we reshape the arry to the expected shape.
     return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
   @staticmethod
@@ -185,18 +179,18 @@ class FFTPrimitive(BasePrimitive):
     Parameters
     ----------
     x : Array
-      Input array.
-    fft_type : Union[str, xla_client.FftType]
-      Type of FFT operation.
+        Input array.
+    fft_type : FftType
+        Type of FFT operation (forward or inverse).
     adjoint : bool
-      Whether to compute the adjoint FFT.
+        Whether to compute the adjoint FFT.
 
     Returns
     -------
-    Primitive
-      Result of the operation.
+    Array
+        Result of the FFT operation.
     """
-    assert isinstance(fft_type, xla_client.FftType)
+    assert isinstance(fft_type, FftType)  # type: ignore
 
     transpose_order = get_transpose_order(fft_type)
 
@@ -204,38 +198,36 @@ class FFTPrimitive(BasePrimitive):
         x, fft_type=fft_type, adjoint=adjoint).transpose(transpose_order)
 
   @staticmethod
-  def per_shard_impl(x: Array,
-                     fft_type: FftType,
-                     pdims: PdimsType,
-                     global_shape: GdimsType,
-                     adjoint: bool,
-                     mesh : Mesh): # yapf: disable
+  def per_shard_impl(x: Array, fft_type: FftType, pdims: TransposablePdimsType,
+                     global_shape: GdimsType, adjoint: bool,
+                     mesh: Mesh) -> Array:
     """
     Implementation function for per-shard FFT primitive.
 
     Parameters
     ----------
     x : Array
-      Input array.
-    fft_type : xla_client.FftType
-      Type of FFT operation.
-    pdims : Tuple[int, int]
-      Parallel dimensions.
-    global_shape : Tuple[int, int, int]
-      Global shape of the array.
+        Input array.
+    fft_type : FftType
+        Type of FFT operation (forward or inverse).
+    pdims : TransposablePdimsType
+        Parallel dimensions.
+    global_shape : GdimsType
+        Global shape of the array.
     adjoint : bool
-      Whether to compute the adjoint FFT.
+        Whether to compute the adjoint FFT.
+    mesh : Mesh
+        The device mesh.
 
     Returns
     -------
-    Primitive
-      Result of the operation.
+    Array
+        Result of the per-shard FFT operation.
     """
-
-    # TODO transpose_axis_contiguous_2 must be removed after benchmarking
     if fft_type == FftType.IFFT and pdims[0] == 1:
       if jaxdecomp.config.transpose_axis_contiguous_2 and jaxdecomp.config.transpose_axis_contiguous:
         x = x.transpose([1, 2, 0])
+    assert FFTPrimitive.inner_primitive is not None
 
     out = FFTPrimitive.inner_primitive.bind(
         x,
@@ -249,7 +241,7 @@ class FFTPrimitive(BasePrimitive):
 
   @staticmethod
   def infer_sharding_from_operands(
-      fft_type: xla_client.FftType, adjoint: bool, mesh: Mesh,
+      fft_type: FftType, adjoint: bool, mesh: Mesh,
       arg_infos: Tuple[ShapeDtypeStruct],
       result_infos: Tuple[ShapedArray]) -> NamedSharding:
     """
@@ -257,27 +249,27 @@ class FFTPrimitive(BasePrimitive):
 
     Parameters
     ----------
-    fft_type : xla_client.FftType
-      Type of FFT operation.
+    fft_type : FftType
+        Type of FFT operation (forward or inverse).
     adjoint : bool
-      Whether to compute the adjoint FFT.
+        Whether to compute the adjoint FFT.
     mesh : Mesh
-      Contextual mesh for sharding.
+        The device mesh.
     arg_infos : Tuple[ShapeDtypeStruct]
-      Shape and sharding information of input operands.
+        Shape and sharding information of input operands.
     result_infos : Tuple[ShapedArray]
-      Shape information of output.
+        Shape information of output.
 
     Returns
     -------
     NamedSharding
-      Sharding information for the result.
+        Sharding information for the result.
     """
     del adjoint, mesh, result_infos
 
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     spec = input_sharding.spec
-    input_mesh = input_sharding.mesh
+    input_mesh: Mesh = input_sharding.mesh  # type: ignore
     transposed_specs = get_output_specs(fft_type, spec, input_mesh, 'cudecomp')
     return NamedSharding(input_mesh, P(*transposed_specs))
 
@@ -291,25 +283,25 @@ class FFTPrimitive(BasePrimitive):
 
     Parameters
     ----------
-    fft_type : xla_client.FftType
-      Type of FFT operation.
+    fft_type : FftType
+        Type of FFT operation (forward or inverse).
     adjoint : bool
-      Whether to compute the adjoint FFT.
+        Whether to compute the adjoint FFT.
     mesh : Mesh
-      Contextual mesh for sharding.
+        The device mesh.
     arg_shapes : Tuple[ShapeDtypeStruct]
-      Shape and sharding information of input operands.
+        Shape and sharding information of input operands.
     result_shape : ShapeDtypeStruct
-      Shape and sharding information of output.
+        Shape and sharding information of output.
 
     Returns
     -------
     Tuple[Mesh, partial, NamedSharding, Tuple[NamedSharding]]
-      Mesh, lowered function, output sharding, and input operand sharding.
+        Mesh, lowered function, output sharding, and input operand sharding.
     """
-    input_mesh = arg_shapes[0].sharding.mesh
-    input_sharding = NamedSharding(input_mesh, P(*arg_shapes[0].sharding.spec))
-    output_sharding = NamedSharding(input_mesh, P(*result_shape.sharding.spec))
+    input_sharding: NamedSharding = arg_shapes[0].sharding  # type: ignore
+    output_sharding: NamedSharding = result_shape.sharding  # type: ignore
+    input_mesh: Mesh = input_sharding.mesh  # type: ignore
     global_shape = arg_shapes[0].shape
     pdims = get_pdims_from_sharding(output_sharding)
 
@@ -328,7 +320,7 @@ register_primitive(FFTPrimitive)
 
 
 @partial(jax.jit, static_argnums=(1, 2))
-def pfft_impl(x: Array, fft_type: FftType, adjoint: bool) -> Primitive:
+def pfft_impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:
   """
   Lowering function for pfft primitive.
 
@@ -347,6 +339,8 @@ def pfft_impl(x: Array, fft_type: FftType, adjoint: bool) -> Primitive:
     Result of the operation.
   """
   (x,) = promote_dtypes_complex(x)
+
+  assert FFTPrimitive.outer_primitive is not None
 
   return FFTPrimitive.outer_primitive.bind(
       x, fft_type=fft_type, adjoint=adjoint)

@@ -23,16 +23,12 @@ from ._jaxdecomp import (HALO_COMM_MPI, HALO_COMM_MPI_BLOCKING, HALO_COMM_NCCL,
 for name, fn in _jaxdecomp.registrations().items():
   xla_client.register_custom_call_target(name, fn, platform="gpu")
 
-from .padding import slice_pad, slice_unpad
-
 __all__ = [
     "init",
     "finalize",
     "get_pencil_info",
     "get_autotuned_config",
     "make_config",
-    "slice_pad",
-    "slice_unpad",
     "TRANSPOSE_XY",
     "TRANSPOSE_YX",
     "TRANSPOSE_YZ",

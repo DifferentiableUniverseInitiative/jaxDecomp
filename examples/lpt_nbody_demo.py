@@ -41,7 +41,7 @@ def _global_to_local_size(nc: int):
   return [nc // pdims[0], nc // pdims[1], nc]
 
 
-def fttk(nc: int) -> list:
+def fttk(nc: int):
   """
     Generate Fourier transform wave numbers for a given mesh.
 
