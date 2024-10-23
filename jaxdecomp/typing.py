@@ -1,4 +1,4 @@
-from typing import Tuple, Type, Sequence
+from typing import Sequence, Tuple, Type
 
 GdimsType = Tuple[int, int, int]
 # pdims is only two integers
