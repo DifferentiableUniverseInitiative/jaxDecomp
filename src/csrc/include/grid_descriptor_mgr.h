@@ -52,7 +52,7 @@ private:
 
   AsyncLogger m_Tracer;
   bool isInitialized = false;
-  int isMPIalreadyInitialized = false;
+
   cudecompHandle_t m_Handle;
 
   std::unordered_map<fftDescriptor, std::shared_ptr<FourierExecutor<double>>, std::hash<fftDescriptor>, std::equal_to<>>

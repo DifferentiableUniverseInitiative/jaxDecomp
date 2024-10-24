@@ -59,18 +59,18 @@ if(CMAKE_CUDA_COMPILER AND JD_CUDECOMP_BACKEND)
 
   # Add _jaxdecomp modulei
   pybind11_add_module(_jaxdecomp
-                        src/halo.cu
-                        src/jaxdecomp.cc
-                        src/grid_descriptor_mgr.cc
-                        src/fft.cu
-                        src/transpose.cu
+                        src/csrc/halo.cu
+                        src/csrc/jaxdecomp.cc
+                        src/csrc/grid_descriptor_mgr.cc
+                        src/csrc/fft.cu
+                        src/csrc/transpose.cu
   )
 
   set_target_properties(_jaxdecomp PROPERTIES CUDA_ARCHITECTURES "${CUDECOMP_CUDA_CC_LIST}")
 
   target_include_directories(_jaxdecomp
     PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/include
+    ${CMAKE_CURRENT_LIST_DIR}/src/csrc/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/cuDecomp/include
     ${NVHPC_CUDA_INCLUDE_DIR}
     ${MPI_CXX_INCLUDE_DIRS}
@@ -88,8 +88,8 @@ if(CMAKE_CUDA_COMPILER AND JD_CUDECOMP_BACKEND)
   set_target_properties(_jaxdecomp PROPERTIES LINKER_LANGUAGE CXX)
   target_compile_definitions(_jaxdecomp PRIVATE JD_CUDECOMP_BACKEND)
 else()
-  pybind11_add_module(_jaxdecomp src/jaxdecomp.cc)
-  target_include_directories(_jaxdecomp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/include)
+  pybind11_add_module(_jaxdecomp src/csrc/jaxdecomp.cc)
+  target_include_directories(_jaxdecomp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src/csrc/include)
   target_compile_definitions(_jaxdecomp PRIVATE JD_JAX_BACKEND)
 endif()
 
