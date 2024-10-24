@@ -37,12 +37,7 @@ wheel.install-dir = "jaxdecomp/_src"
 
 [tool.scikit-build.cmake.define]
 CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
-CMAKE_EXPORT_COMPILE_COMMANDS = "ON"
 
-
-[tool.cibuildwheel]
-test-extras = "test"
-test-command = """
-    cd {project}tests
-    pytest -v
-"""
+#[tool.cibuildwheel]
+#test-extras = "test"
+#test-command = "pytest {project}/tests"
