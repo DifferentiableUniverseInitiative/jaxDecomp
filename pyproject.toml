@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "jaxdecomp"
-version = "0.1.0"
+version = "0.2.0"
 description = "JAX bindings for the cuDecomp library"
 authors = [
   { name = "Wassim Kabalan" },
@@ -36,4 +36,9 @@ wheel.install-dir = "jaxdecomp/_src"
 [tool.scikit-build.cmake.define]
 CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
 CMAKE_EXPORT_COMPILE_COMMANDS = "ON"
+
+
+[tool.cibuildwheel]
+test-extras = "test"
+test-command = "pytest {project}/tests"
 
