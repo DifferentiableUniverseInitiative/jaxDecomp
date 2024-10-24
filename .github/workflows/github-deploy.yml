@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
   pull_request:
   push:
-    branches:
-      - main
+    #   branches:
+    # - main
   release:
     types:
       - published
@@ -63,4 +63,4 @@ jobs:
 
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          # To test: repository-url: https://test.pypi.org/legacy/
+          repository-url: https://test.pypi.org/legacy/
