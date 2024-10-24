@@ -6,9 +6,9 @@ on:
   # push:
     #   branches:
     # - main
-  release:
-    types:
-      - published
+  # release:
+  #   types:
+  #     - published
 
 jobs:
   build_wheels:
@@ -26,6 +26,7 @@ jobs:
         uses: pypa/cibuildwheel@v2.21.3
         env:
          CIBW_BUILD: "cp310-* cp311-* cp312-*"
+         CIBW_BUILD_VERBOSITY: 2
       - uses: actions/upload-artifact@v4
         with:
           name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
@@ -51,9 +52,9 @@ jobs:
     environment: pypi
     permissions:
       id-token: write
-    if: github.event_name == 'release' && github.event.action == 'published'
+    # if: github.event_name == 'release' && github.event.action == 'published'
     # or, alternatively, upload to PyPI on every tag starting with 'v' (remove on: release above to use this)
-    # if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -63,5 +64,5 @@ jobs:
           merge-multiple: true
 
       - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
+      #with:
+      #    repository-url: https://test.pypi.org/legacy/

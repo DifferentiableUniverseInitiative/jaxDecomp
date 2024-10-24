@@ -22,10 +22,13 @@ classifiers = [
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
 ]
-dependencies = ["jaxtyping"]
+dependencies = [
+"jaxtyping>=0.2.33",
+"jax>=0.4.30",
+]
 
 [project.optional-dependencies]
-test = ["pytest" , "jax[cpu]"]
+test = ["pytest>=8.0.0" , "jax[cpu]>=0.4.30"]
 
 [tool.scikit-build]
 minimum-version = "0.8"
