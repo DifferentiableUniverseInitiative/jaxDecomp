@@ -1,5 +1,14 @@
 # Change log
 
+## jaxdecomp 0.2.0
+
+* Changes
+  * jaxDecomp works without MPI and using only JAX as backend
+  * with mesh is no longer required (will be deprecated by JAX)
+  * Added support for fftfreq
+  * Added testing for all functions
+  * Added static typing and checked with mypy
+
 ## jaxdecomp 0.1.0
 
 * Changes
