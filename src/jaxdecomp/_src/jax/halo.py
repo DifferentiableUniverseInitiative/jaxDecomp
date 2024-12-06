@@ -6,9 +6,9 @@ from jax import ShapeDtypeStruct, lax
 from jax.core import ShapedArray
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
+from jaxdecomplib import _jaxdecomp
 from jaxtyping import Array
 
-from jaxdecomp._src import _jaxdecomp
 from jaxdecomp._src.spmd_ops import (CustomParPrimitive, get_pencil_type,
                                      register_primitive)
 from jaxdecomp.typing import HaloExtentType, Periodicity

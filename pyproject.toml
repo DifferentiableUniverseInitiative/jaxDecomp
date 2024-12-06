@@ -23,7 +23,7 @@ classifiers = [
   "Intended Audience :: Science/Research",
 ]
 dependencies = [
-"jaxtyping>=0.2.33",
+"jaxtyping>=0.2.0",
 "jax>=0.4.30",
 ]
 
@@ -36,11 +36,11 @@ cmake.version = ">=3.25"
 build-dir = "build/{wheel_tag}"
 wheel.py-api = "py3"
 cmake.build-type = "Release"
-wheel.install-dir = "jaxdecomp/_src"
+#wheel.install-dir = "jaxdecomp"
 
 [tool.scikit-build.cmake.define]
 CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
 
 #[tool.cibuildwheel]
-#test-extras = "test"
-#test-command = "pytest {project}/tests"
+test-extras = "test"
+test-command = "pytest {project}/tests"

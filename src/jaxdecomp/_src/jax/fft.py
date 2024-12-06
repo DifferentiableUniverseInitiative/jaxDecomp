@@ -6,12 +6,11 @@ from jax import lax
 from jax._src.api import ShapeDtypeStruct
 from jax._src.core import ShapedArray
 from jax._src.typing import Array
-from jax.lib import xla_client
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
+from jaxdecomplib import _jaxdecomp
 
 import jaxdecomp
-from jaxdecomp._src import _jaxdecomp
 from jaxdecomp._src.fft_utils import COMPLEX  # yapf: disable
 from jaxdecomp._src.fft_utils import FftType  # yapf: disable
 from jaxdecomp._src.fft_utils import ADJOINT, FORWARD_FFTs, fft, fft2, fftn
