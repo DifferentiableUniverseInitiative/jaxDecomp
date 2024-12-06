@@ -2,12 +2,12 @@ from functools import partial
 from typing import Tuple
 
 import jax
+from jax import lax
 from jax import numpy as jnp
 from jax.experimental.shard_alike import shard_alike
-from jax.lib import xla_client
 from jaxtyping import Array
 
-FftType = xla_client.FftType
+FftType = lax.FftType
 
 
 @partial(jax.jit, static_argnums=(1,))

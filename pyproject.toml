@@ -3,7 +3,7 @@ requires = ["scikit-build-core>=0.4.0", "pybind11>=2.9.0"]
 build-backend = "scikit_build_core.build"
 [project]
 name = "jaxdecomp"
-version = "0.2.0"
+version = "0.2.1"
 description = "JAX bindings for the cuDecomp library"
 authors = [
   { name = "Wassim Kabalan" },
@@ -23,7 +23,7 @@ classifiers = [
   "Intended Audience :: Science/Research",
 ]
 dependencies = [
-"jaxtyping>=0.2.33",
+"jaxtyping>=0.2.0",
 "jax>=0.4.30",
 ]
 
@@ -36,11 +36,10 @@ cmake.version = ">=3.25"
 build-dir = "build/{wheel_tag}"
 wheel.py-api = "py3"
 cmake.build-type = "Release"
-wheel.install-dir = "jaxdecomp/_src"
 
 [tool.scikit-build.cmake.define]
 CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
 
-#[tool.cibuildwheel]
-#test-extras = "test"
-#test-command = "pytest {project}/tests"
+[tool.cibuildwheel]
+test-extras = "test"
+test-command = "pytest {project}/tests"

@@ -4,7 +4,6 @@ from typing import Optional, Sequence
 import jax.numpy as jnp
 from jax import jit
 from jax._src.typing import Array, ArrayLike
-from jax.lib import xla_client
 
 from jaxdecomp._src.cudecomp.fft import pfft as _cudecomp_pfft
 from jaxdecomp._src.fft_utils import FftType

@@ -10,10 +10,10 @@ from jax._src.typing import Array
 from jax.core import ShapedArray
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
+from jaxdecomplib import _jaxdecomp
 from jaxlib.hlo_helpers import custom_call
 
 import jaxdecomp
-from jaxdecomp._src import _jaxdecomp
 from jaxdecomp._src.spmd_ops import (BasePrimitive, get_pdims_from_mesh,
                                      register_primitive)
 from jaxdecomp.typing import GdimsType, HaloExtentType, PdimsType, Periodicity

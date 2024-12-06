@@ -1,11 +1,11 @@
 from math import prod
 from typing import Tuple, TypeAlias
 
+from jax import lax
 from jax import numpy as jnp
-from jax.lib import xla_client
 from jaxtyping import Array
 
-FftType: TypeAlias = xla_client.FftType
+FftType: TypeAlias = lax.FftType
 
 FORWARD_FFTs = {FftType.FFT, FftType.RFFT}
 INVERSE_FFTs = {FftType.IFFT, FftType.IRFFT}

@@ -1,12 +1,12 @@
 from typing import Optional, Tuple
 
 import jax
-from jax.lib import xla_client
+from jax import lax
 from jax.sharding import Mesh
 from jax.sharding import PartitionSpec as P
+from jaxdecomplib import _jaxdecomp
 
 import jaxdecomp
-from jaxdecomp._src import _jaxdecomp
 from jaxdecomp._src.fft_utils import FftType, FORWARD_FFTs
 from jaxdecomp._src.spmd_ops import get_pdims_from_mesh, get_pencil_type
 from jaxdecomp.typing import GdimsType, PdimsType, TransposablePdimsType
@@ -91,13 +91,13 @@ def get_lowering_args(fft_type: FftType, global_shape: GdimsType,
 
   if jaxdecomp.config.transpose_axis_contiguous:
     match fft_type:
-      case xla_client.FftType.FFT:
+      case lax.FftType.FFT:
         if pencil_type == _jaxdecomp.SLAB_XY:
           transpose_back_shape = (1, 2, 0)
           pdims = pdims[::-1]
         else:
           transpose_back_shape = (0, 1, 2)
-      case xla_client.FftType.IFFT:
+      case lax.FftType.IFFT:
         if pencil_type == _jaxdecomp.SLAB_XY:
           transpose_back_shape = (0, 1, 2)
           pdims = pdims[::-1]

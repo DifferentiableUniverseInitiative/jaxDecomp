@@ -11,11 +11,11 @@ from jax._src.numpy.util import promote_dtypes_complex
 from jax.core import Primitive, ShapedArray
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
+from jaxdecomplib import _jaxdecomp
 from jaxlib.hlo_helpers import custom_call
 from jaxtyping import Array
 
 import jaxdecomp
-from jaxdecomp._src import _jaxdecomp
 from jaxdecomp._src.fft_utils import FftType, fftn
 from jaxdecomp._src.pencil_utils import (get_lowering_args, get_output_specs,
                                          get_pencil_type, get_transpose_order)
@@ -328,7 +328,7 @@ def pfft_impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:
   ----------
   x : Array
     Input array.
-  fft_type : Union[str, xla_client.FftType]
+  fft_type : Union[str, lax.FftType]
     Type of FFT operation.
   adjoint : bool
     Whether to compute the adjoint FFT.
@@ -355,7 +355,7 @@ def pfft(x: Array, fft_type: FftType, adjoint: bool = False) -> Primitive:
   ----------
   x : Array
     Input array.
-  fft_type : Union[str, xla_client.FftType]
+  fft_type : Union[str, lax.FftType]
     Type of FFT operation.
   adjoint : bool, optional
     Whether to compute the adjoint FFT. Defaults to False.
@@ -378,7 +378,7 @@ def _pfft_fwd_rule(x: Array, fft_type: FftType,
   ----------
   x : Array
     Input array.
-  fft_type : Union[str, xla_client.FftType]
+  fft_type : Union[str, lax.FftType]
     Type of FFT operation.
   adjoint : bool, optional
     Whether to compute the adjoint FFT. Defaults to False.
@@ -398,7 +398,7 @@ def _pfft_bwd_rule(fft_type: FftType, adjoint: bool, _,
 
   Parameters
   ----------
-  fft_type : Union[str, xla_client.FftType]
+  fft_type : Union[str, lax.FftType]
     Type of FFT operation.
   adjoint : bool
     Whether to compute the adjoint FFT.

@@ -9,8 +9,8 @@ from jax._src.interpreters import batching
 from jax.experimental.custom_partitioning import custom_partitioning
 from jax.interpreters import mlir, xla
 from jax.sharding import Mesh, NamedSharding
+from jaxdecomplib import _jaxdecomp
 
-from jaxdecomp._src import _jaxdecomp
 from jaxdecomp.typing import PdimsType, TransposablePdimsType
 
 Specs = Any
