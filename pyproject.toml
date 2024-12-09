@@ -34,12 +34,11 @@ test = ["pytest>=8.0.0" , "jax[cpu]>=0.4.30"]
 minimum-version = "0.8"
 cmake.version = ">=3.25"
 build-dir = "build/{wheel_tag}"
-wheel.py-api = "py3"
 cmake.build-type = "Release"
 
 [tool.scikit-build.cmake.define]
 CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
 
-#[tool.cibuildwheel]
-#test-extras = "test"
-#test-command = "pytest {project}/tests"
+[tool.cibuildwheel]
+test-extras = "test"
+test-command = "pytest {project}/tests"
