@@ -32,7 +32,6 @@ jobs:
           # Builds for specific Python versions specified in matrix
           python-version: ${{ matrix.python-version }}
         env:
-          CIBW_BUILD: "cp${{ matrix.python-version }}-*"
           CIBW_SKIP: "pp*"  # Skip non-CPython implementations
 
       - uses: actions/upload-artifact@v4
