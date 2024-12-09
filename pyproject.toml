@@ -24,11 +24,11 @@ classifiers = [
 ]
 dependencies = [
 "jaxtyping>=0.2.0",
-"jax",
+"jax>=0.4.30",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0.0" , "jax"]
+test = ["pytest>=8.0.0" , "jax>=0.4.30"]
 
 [tool.scikit-build]
 minimum-version = "0.8"
