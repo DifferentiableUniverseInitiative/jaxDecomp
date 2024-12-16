@@ -2,7 +2,8 @@ from functools import partial
 from typing import Optional, Sequence
 
 import jax.numpy as jnp
-from jax import jit
+from jax import jit, lax
+from jax._src import dtypes
 from jax._src.typing import Array, ArrayLike
 
 from jaxdecomp._src.cudecomp.fft import pfft as _cudecomp_pfft
@@ -115,6 +116,14 @@ def _do_pfft(func_name: str,
     typ = fft_type
   else:
     raise TypeError(f"Unknown FFT type value '{fft_type}'")
+
+  match typ:
+    case FftType.FFT | FftType.IFFT:
+      arr = lax.convert_element_type(arr,
+                                     dtypes.to_complex_dtype(dtypes.dtype(arr)))
+    case FftType.RFFT | FftType.IRFFT:
+      raise ValueError("Not implemented wait (SOON)")
+
   if backend.lower() == "cudecomp":
     transformed = _cudecomp_pfft(arr, typ)
   elif backend.lower() == "jax":
