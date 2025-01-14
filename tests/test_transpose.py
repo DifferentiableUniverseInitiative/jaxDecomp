@@ -1,27 +1,24 @@
-from conftest import (compare_sharding, create_ones_spmd_array,
-                      create_spmd_array, device_arange, initialize_distributed,
-                      is_on_cluster)
+from conftest import (assert_allclose, assert_array_equal, compare_sharding,
+                      create_spmd_array, initialize_distributed, is_on_cluster)
 
 initialize_distributed()
 import jax
 
 size = jax.device_count()
 
-import pytest
-
-jax.config.update("jax_enable_x64", True)
-
 from functools import partial
 
 import jax.numpy as jnp
+import pytest
 from jax.experimental.multihost_utils import process_allgather
 from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
-from numpy.testing import assert_allclose, assert_array_equal
 
 import jaxdecomp
-from jaxdecomp import (transposeXtoY, transposeYtoX, transposeYtoZ,
-                       transposeZtoY)
+from jaxdecomp import (ShardedArray, transposeXtoY, transposeYtoX,
+                       transposeYtoZ, transposeZtoY)
+
+jax.config.update("jax_enable_x64", True)
 
 all_gather = partial(process_allgather, tiled=True)
 
@@ -36,16 +33,19 @@ local_transpose = [False, True]
 
 class TestTransposes:
 
-  def run_test(self, pdims, global_shape, local_transpose, backend):
-    """ Goes from an array of shape [z,y,x] # What we call an x pencil
-      to [x,z,y] # what we call a y pencil
-      """
+  def run_test(self, pdims, global_shape, local_transpose, shardedArrayAPI,
+               backend):
+    """Goes from an array of shape [z,y,x] # What we call an x pencil
+        to [x,z,y] # what we call a y pencil
+        """
     print("*" * 80)
     print(
         f"Testing with pdims {pdims} and global shape {global_shape} with local transpose {local_transpose}"
     )
     jaxdecomp.config.update("transpose_axis_contiguous", local_transpose)
     global_array, mesh = create_spmd_array(global_shape, pdims)
+    if shardedArrayAPI:
+      global_array = ShardedArray(global_array, global_array.sharding)
 
     jd_tranposed_xy = transposeXtoY(global_array, backend=backend)
     jd_tranposed_yz = transposeYtoZ(jd_tranposed_xy, backend=backend)
@@ -58,13 +58,13 @@ class TestTransposes:
     print(f"jd_tranposed_yx shape {jd_tranposed_yx.shape}")
 
     if local_transpose:
-      original_sharding = NamedSharding(mesh, P('z', 'y'))
-      y_pencil_sharding = NamedSharding(mesh, P('y', 'z'))
-      z_pencil_sharding = NamedSharding(mesh, P('z', 'y'))
+      original_sharding = NamedSharding(mesh, P("z", "y"))
+      y_pencil_sharding = NamedSharding(mesh, P("y", "z"))
+      z_pencil_sharding = NamedSharding(mesh, P("z", "y"))
     else:
-      original_sharding = NamedSharding(mesh, P('z', 'y'))
-      y_pencil_sharding = NamedSharding(mesh, P('z', None, 'y'))
-      z_pencil_sharding = NamedSharding(mesh, P(None, 'z', 'y'))
+      original_sharding = NamedSharding(mesh, P("z", "y"))
+      y_pencil_sharding = NamedSharding(mesh, P("z", None, "y"))
+      z_pencil_sharding = NamedSharding(mesh, P(None, "z", "y"))
 
     print(f"Original sharding {original_sharding}")
     print(f"y pencil sharding {y_pencil_sharding}")
@@ -145,8 +145,15 @@ class TestTransposes:
                            decomp)  # Test with Slab and Pencil decompositions
   @pytest.mark.parametrize("global_shape",
                            global_shapes)  # Test cubes, non-cubes and primes
-  def test_cudecomp_transpose(self, pdims, global_shape, local_transpose):
-    self.run_test(pdims, global_shape, local_transpose, backend="cuDecomp")
+  @pytest.mark.parametrize("shardedArrayAPI", [True, False])
+  def test_cudecomp_transpose(self, pdims, global_shape, shardedArrayAPI,
+                              local_transpose):
+    self.run_test(
+        pdims,
+        global_shape,
+        local_transpose,
+        shardedArrayAPI,
+        backend="cuDecomp")
 
   # Cartesian product tests
   @pytest.mark.parametrize(
@@ -156,16 +163,20 @@ class TestTransposes:
                            decomp)  # Test with Slab and Pencil decompositions
   @pytest.mark.parametrize("global_shape",
                            global_shapes)  # Test cubes, non-cubes and primes
-  def test_jax_transpose(self, pdims, global_shape, local_transpose):
-    self.run_test(pdims, global_shape, local_transpose, backend="jax")
+  @pytest.mark.parametrize("shardedArrayAPI", [True, False])
+  def test_jax_transpose(self, pdims, global_shape, shardedArrayAPI,
+                         local_transpose):
+    self.run_test(
+        pdims, global_shape, local_transpose, shardedArrayAPI, backend="jax")
 
 
 class TestTransposesGrad:
 
-  def run_test(self, pdims, global_shape, local_transpose, backend):
-    """ Goes from an array of shape [z,y,x] # What we call an x pencil
-      to [x,z,y] # what we call a y pencil
-      """
+  def run_test(self, pdims, global_shape, local_transpose, shardedArrayAPI,
+               backend):
+    """Goes from an array of shape [z,y,x] # What we call an x pencil
+        to [x,z,y] # what we call a y pencil
+        """
     print("*" * 80)
     print(
         f"Testing with pdims {pdims} and global shape {global_shape} with local transpose {local_transpose}"
@@ -174,6 +185,8 @@ class TestTransposesGrad:
     jaxdecomp.config.update("transpose_axis_contiguous", local_transpose)
 
     global_array, mesh = create_spmd_array(global_shape, pdims)
+    if shardedArrayAPI:
+      global_array = ShardedArray(global_array, global_array.sharding)
 
     @jax.jit
     def jaxdecomp_transpose(global_array):
@@ -181,8 +194,9 @@ class TestTransposesGrad:
       jd_tranposed_yz = transposeYtoZ(jd_tranposed_xy, backend=backend)
       jd_tranposed_zy = transposeZtoY(jd_tranposed_yz, backend=backend)
       jd_tranposed_yx = transposeYtoX(jd_tranposed_zy, backend=backend)
-      y = (jd_tranposed_yx * jnp.conjugate(jd_tranposed_yx)).real.sum()
-      return y
+      y = (jd_tranposed_yx *
+           jax.tree.map(jnp.conjugate, jd_tranposed_yx)).real.sum()
+      return y.data if shardedArrayAPI else y
 
     @jax.jit
     def jax_transpose(global_array):
@@ -190,8 +204,9 @@ class TestTransposesGrad:
       jax_transposed_yz = jax_transposed_xy.transpose([2, 1, 0])
       jax_transposed_zy = jax_transposed_yz.transpose([2, 1, 0])
       jax_transposed_yx = jax_transposed_zy.transpose([0, 2, 1])
-      y = (jax_transposed_yx * jnp.conjugate(jax_transposed_yx)).real.sum()
-      return y
+      y = (jax_transposed_yx *
+           jax.tree.map(jnp.conjugate, jax_transposed_yx)).real.sum()
+      return y.data if shardedArrayAPI else y
 
     array_grad = jax.grad(jaxdecomp_transpose)(global_array)
     print("Here is the gradient I'm getting", array_grad.shape)
@@ -211,12 +226,22 @@ class TestTransposesGrad:
   @pytest.mark.parametrize("pdims", decomp)
   @pytest.mark.parametrize("global_shape", global_shapes)
   @pytest.mark.parametrize("local_transpose", local_transpose)
-  def test_cudecomp_transpose_grad(self, pdims, global_shape, local_transpose):
-    self.run_test(pdims, global_shape, local_transpose, backend="cuDecomp")
+  @pytest.mark.parametrize("shardedArrayAPI", [True, False])
+  def test_cudecomp_transpose_grad(self, pdims, global_shape, shardedArrayAPI,
+                                   local_transpose):
+    self.run_test(
+        pdims,
+        global_shape,
+        local_transpose,
+        shardedArrayAPI,
+        backend="cuDecomp")
 
   # Cartesian product test
   @pytest.mark.parametrize("pdims", decomp)
   @pytest.mark.parametrize("global_shape", global_shapes)
   @pytest.mark.parametrize("local_transpose", local_transpose)
-  def test_jax_transpose_grad(self, pdims, global_shape, local_transpose):
-    self.run_test(pdims, global_shape, local_transpose, backend="jax")
+  @pytest.mark.parametrize("shardedArrayAPI", [True, False])
+  def test_jax_transpose_grad(self, pdims, global_shape, shardedArrayAPI,
+                              local_transpose):
+    self.run_test(
+        pdims, global_shape, local_transpose, shardedArrayAPI, backend="jax")

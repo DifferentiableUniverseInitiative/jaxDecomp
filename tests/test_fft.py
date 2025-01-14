@@ -1,8 +1,10 @@
-from conftest import (compare_sharding, create_spmd_array,
+from conftest import (assert_allclose, create_spmd_array,
                       initialize_distributed, is_on_cluster)
 
 initialize_distributed()
-import jax
+import jax  # noqa: E402
+
+from jaxdecomp import ShardedArray
 
 size = jax.device_count()
 
@@ -13,7 +15,6 @@ from functools import partial
 import jax.numpy as jnp
 import pytest
 from jax.experimental.multihost_utils import process_allgather
-from numpy.testing import assert_allclose
 
 import jaxdecomp
 from jaxdecomp._src import PENCILS, SLAB_XY, SLAB_YZ
@@ -24,18 +25,21 @@ pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
 
 decomp = [(size, 1), (1, size), pencil_1, pencil_2]
-global_shapes = [(8, 16, 32), (8, 8, 8), (29 * size, 19 * size, 17 * size)
-                ]  # Cubes, non-cubes and primes
+global_shapes = [
+    (8, 16, 32),
+    (8, 8, 8),
+    (29 * size, 19 * size, 17 * size),
+]  # Cubes, non-cubes and primes
 local_transpose = [True, False]
 
 
 class TestFFTs:
 
-  def run_test(self, pdims, global_shape, local_transpose, backend):
-
+  def run_test(self, pdims, global_shape, local_transpose, shardedArrayAPI,
+               backend):
     print("*" * 80)
     print(
-        f"Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose}"
+        f"Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} and shardedArrayAPI {shardedArrayAPI}"
     )
     if pdims[0] == 1:
       penciltype = SLAB_XY
@@ -45,9 +49,12 @@ class TestFFTs:
       penciltype = PENCILS
     print(f"Decomposition type {penciltype}")
 
-    jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
+    jaxdecomp.config.update("transpose_axis_contiguous", local_transpose)
 
     global_array, mesh = create_spmd_array(global_shape, pdims)
+    if shardedArrayAPI:
+      global_array = ShardedArray(global_array,
+                                  global_array.sharding)  # type: ignore
 
     # Perform distributed FFT
     karray = jaxdecomp.fft.pfft3d(global_array, backend=backend)
@@ -67,8 +74,7 @@ class TestFFTs:
     gathered_karray = all_gather(karray)
     gathered_rec_array = all_gather(rec_array)
 
-    jax_karray = jnp.fft.fftn(gathered_array)
-    jax_rec_array = jnp.fft.ifftn(jax_karray, norm='forward')
+    jax_karray = jax.tree.map(jnp.fft.fftn, gathered_array)
     # Check the forward FFT
     if penciltype == SLAB_YZ:
       transpose_back = [2, 0, 1]
@@ -85,7 +91,7 @@ class TestFFTs:
     assert_allclose(
         gathered_array.imag, gathered_rec_array.imag, rtol=1e-5, atol=1e-5)
 
-    print(f"Reconstruction check OK!")
+    print("Reconstruction check OK!")
 
     jax_karray_transposed = jax_karray.transpose(transpose_back)
     assert_allclose(
@@ -93,7 +99,7 @@ class TestFFTs:
     assert_allclose(
         gathered_karray.imag, jax_karray_transposed.imag, rtol=1e-5, atol=1e-5)
 
-    print(f"FFT with transpose check OK!")
+    print("FFT with transpose check OK!")
 
     # Trigger rejit in case local transpose is switched
     jax.clear_caches()
@@ -107,8 +113,15 @@ class TestFFTs:
                            decomp)  # Test with Slab and Pencil decompositions
   @pytest.mark.parametrize("global_shape",
                            global_shapes)  # Test cubes, non-cubes and primes
-  def test_cudecomp_fft(self, pdims, global_shape, local_transpose):
-    self.run_test(pdims, global_shape, local_transpose, backend="cuDecomp")
+  @pytest.mark.parametrize("shardedArrayAPI", [True, False])
+  def test_cudecomp_fft(self, pdims, global_shape, local_transpose,
+                        shardedArrayAPI):
+    self.run_test(
+        pdims,
+        global_shape,
+        local_transpose,
+        shardedArrayAPI,
+        backend="cuDecomp")
 
   # Cartesian product tests
   @pytest.mark.parametrize(
@@ -118,13 +131,16 @@ class TestFFTs:
                            decomp)  # Test with Slab and Pencil decompositions
   @pytest.mark.parametrize("global_shape",
                            global_shapes)  # Test cubes, non-cubes and primes
-  def test_jax_fft(self, pdims, global_shape, local_transpose):
-    self.run_test(pdims, global_shape, local_transpose, backend="jax")
+  @pytest.mark.parametrize("shardedArrayAPI", [True, False])
+  def test_jax_fft(self, pdims, global_shape, local_transpose, shardedArrayAPI):
+    self.run_test(
+        pdims, global_shape, local_transpose, shardedArrayAPI, backend="jax")
 
 
 class TestFFTsGrad:
 
-  def run_test(self, pdims, global_shape, local_transpose, backend):
+  def run_test(self, pdims, global_shape, local_transpose, shardedArrayAPI,
+               backend):
     if pdims[0] == 1:
       penciltype = SLAB_XY
     elif pdims[1] == 1:
@@ -147,24 +163,31 @@ class TestFFTsGrad:
     print(
         f"Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose}"
     )
-    jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
+    jaxdecomp.config.update("transpose_axis_contiguous", local_transpose)
     global_array, mesh = create_spmd_array(global_shape, pdims)
 
+    if shardedArrayAPI:
+      global_array = ShardedArray(global_array,
+                                  global_array.sharding)  # type: ignore
+
     print("-" * 40)
-    print(f"Testing fwd grad")
+    print("Testing fwd grad")
 
     @jax.jit
     def spmd_grad(arr):
       y = jaxdecomp.fft.pfft3d(arr, backend=backend)
-      y = (y * jnp.conjugate(y)).real.sum()
-      return y
+      y = (y * jax.tree.map(jnp.conjugate, y)).real.sum()
+      res = y
+      return res.data if shardedArrayAPI else res
 
-      # Perform local FFT
+      # Perform local FF+T
+
     @jax.jit
     def local_grad(arr):
-      y = jnp.fft.fftn(arr).transpose(transpose_back)
-      y = (y * jnp.conjugate(y)).real.sum()
-      return y
+      y = jax.tree.map(jnp.fft.fftn, arr).transpose(transpose_back)
+      y = (y * jax.tree.map(jnp.conjugate, y)).real.sum()
+      res = y
+      return res.data if shardedArrayAPI else res
 
     # Perform distributed FFT
     array_grad = jax.grad(spmd_grad)(global_array)
@@ -179,18 +202,20 @@ class TestFFTsGrad:
     assert_allclose(jax_grad, gathered_grads, rtol=1e-5, atol=1e-5)
 
     print("-" * 40)
-    print(f"Testing backward grad")
+    print("Testing backward grad")
 
     @jax.jit
     def inv_spmd_grad(arr):
       y = jaxdecomp.fft.pifft3d(arr, backend=backend)
-      y = (y * jnp.conjugate(y)).real.sum()
-      return y
+      y = (y * jax.tree.map(jnp.conjugate, y)).real.sum()
+      res = y
+      return res.data if shardedArrayAPI else res
 
     @jax.jit
     def inv_local_grad(arr):
-      y = jnp.fft.ifftn(arr).transpose(transpose_back)
-      return (y * jnp.conjugate(y)).real.sum()
+      y = jax.tree.map(jnp.fft.ifftn, arr).transpose(transpose_back)
+      res = (y * jax.tree.map(jnp.conjugate, y)).real.sum()
+      return res.data if shardedArrayAPI else res
 
     # Perform distributed FFT
     karray = jaxdecomp.fft.pfft3d(global_array, backend=backend)
@@ -198,7 +223,8 @@ class TestFFTsGrad:
     print("Here is the gradient I'm getting", array_grad.shape)
 
     ifft_gathered_grads = all_gather(ifft_array_grad)
-    jax_karray = jnp.fft.fftn(gathered_array).transpose(transpose_back)
+    jax_karray = jax.tree.map(jnp.fft.fftn,
+                              gathered_array).transpose(transpose_back)
 
     ifft_jax_grad = jax.grad(inv_local_grad)(jax_karray)
 
@@ -220,8 +246,15 @@ class TestFFTsGrad:
                            decomp)  # Test with Slab and Pencil decompositions
   @pytest.mark.parametrize("global_shape",
                            global_shapes)  # Test cubes, non-cubes and primes
-  def test_cudecomp_grad(self, pdims, global_shape, local_transpose):
-    self.run_test(pdims, global_shape, local_transpose, backend="cuDecomp")
+  @pytest.mark.parametrize("shardedArrayAPI", [True, False])
+  def test_cudecomp_grad(self, pdims, global_shape, shardedArrayAPI,
+                         local_transpose):
+    self.run_test(
+        pdims,
+        global_shape,
+        local_transpose,
+        shardedArrayAPI,
+        backend="cuDecomp")
 
   @pytest.mark.parametrize(
       "local_transpose",
@@ -230,20 +263,22 @@ class TestFFTsGrad:
                            decomp)  # Test with Slab and Pencil decompositions
   @pytest.mark.parametrize("global_shape",
                            global_shapes)  # Test cubes, non-cubes and primes
-  def test_jax_grad(self, pdims, global_shape, local_transpose):
-    self.run_test(pdims, global_shape, local_transpose, backend="jax")
+  @pytest.mark.parametrize("shardedArrayAPI", [True, False])
+  def test_jax_grad(self, pdims, global_shape, shardedArrayAPI,
+                    local_transpose):
+    self.run_test(
+        pdims, global_shape, local_transpose, shardedArrayAPI, backend="jax")
 
 
 class TestFFTFreq:
 
   def run_test(self, pdims, global_shape, local_transpose, backend):
-
     print("*" * 80)
     print(
         f"Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose}"
     )
 
-    jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
+    jaxdecomp.config.update("transpose_axis_contiguous", local_transpose)
     if not local_transpose:
       pytest.skip(reason="Not implemented yet")
 
@@ -283,7 +318,7 @@ class TestFFTFreq:
       assert_allclose(
           jax_gradients[i], gathered_gradients[i], rtol=1e-5, atol=1e-5)
 
-    print(f"Gradient check OK!")
+    print("Gradient check OK!")
 
     # Trigger rejit in case local transpose is switched
     jax.clear_caches()
