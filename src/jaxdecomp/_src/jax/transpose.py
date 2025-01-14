@@ -10,7 +10,8 @@ from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
 import jaxdecomp
-from jaxdecomp._src.spmd_ops import ShardedArray, custom_spmd_rule
+from jaxdecomp._src.sharded_array import ShardedArray
+from jaxdecomp._src.spmd_ops import custom_spmd_rule
 
 
 def spmd_transpose(x: Array, kind: str) -> Array:

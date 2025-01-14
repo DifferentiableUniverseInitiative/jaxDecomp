@@ -148,8 +148,6 @@ def get_output_specs(
     """
     spec = spec + (None,) * (3 - len(spec))
 
-    print(f"spec is {spec}")
-
     pencil_type = get_pencil_type(mesh)
     if jaxdecomp.config.transpose_axis_contiguous:
         match pencil_type:
