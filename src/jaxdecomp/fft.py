@@ -2,7 +2,7 @@ from functools import partial
 from typing import Optional, Sequence
 
 import jax.numpy as jnp
-from jax import jit, lax
+from jax import jit, lax, tree
 from jax._src import dtypes
 from jax._src.typing import Array, ArrayLike
 
@@ -76,7 +76,7 @@ def _fft_norm(s: Array, func_name: str, norm: Optional[str]) -> Array:
   if norm == "backward":
     return 1 / jnp.prod(s) if func_name.startswith("i") else jnp.array(1)
   elif norm == "ortho":
-    return (1 / jnp.sqrt(jnp.prod(s)))
+    return 1 / jnp.sqrt(jnp.prod(s))
   elif norm == "forward":
     return jnp.array(1) if func_name.startswith("i") else 1 / jnp.prod(s)
   raise ValueError(
@@ -84,11 +84,13 @@ def _fft_norm(s: Array, func_name: str, norm: Optional[str]) -> Array:
 
 
 @partial(jit, static_argnums=(0, 1, 3, 4))
-def _do_pfft(func_name: str,
-             fft_type: FftType,
-             arr: Array,
-             norm: Optional[str],
-             backend: str = "JAX") -> Array:
+def _do_pfft(
+    func_name: str,
+    fft_type: FftType,
+    arr: Array,
+    norm: Optional[str],
+    backend: str = "JAX",
+) -> Array:
   """
     Perform 3D FFT or inverse 3D FFT on the input array.
 
@@ -119,8 +121,11 @@ def _do_pfft(func_name: str,
 
   match typ:
     case FftType.FFT | FftType.IFFT:
-      arr = lax.convert_element_type(arr,
-                                     dtypes.to_complex_dtype(dtypes.dtype(arr)))
+      arr = tree.map(
+          lambda arr: lax.convert_element_type(
+              arr, dtypes.to_complex_dtype(dtypes.dtype(arr))),
+          arr,
+      )
     case FftType.RFFT | FftType.IRFFT:
       raise ValueError("Not implemented wait (SOON)")
 
