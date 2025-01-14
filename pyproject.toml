@@ -25,10 +25,11 @@ classifiers = [
 dependencies = [
 "jaxtyping>=0.2.0",
 "jax>=0.4.35",
+"typing-extensions; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0.0" , "jax>=0.4.35"]
+test = ["pytest>=8.0.0"]
 
 [tool.scikit-build]
 minimum-version = "0.8"
