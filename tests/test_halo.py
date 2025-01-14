@@ -274,3 +274,88 @@ class TestHaloExchange:
         shardedArrayAPI,
     ):
         self.run_test((16, 16, 16), pdims, shardedArrayAPI, "JAX")
+
+
+
+class TestHaloExchangeGrad:
+    def run_test(self, global_shape, pdims, shardedArrayAPI, backend):
+        print("*" * 80)
+        print(f"Testing with pdims {pdims}")
+
+        jnp.set_printoptions(linewidth=200)
+
+        global_array, mesh = create_ones_spmd_array(global_shape, pdims)
+        halo_size = 2
+        #if shardedArrayAPI:
+        #    global_array = ShardedArray(global_array, global_array.sharding)
+
+        halo_x = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
+        halo_y = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
+        halo_extents = (halo_x[0], halo_y[0])
+        periodic = (True, True)
+        padding = (halo_x, halo_y, (0, 0))
+
+        @partial(shard_map, mesh=mesh, in_specs=P("z", "y"), out_specs=P("z", "y"))
+        def pad(arr):
+            return jax.tree.map(
+                lambda arr: jnp.pad(arr, padding, mode="linear_ramp", end_values=20),
+                arr,
+            )
+
+        @partial(shard_map, mesh=mesh, in_specs=P("z", "y"), out_specs=P("z", "y"))
+        def multiply(arr):
+            z_index = lax.axis_index("z") + 1
+            y_index = lax.axis_index("y") + 1
+            aranged = jnp.arange(prod(arr.shape)).reshape(arr.shape)
+            arr *= z_index + y_index * pdims[0]
+
+            arr += aranged
+
+            return arr
+
+        @jax.jit
+        def forward_model(array):
+            padded_array = multiply(array)
+            padded_array = pad(array)
+
+            exchanged_array = jaxdecomp.halo_exchange(
+                padded_array,
+                halo_extents=halo_extents,
+                halo_periods=periodic,
+                backend=backend,
+            )
+
+            return exchanged_array
+
+
+        @jax.grad
+        @jax.jit
+        def model(array , obs):
+            padded_array = multiply(array)
+            padded_array = pad(array)
+
+            exchanged_array = jaxdecomp.halo_exchange(
+                padded_array,
+                halo_extents=halo_extents,
+                halo_periods=periodic,
+                backend=backend,
+            )
+
+            return jnp.sum((exchanged_array - obs) ** 2)
+
+        obs = forward_model(global_array)
+
+        assert_array_equal(model(global_array, obs), jnp.zeros_like(global_array))
+        assert_array_equal(model(global_array* 2 , obs), jnp.full_like(global_array, 3))
+
+
+    @pytest.mark.parametrize("pdims", pdims)
+    @pytest.mark.parametrize("shardedArrayAPI", [True, False])
+    def test_jax_halo(
+        self,
+        pdims,
+        shardedArrayAPI,
+    ):
+        self.run_test((16, 16, 16), pdims, shardedArrayAPI, "JAX")
+
+
