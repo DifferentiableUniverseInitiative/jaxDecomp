@@ -6,10 +6,12 @@ from jaxdecomp._src.jax.halo import HaloExtentType, Periodicity
 from jaxdecomp._src.jax.halo import halo_exchange as _jax_halo_exchange
 
 
-def halo_exchange(x: Array,
-                  halo_extents: HaloExtentType,
-                  halo_periods: Periodicity,
-                  backend: str = "jax") -> Array:
+def halo_exchange(
+    x: Array,
+    halo_extents: HaloExtentType,
+    halo_periods: Periodicity,
+    backend: str = "jax",
+) -> Array:
   """
     Perform a halo exchange operation using the specified backend.
 
