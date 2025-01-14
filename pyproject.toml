@@ -25,10 +25,11 @@ classifiers = [
 dependencies = [
 "jaxtyping>=0.2.0",
 "jax>=0.4.35",
+"typing-extensions; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0.0" , "jax>=0.4.35"]
+test = ["pytest>=8.0.0"]
 
 [tool.scikit-build]
 minimum-version = "0.8"
@@ -42,3 +43,5 @@ CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
 [tool.cibuildwheel]
 test-extras = "test"
 test-command = "pytest {project}/tests"
+[tool.ruff]
+extend-ignore = ["E402"]
