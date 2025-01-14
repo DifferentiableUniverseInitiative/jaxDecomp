@@ -42,3 +42,5 @@ CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
 [tool.cibuildwheel]
 test-extras = "test"
 test-command = "pytest {project}/tests"
+[tool.ruff]
+extend-ignore = ["E402"]
