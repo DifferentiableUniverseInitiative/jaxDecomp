@@ -3,6 +3,7 @@ from typing import Tuple, TypeAlias
 
 from jax import lax
 from jax import numpy as jnp
+from jax import tree
 from jaxtyping import Array
 
 FftType: TypeAlias = lax.FftType
@@ -96,13 +97,13 @@ def fftn(a: Array, fft_type: FftType, adjoint: bool) -> Array:
     fft_type = ADJOINT(fft_type)
 
   if fft_type == FftType.FFT:
-    a = jnp.fft.fftn(a, axes=axes)
+    a = tree.map(lambda x: jnp.fft.fftn(x, axes=axes), a)
   elif fft_type == FftType.IFFT:
-    a = jnp.fft.ifftn(a, axes=axes)
+    a = tree.map(lambda x: jnp.fft.ifftn(x, axes=axes), a)
   elif fft_type == FftType.RFFT:
-    a = jnp.fft.rfftn(a, axes=axes)
+    a = tree.map(lambda x: jnp.fft.rfftn(x, axes=axes), a)
   elif fft_type == FftType.IRFFT:
-    a = jnp.fft.irfftn(a, axes=axes)
+    a = tree.map(lambda x: jnp.fft.irfftn(x, axes=axes), a)
   else:
     raise ValueError(f"Unknown FFT type '{fft_type}'")
 
@@ -131,13 +132,13 @@ def fft(a: Array, fft_type: FftType, axis: int, adjoint: bool) -> Array:
     fft_type = ADJOINT(fft_type)
 
   if fft_type == FftType.FFT:
-    a = jnp.fft.fft(a, axis=axis)
+    a = tree.map(lambda a: jnp.fft.fft(a, axis=axis), a)
   elif fft_type == FftType.IFFT:
-    a = jnp.fft.ifft(a, axis=axis)
+    a = tree.map(lambda a: jnp.fft.ifft(a, axis=axis), a)
   elif fft_type == FftType.RFFT:
-    a = jnp.fft.rfft(a, axis=axis)
+    a = tree.map(lambda a: jnp.fft.rfft(a, axis=axis), a)
   elif fft_type == FftType.IRFFT:
-    a = jnp.fft.irfft(a, axis=axis)
+    a = tree.map(lambda a: jnp.fft.irfft(a, axis=axis), a)
   else:
     raise ValueError(f"Unknown FFT type '{fft_type}'")
 
@@ -167,13 +168,13 @@ def fft2(a: Array, fft_type: FftType, axes: Tuple[int, int],
     fft_type = ADJOINT(fft_type)
 
   if fft_type == FftType.FFT:
-    a = jnp.fft.fft2(a, axes=axes)
+    a = tree.map(lambda a: jnp.fft.fft2(a, axes=axes), a)
   elif fft_type == FftType.IFFT:
-    a = jnp.fft.ifft2(a, axes=axes)
+    a = tree.map(lambda a: jnp.fft.ifft2(a, axes=axes), a)
   elif fft_type == FftType.RFFT:
-    a = jnp.fft.rfft2(a, axes=axes)
+    a = tree.map(lambda a: jnp.fft.rfft2(a, axes=axes), a)
   elif fft_type == FftType.IRFFT:
-    a = jnp.fft.irfft2(a, axes=axes)
+    a = tree.map(lambda a: jnp.fft.irfft2(a, axes=axes), a)
   else:
     raise ValueError(f"Unknown FFT type '{fft_type}'")
 
