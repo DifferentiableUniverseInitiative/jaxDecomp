@@ -15,7 +15,7 @@ from jax.interpreters import mlir, xla
 from jax.sharding import Mesh, NamedSharding
 from jax.tree import structure
 from jaxdecomplib import _jaxdecomp
-
+from collections.abc import Iterable
 from jaxdecomp.typing import PdimsType, TransposablePdimsType
 
 if sys.version_info < (3, 11):
@@ -184,10 +184,16 @@ class ShardedArray:
             return NotImplemented
         
     def __iter__(self) -> Any:
-        if self.ndim == 0:
-            raise TypeError(f"'{type(self).__name__}' object is not iterable")
 
-        return iter([jax.tree.map(lambda x: x[i], self) for i in range(self.shape[0])])
+        if isinstance(self.data, jax.Array):
+            if self.ndim == 0:
+                raise TypeError(f"'{type(self).__name__}' object is not iterable")
+            return iter([jax.tree.map(lambda x: x[i], self) for i in range(self.shape[0])])
+
+        elif not isinstance(self.data, Iterable):
+            raise TypeError(f"'{type(self).__name__}' object is not iterable")
+        
+        return iter(jax.tree.map(lambda x: iter(x), self))
 
     def nonzero(self) -> Any:
         return jax.tree_map(lambda x: x.nonzero(), self)

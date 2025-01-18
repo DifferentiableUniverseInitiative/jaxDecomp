@@ -499,7 +499,7 @@ def pfft_impl(
     """
     if isinstance(x, ShardedArray):
         if x.initial_sharding is None:
-            return spmd_fft(x.data, fft_type=fft_type, adjoint=adjoint)
+            return spmd_fft(x, fft_type=fft_type, adjoint=adjoint)
         else:
             input_mesh: Mesh = x.initial_sharding.mesh  # type: ignore
             forward_specs = x.initial_sharding.spec  # type: ignore
