@@ -16,8 +16,8 @@ from jaxdecomp._src.fft_utils import COMPLEX  # yapf: disable
 from jaxdecomp._src.fft_utils import FftType  # yapf: disable
 from jaxdecomp._src.fft_utils import ADJOINT, FORWARD_FFTs, fft, fft2, fftn
 from jaxdecomp._src.pencil_utils import get_output_specs, get_transpose_order
-from jaxdecomp._src.spmd_ops import custom_spmd_rule  # yapf: disable
-from jaxdecomp._src.spmd_ops import ShardedArray, get_pencil_type
+from jaxdecomp._src.spmd_ops import custom_spmd_rule , get_pencil_type  # yapf: disable
+from jaxdecomp._src.sharded_array import ShardedArray
 
 
 def _fft_slab_xy(
@@ -407,9 +407,7 @@ def infer_sharding_from_operands(
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     input_mesh: Mesh = input_sharding.mesh  # type: ignore
     spec = input_sharding.spec
-    print(f"specs in infer_sharding_from_operands is {spec}")
     transposed_specs = get_output_specs(fft_type, spec, mesh=input_mesh, backend="jax")
-    print(f"output specs in infer_sharding_from_operands is {transposed_specs}")
 
     return NamedSharding(input_sharding.mesh, P(*transposed_specs))
 
@@ -501,7 +499,7 @@ def pfft_impl(
     """
     if isinstance(x, ShardedArray):
         if x.initial_sharding is None:
-            return spmd_fft(x.data, fft_type=fft_type, adjoint=adjoint)
+            return spmd_fft(x, fft_type=fft_type, adjoint=adjoint)
         else:
             input_mesh: Mesh = x.initial_sharding.mesh  # type: ignore
             forward_specs = x.initial_sharding.spec  # type: ignore
@@ -509,16 +507,8 @@ def pfft_impl(
                 FftType.FFT, forward_specs, mesh=input_mesh, backend="jax"
             )
 
-            print(
-                f"forward specs is {forward_specs} and backward specs is {backward_specs}"
-            )
-
             in_specs = forward_specs if fft_type in FORWARD_FFTs else backward_specs
             out_specs = backward_specs if fft_type in FORWARD_FFTs else forward_specs
-
-            print(
-                f"for FFT type {fft_type} in_specs is {in_specs} and out_specs is {out_specs}"
-            )
 
             in_specs = P(*in_specs)
             out_specs = P(*out_specs)

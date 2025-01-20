@@ -10,7 +10,8 @@ from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
 from jaxtyping import Array
 
-from jaxdecomp._src.spmd_ops import ShardedArray, custom_spmd_rule, get_pencil_type
+from jaxdecomp._src.sharded_array import ShardedArray
+from jaxdecomp._src.spmd_ops import custom_spmd_rule, get_pencil_type
 from jaxdecomp.typing import HaloExtentType, Periodicity
 
 
@@ -355,7 +356,7 @@ def partition(
 
 @spmd_halo_primitive.def_transpose_rule
 def transpose_rule(
-    cotangent: Array, halo_extents: HaloExtentType, halo_periods: Periodicity
+    cotangent: Array, x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity
 ) -> Tuple[Array]:
     """
     Transpose rule for the FFT operation.
@@ -402,8 +403,6 @@ def halo_impl(
     Array
         The lowered array after the halo exchange.
     """
-    print("=" * 200)
-    print(f"is sharded array {isinstance(x, ShardedArray)}")
     if isinstance(x, ShardedArray):
         if x.initial_sharding is None:
             return spmd_halo_exchange(
