@@ -276,7 +276,6 @@ class TestHaloExchange:
         self.run_test((16, 16, 16), pdims, shardedArrayAPI, "JAX")
 
 
-
 class TestHaloExchangeGrad:
     def run_test(self, global_shape, pdims, shardedArrayAPI, backend):
         print("*" * 80)
@@ -286,7 +285,7 @@ class TestHaloExchangeGrad:
 
         global_array, mesh = create_ones_spmd_array(global_shape, pdims)
         halo_size = 2
-        #if shardedArrayAPI:
+        # if shardedArrayAPI:
         #    global_array = ShardedArray(global_array, global_array.sharding)
 
         halo_x = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
@@ -327,10 +326,9 @@ class TestHaloExchangeGrad:
 
             return exchanged_array
 
-
         @jax.grad
         @jax.jit
-        def model(array , obs):
+        def model(array, obs):
             padded_array = multiply(array)
             padded_array = pad(array)
 
@@ -346,8 +344,7 @@ class TestHaloExchangeGrad:
         obs = forward_model(global_array)
 
         assert_array_equal(model(global_array, obs), jnp.zeros_like(global_array))
-        assert_array_equal(model(global_array* 2 , obs), jnp.full_like(global_array, 3))
-
+        assert_array_equal(model(global_array * 2, obs), jnp.full_like(global_array, 3))
 
     @pytest.mark.parametrize("pdims", pdims)
     @pytest.mark.parametrize("shardedArrayAPI", [True, False])
@@ -357,5 +354,3 @@ class TestHaloExchangeGrad:
         shardedArrayAPI,
     ):
         self.run_test((16, 16, 16), pdims, shardedArrayAPI, "JAX")
-
-

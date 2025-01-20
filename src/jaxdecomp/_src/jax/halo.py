@@ -356,7 +356,7 @@ def partition(
 
 @spmd_halo_primitive.def_transpose_rule
 def transpose_rule(
-    cotangent: Array,x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity
+    cotangent: Array, x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity
 ) -> Tuple[Array]:
     """
     Transpose rule for the FFT operation.

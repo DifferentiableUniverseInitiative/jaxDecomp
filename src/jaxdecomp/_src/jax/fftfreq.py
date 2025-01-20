@@ -83,7 +83,6 @@ def rfftfreq3d(k_array: Array, d: float = 1.0) -> Tuple[Array, Array, Array]:
     kx = jnp.fft.rfftfreq(k_array.shape[1], d=d, dtype=dtype) * 2 * jnp.pi
     kz = jnp.fft.fftfreq(k_array.shape[2], d=d, dtype=dtype) * 2 * jnp.pi
 
-
     k_array_structure = jax.tree.structure(k_array)
     kx = jax.tree.unflatten(k_array_structure, (kx,))
     ky = jax.tree.unflatten(k_array_structure, (ky,))

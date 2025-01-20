@@ -1,22 +1,12 @@
 import operator
 import sys
-from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Hashable, Optional, Tuple, Type
+from typing import Any, Hashable, Tuple
 
 import jax
 import jax.numpy as jnp
-from jax import core
-from jax._src import dispatch
-from jax._src import mesh as mesh_lib
-from jax.experimental.custom_partitioning import custom_partitioning
-from jax.interpreters import mlir, xla
-from jax.sharding import Mesh, NamedSharding
-from jax.tree import structure
-from jaxdecomplib import _jaxdecomp
-from collections.abc import Iterable
-from jaxdecomp.typing import PdimsType, TransposablePdimsType
+from jax.sharding import NamedSharding
 
 if sys.version_info < (3, 11):
     from typing_extensions import Self
@@ -25,15 +15,11 @@ else:
 
 from collections.abc import Callable
 
-import jax.extend as jex
-from jax._src import custom_api_util
-from jax.interpreters import ad
 
 # Imports
 
 Specs = Any
 AxisName = Hashable
-
 
 
 @jax.tree_util.register_dataclass
@@ -54,7 +40,7 @@ class ShardedArray:
     def astype(self, dtype: Any) -> Self:
         return jax.tree.map(lambda x: x.astype(dtype), self)
 
-    def prod(self , *args, **kwargs) -> Any:
+    def prod(self, *args, **kwargs) -> Any:
         return jax.tree.map(lambda x: x.prod(*args, **kwargs), self)
 
     @property
@@ -92,12 +78,6 @@ class ShardedArray:
 
     def sum(self, *args, **kwargs) -> Self:
         return jax.tree.map(lambda x: x.sum(*args, **kwargs), self)
-
-    def max(self, *args, **kwargs) -> Self:
-        return jax.tree.map(lambda x: x.max(*args, **kwargs), self)
-
-    def min(self, *args, **kwargs) -> Self:
-        return jax.tree.map(lambda x: x.min(*args, **kwargs), self)
 
     def __repr__(self) -> str:
         return f"ShardedArray(data={self.data}, sharding={self.initial_sharding})"
@@ -182,80 +162,72 @@ class ShardedArray:
             return self.data > other
         else:
             return NotImplemented
-        
+
     def __iter__(self) -> Any:
-
-        if isinstance(self.data, jax.Array):
-            if self.ndim == 0:
-                raise TypeError(f"'{type(self).__name__}' object is not iterable")
-            return iter([jax.tree.map(lambda x: x[i], self) for i in range(self.shape[0])])
-
-        elif not isinstance(self.data, Iterable):
+        if self.ndim == 0:
             raise TypeError(f"'{type(self).__name__}' object is not iterable")
-        
-        return iter(jax.tree.map(lambda x: iter(x), self))
+        return iter([jax.tree.map(lambda x: x[i], self) for i in range(self.shape[0])])
 
     def nonzero(self) -> Any:
-        return jax.tree_map(lambda x: x.nonzero(), self)
-
+        return jax.tree.map(lambda x: x.nonzero(), self)
 
     @property
     def at(self) -> Any:
-        return jax.tree_map(lambda x: x.at, self)
+        return jax.tree.map(lambda x: x.at, self)
 
     def set(self, value: Any) -> Any:
         if isinstance(value, type(self)):
-            return jax.tree_map(lambda x, y: x.set(y), self, value)
+            return jax.tree.map(lambda x, y: x.set(y), self, value)
         elif jnp.isscalar(value) or isinstance(value, jax.Array):
-            return jax.tree_map(lambda x: x.set(value), self)
+            return jax.tree.map(lambda x: x.set(value), self)
 
     def add(self, value: Any) -> Any:
         if isinstance(value, type(self)):
-            return jax.tree_map(lambda x, y: x.add(y), self, value)
+            return jax.tree.map(lambda x, y: x.add(y), self, value)
         elif jnp.isscalar(value) or isinstance(value, jax.Array):
-            return jax.tree_map(lambda x: x.add(value), self)
-    
+            return jax.tree.map(lambda x: x.add(value), self)
+
     def substract(self, value: Any) -> Any:
         if isinstance(value, type(self)):
-            return jax.tree_map(lambda x, y: x.substract(y), self, value)
+            return jax.tree.map(lambda x, y: x.substract(y), self, value)
         elif jnp.isscalar(value) or isinstance(value, jax.Array):
-            return jax.tree_map(lambda x: x.substract(value), self)
+            return jax.tree.map(lambda x: x.substract(value), self)
 
     def multiply(self, value: Any) -> Any:
         if isinstance(value, type(self)):
-            return jax.tree_map(lambda x, y: x.multiply(y), self, value)
+            return jax.tree.map(lambda x, y: x.multiply(y), self, value)
         elif jnp.isscalar(value) or isinstance(value, jax.Array):
-            return jax.tree_map(lambda x: x.multiply(value), self)
-    
+            return jax.tree.map(lambda x: x.multiply(value), self)
+
     def divide(self, value: Any) -> Any:
         if isinstance(value, type(self)):
-            return jax.tree_map(lambda x, y: x.divide(y), self, value)
+            return jax.tree.map(lambda x, y: x.divide(y), self, value)
         elif jnp.isscalar(value) or isinstance(value, jax.Array):
-            return jax.tree_map(lambda x: x.divide(value), self)
+            return jax.tree.map(lambda x: x.divide(value), self)
 
     def power(self, value: Any) -> Any:
         if isinstance(value, type(self)):
-            return jax.tree_map(lambda x, y: x.power(y), self, value)
+            return jax.tree.map(lambda x, y: x.power(y), self, value)
         elif jnp.isscalar(value) or isinstance(value, jax.Array):
-            return jax.tree_map(lambda x: x.power(value), self)
+            return jax.tree.map(lambda x: x.power(value), self)
 
     def min(self, value: Any) -> Any:
         if isinstance(value, type(self)):
-            return jax.tree_map(lambda x, y: x.min(y), self, value)
+            return jax.tree.map(lambda x, y: x.min(y), self, value)
         elif jnp.isscalar(value) or isinstance(value, jax.Array):
-            return jax.tree_map(lambda x: x.min(value), self)
-    
+            return jax.tree.map(lambda x: x.min(value), self)
+
     def max(self, value: Any) -> Any:
         if isinstance(value, type(self)):
-            return jax.tree_map(lambda x, y: x.max(y), self, value)
+            return jax.tree.map(lambda x, y: x.max(y), self, value)
         elif jnp.isscalar(value) or isinstance(value, jax.Array):
-            return jax.tree_map(lambda x: x.max(value), self)
+            return jax.tree.map(lambda x: x.max(value), self)
 
     def apply(self, func: Callable[[Any], Any]) -> Any:
-        return jax.tree_map(lambda x: x.apply(func), self)
+        return jax.tree.map(lambda x: x.apply(func), self)
 
-    def get(self , *args, **kwargs) -> Any:
-        return jax.tree_map(lambda x: x.get(*args, **kwargs), self)
+    def get(self, *args, **kwargs) -> Any:
+        return jax.tree.map(lambda x: x.get(*args, **kwargs), self)
 
     def _operation(self, operation: Callable[[Any, Any], Any], right: Any) -> Self:
         result: Self
@@ -282,14 +254,11 @@ class ShardedArray:
         return self._roperation(operator.add, other)
 
     def __floordiv__(self, other: Any) -> Self:
-   
         return self._operation(operator.floordiv, other)
 
     def __rfloordiv__(self, other: Any) -> Self:
-
         return self._roperation(operator.floordiv, other)
 
-    
     def __rmod(self, other: Any) -> Self:
         return self._roperation(operator.mod, other)
 
@@ -320,4 +289,3 @@ class ShardedArray:
         else:
             return NotImplemented
         return result
-

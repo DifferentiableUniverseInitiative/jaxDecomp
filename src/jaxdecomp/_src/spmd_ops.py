@@ -1,12 +1,9 @@
-import operator
 import sys
 from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Hashable, Optional, Tuple, Type
 
 import jax
-import jax.numpy as jnp
 from jax import core
 from jax._src import dispatch
 from jax._src import mesh as mesh_lib
@@ -18,21 +15,18 @@ from jaxdecomplib import _jaxdecomp
 from jaxdecomp.typing import PdimsType, TransposablePdimsType
 
 if sys.version_info < (3, 11):
-    from typing_extensions import Self
+    pass
 else:
-    from typing import Self
+    pass
 
-from collections.abc import Callable
 
 import jax.extend as jex
 from jax._src import custom_api_util
 from jax.interpreters import ad
-from jaxdecomp._src.sharded_array import ShardedArray
 # Imports
 
 Specs = Any
 AxisName = Hashable
-
 
 
 def get_pencil_type(mesh: Optional[Mesh] = None) -> str:
