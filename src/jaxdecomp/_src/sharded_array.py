@@ -73,6 +73,12 @@ class ShardedArray:
     def T(self) -> Self:
         return jax.tree.map(lambda x: x.T, self)
 
+    def min(self, *args, **kwargs) -> Any:
+        return jax.tree.map(lambda x: x.min(*args, **kwargs), self)
+
+    def max(self, *args, **kwargs) -> Any:
+        return jax.tree.map(lambda x: x.max(*args, **kwargs), self)
+
     def mean(self, *args, **kwargs) -> Self:
         return jax.tree.map(lambda x: x.mean(*args, **kwargs), self)
 
@@ -210,18 +216,6 @@ class ShardedArray:
             return jax.tree.map(lambda x, y: x.power(y), self, value)
         elif jnp.isscalar(value) or isinstance(value, jax.Array):
             return jax.tree.map(lambda x: x.power(value), self)
-
-    def min(self, value: Any) -> Any:
-        if isinstance(value, type(self)):
-            return jax.tree.map(lambda x, y: x.min(y), self, value)
-        elif jnp.isscalar(value) or isinstance(value, jax.Array):
-            return jax.tree.map(lambda x: x.min(value), self)
-
-    def max(self, value: Any) -> Any:
-        if isinstance(value, type(self)):
-            return jax.tree.map(lambda x, y: x.max(y), self, value)
-        elif jnp.isscalar(value) or isinstance(value, jax.Array):
-            return jax.tree.map(lambda x: x.max(value), self)
 
     def apply(self, func: Callable[[Any], Any]) -> Any:
         return jax.tree.map(lambda x: x.apply(func), self)
