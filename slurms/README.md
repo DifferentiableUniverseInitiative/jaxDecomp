@@ -7,7 +7,7 @@ A quick guide on how to run jaxDecomp (this was only tested on Idris's Jean-Zay)
 
 ```bash
 # if on A100
-module load cpuarch/amd
+module load arch/a100
 # then do this in this exact order
 module load nvidia-compilers/23.9 cuda/12.2.0 cudnn/8.9.7.29-cuda  openmpi/4.1.5-cuda nccl/2.18.5-1-cuda cmake
 # Then create your python env
@@ -18,14 +18,10 @@ conda deactivate
 # Install dependencies
 source venv/bin/activate
 pip cache purge
-# Installing mpi4py
-CFLAGS=-noswitcherror pip install --no-cache-dir mpi4py
 # Installing jax
-pip install --no-cache-dir --upgrade "jax[cuda12_local]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-# or
-pip install --no-cache-dir --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+pip install jax[cuda]
 # Then install jaxDecomp
-pip install .
+pip install jaxdecomp
 ```
 
 For an interactive use
@@ -53,7 +49,7 @@ Make sure to load the exact modules you used when you installed jaxDecomp
 
 ```bash
 # if on A100
-module load cpuarch/amd
+module load arch/a100
 # then
 module load nvidia-compilers/23.9 cuda/12.2.0 cudnn/8.9.7.29-cuda  openmpi/4.1.5-cuda nccl/2.18.5-1-cuda cmake
 module load python/3.10.4 && conda deactivate

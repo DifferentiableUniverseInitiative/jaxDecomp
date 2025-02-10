@@ -1,198 +1,331 @@
-from functools import partial
+from conftest import (
+    assert_array_equal,
+    create_ones_spmd_array,
+    create_spmd_array,
+    initialize_distributed,
+    is_on_cluster,
+)
 
+initialize_distributed()
 import jax
-import pytest
 
-jax.config.update("jax_enable_x64", True)
+size = jax.device_count()
+from functools import partial
+from itertools import product
 from math import prod
 
 import jax.numpy as jnp
-from conftest import initialize_distributed
-from jax.experimental import mesh_utils, multihost_utils
+import pytest
+from jax import lax
+from jax.experimental.multihost_utils import process_allgather
 from jax.experimental.shard_map import shard_map
-from jax.sharding import Mesh
 from jax.sharding import PartitionSpec as P
-from numpy.testing import assert_allclose, assert_array_equal
 
 import jaxdecomp
-from jaxdecomp import slice_pad, slice_unpad
-
-# Initialize jax distributed to instruct jax local process which GPU to use
-initialize_distributed()
-rank = jax.process_index()
-size = jax.process_count()
-
-# Initialize cuDecomp
-
-
-# Helper function to create a 3D array and remap it to the global array
-def create_spmd_array(global_shape, pdims):
-
-  assert (len(global_shape) == 3)
-  assert (len(pdims) == 2)
-  assert (prod(pdims) == size
-         ), "The product of pdims must be equal to the number of MPI processes"
-
-  local_array = jnp.ones(shape=[
-      global_shape[0] // pdims[1], global_shape[1] // pdims[0], global_shape[2]
-  ])
-  # Remap to the global array from the local slice
-  devices = mesh_utils.create_device_mesh(pdims[::-1])
-  mesh = Mesh(devices, axis_names=('z', 'y'))
-  global_array = multihost_utils.host_local_array_to_global_array(
-      local_array, mesh, P('z', 'y'))
-
-  return global_array, mesh
-
 
 pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
-
-parameters = [((1, size), "X_halo"), ((1, size), "Y_halo"),
-              ((1, size), "XY_halo"), ((size, 1), "X_halo"),
-              ((size, 1), "Y_halo"), ((size, 1), "XY_halo"),
-              (pencil_1, "X_halo"), (pencil_1, "Y_halo"), (pencil_1, "XY_halo"),
-              (pencil_2, "X_halo"), (pencil_2, "Y_halo"), (pencil_2, "XY_halo")]
+pdims = [(1, size), (size, 1), pencil_1, pencil_2]
 
 
-@pytest.mark.parametrize("pdims , halo",
-                         parameters)  # Test with Slab and Pencil decompositions
-def test_empty_halo(pdims, halo):
+def split_into_grid(array, pdims):
+    """
+    Splits the array into a 2D grid using vsplit and hsplit based on pdims.
 
-  print("*" * 80)
-  print(f"Testing with pdims {pdims} with {halo} halo")
+    Args:
+        array: The array to be split.
+        pdims: A tuple (vertical_splits, horizontal_splits) defining how to split the array.
 
-  global_shape = (8, 8, 8)
-  global_array, mesh = create_spmd_array(global_shape, pdims)
+    Returns:
+        A 2D list of lists where each element is a sub-array.
+    """
+    # First, vsplit into vertical splits (rows)
+    vertical_splits = jax.tree.map(lambda array: jnp.vsplit(array, pdims[1]), array)
+    vertical_splits = jax.tree.leaves(vertical_splits)
+    # For each vertical split, hsplit into horizontal splits (columns)
+    grid = [jnp.hsplit(vsplit, pdims[0]) for vsplit in vertical_splits]
 
-  halo_size = 2
+    return grid
 
-  halo_tuple = (halo_size, halo_size)
-  if halo == "XY_halo":
-    padding = (halo_tuple, halo_tuple, (0, 0))
-    halo_extents = (halo_size, halo_size, 0)
-  elif halo == "X_halo":
-    padding = (halo_tuple, (0, 0), (0, 0))
-    halo_extents = (halo_size, 0, 0)
-  elif halo == "Y_halo":
-    padding = ((0, 0), halo_tuple, (0, 0))
-    halo_extents = (0, halo_size, 0)
 
-  with mesh:
+all_gather = partial(process_allgather, tiled=True)
+
+
+@pytest.mark.skipif(not is_on_cluster(), reason="Only run on cluster")
+@pytest.mark.parametrize("pdims", pdims)
+# Test with Slab and Pencil decompositions
+def test_halo_against_cudecomp(pdims):
+    jnp.set_printoptions(linewidth=200)
+
+    print("*" * 80)
+    print(f"Testing with pdims {pdims}")
+
+    global_shape = (16, 16, 16)
+    global_array, mesh = create_spmd_array(global_shape, pdims)
+
+    # @partial(shard_map, mesh=mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
+    # def sharded_add_multiply(arr, devices):
+    #   return (arr) + (devices + 10)
+
+    halo_size = 2
+
+    halo_x = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
+    halo_y = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
+    halo_extents = (halo_x[0], halo_y[0])
+    periodic = (True, True)
+    padding = (halo_x, halo_y, (0, 0))
+
+    @partial(shard_map, mesh=mesh, in_specs=P("z", "y"), out_specs=P("z", "y"))
+    def pad(arr):
+        return jnp.pad(arr, padding, mode="linear_ramp", end_values=20)
+
     # perform halo exchange
-    padded_array = slice_pad(global_array, padding, pdims)
-    exchanged_array = jaxdecomp.halo_exchange(
-        padded_array,
+    updated_array = pad(global_array)
+    jax_exchanged = jaxdecomp.halo_exchange(updated_array, halo_extents=halo_extents, halo_periods=periodic, backend="JAX")
+    cudecomp_exchanged = jaxdecomp.halo_exchange(
+        updated_array,
         halo_extents=halo_extents,
-        halo_periods=(True, True, True))
-    # Remove the padding
-    stripped_exchanged_array = slice_unpad(exchanged_array, padding, pdims)
-    unpadded_array = slice_unpad(padded_array, padding, pdims)
+        halo_periods=periodic,
+        backend="CUDECOMP",
+    )
 
-  # Gather array from all processes
-  gathered_array = multihost_utils.process_allgather(global_array, tiled=True)
-  gathered_stripped_exchanged_array = multihost_utils.process_allgather(
-      stripped_exchanged_array, tiled=True)
-  gathered_unpadded_array = multihost_utils.process_allgather(
-      unpadded_array, tiled=True)
+    g_array = all_gather(updated_array)
+    g_jax_exchanged = all_gather(jax_exchanged)
+    g_cudecomp_exchanged = all_gather(cudecomp_exchanged)
+    print(f"Original \n{g_array[:,:,0]}")
+    print(f"exchanged cudecomp \n{g_jax_exchanged[:,:,0]}")
+    print(f"exchanged jax \n{g_cudecomp_exchanged[:,:,0]}")
 
-  assert_allclose(
-      gathered_array, gathered_unpadded_array, rtol=1e-10, atol=1e-10)
-  assert_allclose(
-      gathered_array, gathered_stripped_exchanged_array, rtol=1e-10, atol=1e-10)
-
-  print(f"pdims {pdims} with {halo} OK!")
+    assert_array_equal(g_jax_exchanged, g_cudecomp_exchanged)
 
 
-@pytest.mark.parametrize(
-    "pdims", [(1, 4)])  # For simplicity, only test Z axis decomposition
-def test_full_halo(pdims):
+class TestHaloExchange:
+    def run_test(self, global_shape, pdims, backend):
+        print("*" * 80)
+        print(f"Testing with pdims {pdims}")
 
-  print("*" * 80)
-  print(f"Testing with pdims {pdims}")
+        jnp.set_printoptions(linewidth=200)
 
-  global_shape = (16, 16, 16
-                 )  # These sizes are prime numbers x size of the pmesh
-  global_array, mesh = create_spmd_array(global_shape, pdims)
-  halo_size = 2
-  padding = ((halo_size, halo_size), (0, 0), (0, 0))
+        global_array, mesh = create_ones_spmd_array(global_shape, pdims)
+        halo_size = 2
 
-  # Function that adds one and multiplies by the rank for each shard
-  @partial(shard_map, mesh=mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
-  def sharded_add_multiply(arr):
-    return (arr) * (rank + 1)
+        halo_x = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
+        halo_y = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
+        halo_extents = (halo_x[0], halo_y[0])
+        periodic = (True, True)
+        padding = (halo_x, halo_y, (0, 0))
 
-  with mesh:
-    # perform halo exchange
-    padded_array = slice_pad(global_array, padding, pdims)
-    updated_array = sharded_add_multiply(padded_array)
-    periodic_exchanged_array = jaxdecomp.halo_exchange(
-        updated_array,
-        halo_extents=(halo_size, 0, 0),
-        halo_periods=(True, True, True))
-    exchanged_array = jaxdecomp.halo_exchange(
-        updated_array,
-        halo_extents=(halo_size, 0, 0),
-        halo_periods=(False, False, False))
-    unpadded_updated_array = slice_unpad(updated_array, padding, pdims)
+        @partial(shard_map, mesh=mesh, in_specs=P("z", "y"), out_specs=P("z", "y"))
+        def pad(arr):
+            return jax.tree.map(
+                lambda arr: jnp.pad(arr, padding, mode="linear_ramp", end_values=20),
+                arr,
+            )
 
-  # Gather array from all processes
-  # gathered_array = multihost_utils.process_allgather(global_array,tiled=True)
-  exchanged_gathered_array = multihost_utils.process_allgather(
-      exchanged_array, tiled=True)
-  periodic_exchanged_gathered_array = multihost_utils.process_allgather(
-      periodic_exchanged_array, tiled=True)
-  updated_gathered_array = multihost_utils.process_allgather(
-      updated_array, tiled=True)
-  gathered_unpadded_updated_array = multihost_utils.process_allgather(
-      unpadded_updated_array, tiled=True)
-  # Get the slices using array_split
-  gathered_array_slices = jnp.array_split(
-      exchanged_gathered_array, size, axis=0)
-  gathered_updated_slices = jnp.array_split(
-      updated_gathered_array, size, axis=0)
-  gathered_periodic_exchanged_slices = jnp.array_split(
-      periodic_exchanged_gathered_array, size, axis=0)
-  gathered_unpadded_updated_slices = jnp.array_split(
-      gathered_unpadded_updated_array, size, axis=0)
+        @partial(shard_map, mesh=mesh, in_specs=P("z", "y"), out_specs=P("z", "y"))
+        def multiply(arr):
+            z_index = lax.axis_index("z") + 1
+            y_index = lax.axis_index("y") + 1
+            aranged = jnp.arange(prod(arr.shape)).reshape(arr.shape)
+            arr *= z_index + y_index * pdims[0]
 
-  gathered_arrays = zip(gathered_periodic_exchanged_slices, gathered_array_slices\
-                      , gathered_updated_slices \
-                      , gathered_unpadded_updated_slices)
+            arr += aranged
 
-  for slice_indx, (periodic_exchanged_slice, exchanged_slice, original_slice,
-                   unpadded_slice) in enumerate(gathered_arrays):
+            return arr
 
-    next_indx = slice_indx + 1
-    prev_indx = slice_indx - 1
-    if slice_indx == len(gathered_array_slices) - 1:
-      next_indx = 0
-    if slice_indx == 0:
-      prev_indx = len(gathered_array_slices) - 1
+        # perform halo exchange
+        padded_array = multiply(global_array)
+        padded_array = pad(padded_array)
+        # periodic_exchanged_array = jaxdecomp.halo_exchange(
+        #    padded_array,
+        #    halo_extents=halo_extents,
+        #    halo_periods=periodic,
+        #    backend=backend,
+        # )
+        exchanged_array = jaxdecomp.halo_exchange(
+            padded_array,
+            halo_extents=halo_extents,
+            halo_periods=periodic,
+            backend=backend,
+        )
 
-    next_slice = gathered_array_slices[next_indx]
-    prev_slice = gathered_array_slices[prev_indx]
+        # Gather array from all processes
+        # gathered_array = multihost_utils.process_allgather(global_array,tiled=True)
+        exchanged_gathered_array = all_gather(exchanged_array, tiled=True)
+        # periodic_exchanged_gathered_array = all_gather(
+        #    periodic_exchanged_array, tiled=True
+        # )
+        padded_gathered_array = all_gather(padded_array, tiled=True)
 
-    # The center of the array (no halo) should be the same
-    assert_array_equal(exchanged_slice[halo_size:-halo_size],
-                       original_slice[halo_size:-halo_size])
-    assert_array_equal(periodic_exchanged_slice[halo_size:-halo_size],
-                       original_slice[halo_size:-halo_size])
-    ## The upper padding should be equal to the lower center of the previous slice
-    assert_array_equal(periodic_exchanged_slice[:halo_size],
-                       prev_slice[-2 * halo_size:-halo_size])
-    ## The lower padding should be equal to the upper center of the next slice
-    assert_array_equal(periodic_exchanged_slice[-halo_size:],
-                       next_slice[halo_size:2 * halo_size])
-    ## First slice, the non periodic exchange upper padding should sum to zero
-    if slice_indx == 0:
-      assert_array_equal(exchanged_slice[:halo_size].sum(), 0)
-    # Last slice, the non periodic exchange lower padding should sum to zero
-    elif slice_indx == len(gathered_array_slices) - 1:
-      assert_array_equal(exchanged_slice[-halo_size:].sum(), 0)
-    # Else, it should be the same as the periodic exchange
-    else:
-      assert_array_equal(exchanged_slice[:halo_size],
-                         periodic_exchanged_slice[:halo_size])
-      assert_array_equal(exchanged_slice[-halo_size:],
-                         periodic_exchanged_slice[-halo_size:])
+        gathered_array_slices = split_into_grid(padded_gathered_array, pdims)
+        gathered_exchanged_slices = split_into_grid(exchanged_gathered_array, pdims)
+        # gathered_periodic_exchanged_slices = split_into_grid(
+        #    periodic_exchanged_gathered_array, pdims
+        # )
+
+        print(f"len gathered array slices {len(gathered_array_slices)}")
+        print(f"len Y gathered array slices {len(gathered_array_slices[0])}")
+
+        def next_index(x, pdims):
+            return x + 1 if x < pdims - 1 else 0
+
+        def prev_index(x, pdims):
+            return x - 1 if x > 0 else pdims - 1
+
+        for z_slice, y_slice in product(range(pdims[1]), range(pdims[0])):
+            print(f"z {z_slice} y {y_slice}")
+            original_slice = gathered_array_slices[z_slice][y_slice]
+            current_slice = gathered_exchanged_slices[z_slice][y_slice]
+            next_z = next_index(z_slice, pdims[1])
+            next_y = next_index(y_slice, pdims[0])
+            prev_z = prev_index(z_slice, pdims[1])
+            prev_y = prev_index(y_slice, pdims[0])
+            # Get up and down slices
+            up_slice = gathered_exchanged_slices[prev_z][y_slice]
+            down_slice = gathered_exchanged_slices[next_z][y_slice]
+            # Get left and right slices
+            left_slice = gathered_exchanged_slices[z_slice][prev_y]
+            right_slice = gathered_exchanged_slices[z_slice][next_y]
+            # Get the upper corners
+            upper_left_corner = gathered_exchanged_slices[prev_z][prev_y]
+            upper_right_corner = gathered_exchanged_slices[prev_z][next_y]
+            # Get the lower corners
+            lower_left_corner = gathered_exchanged_slices[next_z][prev_y]
+            lower_right_corner = gathered_exchanged_slices[next_z][next_y]
+
+            print(f"z {z_slice} y {y_slice}")
+            print(f"original slice \n{original_slice[:,:,0]}")
+            print(f"up slice \n{up_slice[:,:,0]}")
+            print(f"current slice \n{current_slice[:,:,0]}")
+            print(f"down slice \n{down_slice[:,:,0]}")
+            print("--" * 40)
+
+            # if up down padding check the up down slices
+            if pdims[1] > 1:
+                # Check the upper padding
+                assert_array_equal(current_slice[:halo_size], up_slice[-2 * halo_size : -halo_size])
+                # Check the lower padding
+                assert_array_equal(current_slice[-halo_size:], down_slice[halo_size : halo_size * 2])
+
+            # if left right padding check the left right slices
+            if pdims[0] > 1:
+                # Check the left padding
+                assert_array_equal(
+                    current_slice[:, :halo_size],
+                    left_slice[:, -2 * halo_size : -halo_size :],
+                )
+                # Check the right padding
+                assert_array_equal(
+                    current_slice[:, -halo_size:],
+                    right_slice[:, halo_size : halo_size * 2],
+                )
+            # if both padded check the corners
+            if pdims[0] > 1 and pdims[1] > 1:
+                # Check the upper left corner
+                assert_array_equal(
+                    current_slice[:halo_size, :halo_size],
+                    upper_left_corner[-2 * halo_size : -halo_size, -2 * halo_size : -halo_size],
+                )
+                # Check the upper right corner
+                assert_array_equal(
+                    current_slice[:halo_size, -halo_size:],
+                    upper_right_corner[-2 * halo_size : -halo_size, halo_size : halo_size * 2],
+                )
+                # Check the lower left corner
+                assert_array_equal(
+                    current_slice[-halo_size:, :halo_size],
+                    lower_left_corner[halo_size : halo_size * 2, -2 * halo_size : -halo_size],
+                )
+                # Check the lower right corner
+                assert_array_equal(
+                    current_slice[-halo_size:, -halo_size:],
+                    lower_right_corner[halo_size : halo_size * 2, halo_size : halo_size * 2],
+                )
+
+    @pytest.mark.skipif(not is_on_cluster(), reason="Only run on cluster")
+    @pytest.mark.parametrize("pdims", pdims)
+    def test_cudecomp_halo(self, pdims):
+        self.run_test((32, 32, 32), pdims, "CUDECOMP")
+
+    @pytest.mark.parametrize("pdims", pdims)
+    def test_jax_halo(
+        self,
+        pdims,
+    ):
+        self.run_test((16, 16, 16), pdims, "JAX")
+
+
+class TestHaloExchangeGrad:
+    def run_test(self, global_shape, pdims, backend):
+        print("*" * 80)
+        print(f"Testing with pdims {pdims}")
+
+        jnp.set_printoptions(linewidth=200)
+
+        global_array, mesh = create_ones_spmd_array(global_shape, pdims)
+        halo_size = 2
+
+        halo_x = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
+        halo_y = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
+        halo_extents = (halo_x[0], halo_y[0])
+        periodic = (True, True)
+        padding = (halo_x, halo_y, (0, 0))
+
+        @partial(shard_map, mesh=mesh, in_specs=P("z", "y"), out_specs=P("z", "y"))
+        def pad(arr):
+            return jax.tree.map(
+                lambda arr: jnp.pad(arr, padding, mode="linear_ramp", end_values=20),
+                arr,
+            )
+
+        @partial(shard_map, mesh=mesh, in_specs=P("z", "y"), out_specs=P("z", "y"))
+        def multiply(arr):
+            z_index = lax.axis_index("z") + 1
+            y_index = lax.axis_index("y") + 1
+            aranged = jnp.arange(prod(arr.shape)).reshape(arr.shape)
+            arr *= z_index + y_index * pdims[0]
+
+            arr += aranged
+
+            return arr
+
+        @jax.jit
+        def forward_model(array):
+            padded_array = multiply(array)
+            padded_array = pad(array)
+
+            exchanged_array = jaxdecomp.halo_exchange(
+                padded_array,
+                halo_extents=halo_extents,
+                halo_periods=periodic,
+                backend=backend,
+            )
+
+            return exchanged_array
+
+        @jax.grad
+        @jax.jit
+        def model(array, obs):
+            padded_array = multiply(array)
+            padded_array = pad(array)
+
+            exchanged_array = jaxdecomp.halo_exchange(
+                padded_array,
+                halo_extents=halo_extents,
+                halo_periods=periodic,
+                backend=backend,
+            )
+
+            return jnp.sum((exchanged_array - obs) ** 2)
+
+        obs = forward_model(global_array)
+
+        assert_array_equal(model(global_array, obs), jnp.zeros_like(global_array))
+        assert_array_equal(model(global_array * 2, obs), jnp.full_like(global_array, 3))
+
+    @pytest.mark.parametrize("pdims", pdims)
+    def test_jax_halo(
+        self,
+        pdims,
+    ):
+        self.run_test((16, 16, 16), pdims, "JAX")

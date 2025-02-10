@@ -1,10 +1,9 @@
 [build-system]
-requires = [ "scikit-build-core","pybind11"]
+requires = ["scikit-build-core>=0.4.0", "pybind11>=2.9.0"]
 build-backend = "scikit_build_core.build"
-
 [project]
 name = "jaxdecomp"
-version = "0.1.0"
+version = "0.2.4"
 description = "JAX bindings for the cuDecomp library"
 authors = [
   { name = "Wassim Kabalan" },
@@ -15,22 +14,58 @@ readme = "README.md"
 license = { file = "LICENSE" }
 classifiers = [
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "License :: OSI Approved :: MIT License",
-  "Operating System :: OS Independent"
+  "Operating System :: OS Independent",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
 ]
-dependencies = []
+dependencies = [
+"jaxtyping>=0.2.0",
+"jax>=0.4.35",
+"typing-extensions; python_version < '3.11'",
+]
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest>=8.0.0"]
 
 [tool.scikit-build]
 minimum-version = "0.8"
 cmake.version = ">=3.25"
 build-dir = "build/{wheel_tag}"
-wheel.py-api = "py3"
 cmake.build-type = "Release"
-# Add any additional configurations for scikit-build if necessary
-wheel.install-dir = "jaxdecomp/_src"
 
 [tool.scikit-build.cmake.define]
 CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
+
+[tool.cibuildwheel]
+test-extras = "test"
+test-command = "pytest {project}/tests"
+
+[tool.ruff]
+line-length = 150
+src = ["src"]
+exclude = ["third_party"]
+
+[tool.ruff.lint]
+select = [
+    # pycodestyle
+    'E',
+    # pyflakes
+    'F',
+    # pyupgrade
+    'UP',
+    # flake8-debugger
+    'T10',
+]
+ignore = [
+    'E402', # module level import not at top of file
+    'E203',
+    'E731',
+    'E701',
+    'E741',
+    'E722',
+    'UP037', # conflicts with jaxtyping Array annotations
+]
