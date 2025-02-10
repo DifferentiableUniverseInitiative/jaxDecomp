@@ -289,7 +289,7 @@ def pm_forces(density):
 A more detailed example of an LPT simulation can be found in the [jaxdecomp_lpt example](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/blob/main/examples/lpt_nbody_demo.py).
 
 
-![Figure 3: Visualization of an LPT density field at z=0 for a 2048³ grid generated using jaxDecomp.](assets/LPT_density_field_z0_2048.png){ width=50% }
+![Figure 3: Visualization of an LPT density field at z=0 for a 2048³ grid generated using jaxDecomp.](assets/LPT_density_field_z0_2048.png){ width=65% }
 
 
 # Stability and releases
@@ -304,6 +304,3 @@ This work was granted access to the HPC resources of IDRIS under the allocation 
 We also acknowledge the SCIPOL scipol.in2p3.fr funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation program (PI: Josquin Errard, Grant agreement No. 101044073).
 
 # References
-
-
-
