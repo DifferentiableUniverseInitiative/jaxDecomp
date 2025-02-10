@@ -1,18 +1,19 @@
 from functools import partial
-from typing import Tuple
 
 import jax
 from jax import ShapeDtypeStruct, lax
 from jax.core import ShapedArray
-from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
 from jaxtyping import Array
 
-from jaxdecomp._src.sharded_array import ShardedArray
-from jaxdecomp._src.spmd_ops import custom_spmd_rule, get_pencil_type
+from jaxdecomp._src.spmd_ops import custom_spmd_rule
+from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
+
+from jaxdecomp._src.pencil_utils import get_axis_names_from_mesh, get_pencil_type_from_axis_names
 from jaxdecomp.typing import HaloExtentType, Periodicity
+from jax._src.interpreters import batching
 
 
 def _halo_slab_xy(
@@ -51,12 +52,8 @@ def _halo_slab_xy(
     forward_indexing_z = [(j, (j + 1) % z_size) for j in range(z_size)][permutations]
     reverse_indexing_z = [((j + 1) % z_size, j) for j in range(z_size)][permutations]
 
-    exchanged_upper_halo = lax.ppermute(
-        upper_halo, axis_name=x_axis_name, perm=reverse_indexing_z
-    )
-    exchanged_lower_halo = lax.ppermute(
-        lower_halo, axis_name=x_axis_name, perm=forward_indexing_z
-    )
+    exchanged_upper_halo = lax.ppermute(upper_halo, axis_name=x_axis_name, perm=reverse_indexing_z)
+    exchanged_lower_halo = lax.ppermute(lower_halo, axis_name=x_axis_name, perm=forward_indexing_z)
 
     operand = operand.at[:halo_extent].set(exchanged_lower_halo)
     operand = operand.at[-halo_extent:].set(exchanged_upper_halo)
@@ -100,12 +97,8 @@ def _halo_slab_yz(
     reverse_indexing_y = [((j + 1) % y_size, j) for j in range(y_size)][permutations]
     forward_indexing_y = [(j, (j + 1) % y_size) for j in range(y_size)][permutations]
 
-    exchanged_right_halo = lax.ppermute(
-        right_halo, axis_name=y_axis_name, perm=reverse_indexing_y
-    )
-    exchanged_left_halo = lax.ppermute(
-        left_halo, axis_name=y_axis_name, perm=forward_indexing_y
-    )
+    exchanged_right_halo = lax.ppermute(right_halo, axis_name=y_axis_name, perm=reverse_indexing_y)
+    exchanged_left_halo = lax.ppermute(left_halo, axis_name=y_axis_name, perm=forward_indexing_y)
 
     operand = operand.at[:, :halo_extent].set(exchanged_left_halo)
     operand = operand.at[:, -halo_extent:].set(exchanged_right_halo)
@@ -156,9 +149,7 @@ def _halo_pencils(
     upper_right_corner = operand[halo_x : halo_x + halo_x, halo_y : halo_y + halo_y]
     upper_left_corner = operand[halo_x : halo_x + halo_x, -(halo_y + halo_y) : -halo_y]
     lower_right_corner = operand[-(halo_x + halo_x) : -halo_x, halo_y : halo_y + halo_y]
-    lower_left_corner = operand[
-        -(halo_x + halo_x) : -halo_x, -(halo_y + halo_y) : -halo_y
-    ]
+    lower_left_corner = operand[-(halo_x + halo_x) : -halo_x, -(halo_y + halo_y) : -halo_y]
 
     permutations_x = slice(None, None) if periodic_x else slice(None, -1)
     permutations_y = slice(None, None) if periodic_y else slice(None, -1)
@@ -167,23 +158,13 @@ def _halo_pencils(
     reverse_indexing_y = [((j + 1) % y_size, j) for j in range(y_size)][permutations_y]
     forward_indexing_y = [(j, (j + 1) % y_size) for j in range(y_size)][permutations_y]
 
-    exchanged_upper_halo = lax.ppermute(
-        upper_halo, axis_name=x_axis_name, perm=reverse_indexing_z
-    )
-    exchanged_lower_halo = lax.ppermute(
-        lower_halo, axis_name=x_axis_name, perm=forward_indexing_z
-    )
-    exchanged_right_halo = lax.ppermute(
-        right_halo, axis_name=y_axis_name, perm=reverse_indexing_y
-    )
-    exchanged_left_halo = lax.ppermute(
-        left_halo, axis_name=y_axis_name, perm=forward_indexing_y
-    )
+    exchanged_upper_halo = lax.ppermute(upper_halo, axis_name=x_axis_name, perm=reverse_indexing_z)
+    exchanged_lower_halo = lax.ppermute(lower_halo, axis_name=x_axis_name, perm=forward_indexing_z)
+    exchanged_right_halo = lax.ppermute(right_halo, axis_name=y_axis_name, perm=reverse_indexing_y)
+    exchanged_left_halo = lax.ppermute(left_halo, axis_name=y_axis_name, perm=forward_indexing_y)
 
     exchanged_upper_right_corner = lax.ppermute(
-        lax.ppermute(
-            upper_right_corner, axis_name=x_axis_name, perm=reverse_indexing_z
-        ),
+        lax.ppermute(upper_right_corner, axis_name=x_axis_name, perm=reverse_indexing_z),
         axis_name=y_axis_name,
         perm=reverse_indexing_y,
     )
@@ -193,9 +174,7 @@ def _halo_pencils(
         perm=forward_indexing_y,
     )
     exchanged_lower_right_corner = lax.ppermute(
-        lax.ppermute(
-            lower_right_corner, axis_name=x_axis_name, perm=forward_indexing_z
-        ),
+        lax.ppermute(lower_right_corner, axis_name=x_axis_name, perm=forward_indexing_z),
         axis_name=y_axis_name,
         perm=reverse_indexing_y,
     )
@@ -218,15 +197,17 @@ def _halo_pencils(
     return operand
 
 
-def spmd_halo_exchange(
-    x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity
-) -> Array:
+def spmd_halo_exchange(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> Array:
     del halo_extents, halo_periods
     return x
 
 
 def per_shard_impl(
-    x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity, mesh: Mesh
+    x: Array,
+    halo_extents: HaloExtentType,
+    halo_periods: Periodicity,
+    x_axis_name: str,
+    y_axis_name: str,
 ) -> Array:
     """
     Per-shard implementation for the halo exchange.
@@ -247,34 +228,31 @@ def per_shard_impl(
     Array
         Array after the halo exchange operation.
     """
-    assert (
-        len(mesh.axis_names) <= 2
-    ), "Only one or two-dimensional meshes are supported."
-    axis_names: Tuple[str | None, ...] = mesh.axis_names
-    x_axis_name, y_axis_name = (
-        axis_names if len(axis_names) == 2 else (*axis_names, None)
-    )
-    pencil_type = get_pencil_type(mesh)
+    pencil_type = get_pencil_type_from_axis_names(x_axis_name, y_axis_name)
 
-    match pencil_type:
-        case _jaxdecomp.SLAB_XY:
-            assert x_axis_name is not None
-            return _halo_slab_xy(x, halo_extents, halo_periods, x_axis_name)
-        case _jaxdecomp.SLAB_YZ:
-            assert y_axis_name is not None
-            return _halo_slab_yz(x, halo_extents, halo_periods, y_axis_name)
-        case _jaxdecomp.PENCILS:
-            assert (x_axis_name is not None) and (y_axis_name is not None)
-            return _halo_pencils(
-                x, halo_extents, halo_periods, x_axis_name, y_axis_name
-            )
-        case _:
-            raise ValueError(f"Unsupported pencil type {pencil_type}")
+    def _impl(x: Array) -> Array:
+        match pencil_type:
+            case _jaxdecomp.SLAB_XY:
+                assert x_axis_name is not None
+                return _halo_slab_xy(x, halo_extents, halo_periods, x_axis_name)
+            case _jaxdecomp.SLAB_YZ:
+                assert y_axis_name is not None
+                return _halo_slab_yz(x, halo_extents, halo_periods, y_axis_name)
+            case _jaxdecomp.PENCILS:
+                assert (x_axis_name is not None) and (y_axis_name is not None)
+                return _halo_pencils(x, halo_extents, halo_periods, x_axis_name, y_axis_name)
+            case _:
+                raise ValueError(f"Unsupported pencil type {pencil_type}")
+
+    if x.ndim == 3:
+        return _impl(x)
+    if x.ndim == 4:
+        return jax.vmap(_impl)(x)
+    else:
+        raise ValueError(f"Unsupported input shape {x.shape}")
 
 
-spmd_halo_primitive = custom_spmd_rule(
-    spmd_halo_exchange, static_argnums=(1, 2), multiple_results=False
-)
+spmd_halo_primitive = custom_spmd_rule(spmd_halo_exchange, static_argnums=(1, 2), multiple_results=False)
 
 
 @spmd_halo_primitive.def_infer_sharding
@@ -282,8 +260,8 @@ def infer_sharding_from_operands(
     halo_extents: HaloExtentType,
     halo_periods: Periodicity,
     mesh: Mesh,
-    arg_infos: Tuple[ShapeDtypeStruct],
-    result_infos: Tuple[ShapedArray],
+    arg_infos: tuple[ShapeDtypeStruct],
+    result_infos: tuple[ShapedArray],
 ) -> NamedSharding:
     """
     Infer sharding from the operands.
@@ -308,6 +286,12 @@ def infer_sharding_from_operands(
     """
     del halo_periods, result_infos, halo_extents, mesh
     halo_exchange_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
+    if halo_exchange_sharding is None:
+        error_during_jacfwd("Halo Exchange")
+
+    if all([spec is None for spec in halo_exchange_sharding.spec]):
+        error_during_jacrev("Halo Exchange")
+
     return NamedSharding(halo_exchange_sharding.mesh, P(*halo_exchange_sharding.spec))
 
 
@@ -316,9 +300,9 @@ def partition(
     halo_extents: HaloExtentType,
     halo_periods: Periodicity,
     mesh: Mesh,
-    arg_infos: Tuple[ShapeDtypeStruct],
-    result_infos: Tuple[ShapedArray],
-) -> Tuple[Mesh, partial, NamedSharding, Tuple[NamedSharding]]:
+    arg_infos: tuple[ShapeDtypeStruct],
+    result_infos: tuple[ShapedArray],
+) -> tuple[Mesh, partial, NamedSharding, tuple[NamedSharding]]:
     """
     Partition the halo exchange operation for custom partitioning.
 
@@ -343,21 +327,21 @@ def partition(
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     output_sharding: NamedSharding = result_infos.sharding  # type: ignore
     input_mesh: Mesh = arg_infos[0].sharding.mesh  # type: ignore
+    x_axis_name, y_axis_name = get_axis_names_from_mesh(input_mesh)
 
     impl = partial(
         per_shard_impl,
         halo_extents=halo_extents,
         halo_periods=halo_periods,
-        mesh=input_mesh,
+        x_axis_name=x_axis_name,
+        y_axis_name=y_axis_name,
     )
 
     return mesh, impl, input_sharding, (output_sharding,)
 
 
 @spmd_halo_primitive.def_transpose_rule
-def transpose_rule(
-    cotangent: Array, x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity
-) -> Tuple[Array]:
+def transpose_rule(cotangent: Array, x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> tuple[Array]:
     """
     Transpose rule for the FFT operation.
 
@@ -375,17 +359,43 @@ def transpose_rule(
     Array
         Resulting array after the transpose operation.
     """
-    return (
-        spmd_halo_primitive(
-            cotangent, halo_extents=halo_extents, halo_periods=halo_periods
-        ),
-    )
+    return (spmd_halo_primitive(cotangent, halo_extents=halo_extents, halo_periods=halo_periods),)
+
+
+@spmd_halo_primitive.def_batching_rule
+def batching_rule(
+    batched_args: tuple[Array],
+    batched_axis,
+    halo_extents: HaloExtentType,
+    halo_periods: Periodicity,
+) -> Array:
+    """
+    Batching rule for the halo exchange operation.
+
+    Parameters
+    ----------
+    batched_args : Tuple[Array]
+        Batched input arrays.
+    batched_axis : int
+        Batch axis.
+    halo_extents : HaloExtentType
+        Extents of the halo in X and Y directions.
+    halo_periods : Periodicity
+        Periodicity in X and Y directions.
+
+    Returns
+    -------
+    Array
+        Resulting array after the halo exchange operation.
+    """
+    (x,) = batched_args
+    (bd,) = batched_axis
+    x = batching.moveaxis(x, bd, 0)
+    return spmd_halo_primitive(x, halo_extents=halo_extents, halo_periods=halo_periods), 0
 
 
 @partial(jax.jit, static_argnums=(1, 2))
-def halo_impl(
-    x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity
-) -> Array:
+def halo_impl(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> Array:
     """
     Lowering function for the halo exchange operation.
 
@@ -403,35 +413,11 @@ def halo_impl(
     Array
         The lowered array after the halo exchange.
     """
-    if isinstance(x, ShardedArray):
-        if x.initial_sharding is None:
-            return spmd_halo_exchange(
-                x, halo_extents=halo_extents, halo_periods=halo_periods
-            )
-        else:
-            input_mesh: Mesh = x.initial_sharding.mesh  # type: ignore
-            forward_specs = x.initial_sharding.spec  # type: ignore
-
-            in_specs = P(*forward_specs)
-            out_specs = in_specs
-
-            pper_shard_impl = partial(
-                per_shard_impl,
-                halo_extents=halo_extents,
-                halo_periods=halo_periods,
-                mesh=input_mesh,
-            )
-            return shard_map(
-                pper_shard_impl, mesh=input_mesh, in_specs=in_specs, out_specs=out_specs
-            )(x)
-
     return spmd_halo_primitive(x, halo_extents=halo_extents, halo_periods=halo_periods)
 
 
 @partial(jax.custom_jvp, nondiff_argnums=(1, 2))
-def halo_exchange(
-    x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity
-) -> Array:
+def halo_exchange(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> Array:
     """
     Custom VJP definition for halo exchange.
 
@@ -456,11 +442,9 @@ def halo_exchange(
 def halo_exchange_jvp(
     halo_extents: HaloExtentType,
     halo_periods: Periodicity,
-    primals: Tuple[Array],
-    tangents: Tuple[Array],
-) -> Tuple[Array, Array]:
+    primals: tuple[Array],
+    tangents: tuple[Array],
+) -> tuple[Array, Array]:
     (x,) = primals
     (x_dot,) = tangents
-    return halo_impl(
-        x, halo_extents=halo_extents, halo_periods=halo_periods
-    ), halo_impl(x_dot, halo_extents=halo_extents, halo_periods=halo_periods)
+    return halo_impl(x, halo_extents=halo_extents, halo_periods=halo_periods), halo_impl(x_dot, halo_extents=halo_extents, halo_periods=halo_periods)

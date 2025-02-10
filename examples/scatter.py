@@ -51,12 +51,7 @@ def _chunk_split(ptcl_num, chunk_size, *arrays):
         chunks = [x[remainder_size:] if x.ndim != 0 else x for x in arrays]
 
     # `scan` triggers errors in scatter and gather without the `full`
-    chunks = [
-        x.reshape(chunk_num, chunk_size, *x.shape[1:])
-        if x.ndim != 0
-        else jnp.full(chunk_num, x)
-        for x in chunks
-    ]
+    chunks = [x.reshape(chunk_num, chunk_size, *x.shape[1:]) if x.ndim != 0 else jnp.full(chunk_num, x) for x in chunks]
 
     return remainder, chunks
 
@@ -75,10 +70,7 @@ def enmesh(i1, d1, a1, s1, b12, a2, s2):
         s2 = jnp.array(s2, dtype=i1.dtype)
 
     dim = i1.shape[1]
-    neighbors = (
-        jnp.arange(2**dim, dtype=i1.dtype)[:, jnp.newaxis]
-        >> jnp.arange(dim, dtype=i1.dtype)
-    ) & 1
+    neighbors = (jnp.arange(2**dim, dtype=i1.dtype)[:, jnp.newaxis] >> jnp.arange(dim, dtype=i1.dtype)) & 1
 
     if a2 is not None:
         P = i1 * a1 + d1 - b12
@@ -152,9 +144,7 @@ def _scatter_chunk(carry, chunk):
     spatial_shape = mesh.shape
 
     # multilinear mesh indices and fractions
-    ind, frac = enmesh(
-        pmid, disp, cell_size, spatial_shape, offset, cell_size, spatial_shape
-    )
+    ind, frac = enmesh(pmid, disp, cell_size, spatial_shape, offset, cell_size, spatial_shape)
     # scatter
     ind = tuple(ind[..., i] for i in range(spatial_ndim))
     mesh = mesh.at[ind].add(val * frac)

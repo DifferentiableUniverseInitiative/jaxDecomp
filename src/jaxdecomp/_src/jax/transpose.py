@@ -1,17 +1,16 @@
 from functools import partial
-from typing import Tuple
 
 import jax
 from jax import ShapeDtypeStruct, lax
 from jax._src.typing import Array, ArrayLike
 from jax.core import ShapedArray
-from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
 import jaxdecomp
-from jaxdecomp._src.sharded_array import ShardedArray
 from jaxdecomp._src.spmd_ops import custom_spmd_rule
+from jaxdecomp._src.pencil_utils import get_axis_names_from_mesh
+from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
 
 
 def spmd_transpose(x: Array, kind: str) -> Array:
@@ -41,10 +40,18 @@ def spmd_transpose(x: Array, kind: str) -> Array:
     else:
         transpose_order = (0, 1, 2)
 
-    return x.transpose(transpose_order)
+    def _impl(x):
+        return x.transpose(transpose_order)
+
+    if x.ndim == 3:
+        return _impl(x)
+    if x.ndim == 4:
+        return jax.vmap(_impl)(x)
+    else:
+        raise ValueError(f"Unsupported input shape {x.shape}")
 
 
-def per_shard_impl(a: Array, kind: str, mesh: Mesh):
+def per_shard_impl(a: Array, kind: str, x_axis_name: str, y_axis_name: str) -> Array:
     """
     Per-shard implementation method for the transposition primitive.
 
@@ -65,62 +72,49 @@ def per_shard_impl(a: Array, kind: str, mesh: Mesh):
         Result of binding the inner primitive with input arguments.
     """
 
-    assert (
-        len(mesh.axis_names) <= 2
-    ), "Only one or two-dimensional meshes are supported."
-    axis_names: Tuple[str | None, ...] = mesh.axis_names
-    x_axis_name, y_axis_name = (
-        axis_names if len(axis_names) == 2 else (*axis_names, None)
-    )
-    if jaxdecomp.config.transpose_axis_contiguous:
-        match kind:
-            case "x_y":
-                return lax.all_to_all(a, y_axis_name, 2, 1, tiled=True).transpose(
-                    [2, 0, 1]
-                )
-            case "y_z":
-                return lax.all_to_all(a, x_axis_name, 2, 1, tiled=True).transpose(
-                    [2, 0, 1]
-                )
-            case "z_y":
-                return lax.all_to_all(a, x_axis_name, 2, 0, tiled=True).transpose(
-                    [1, 2, 0]
-                )
-            case "y_x":
-                return lax.all_to_all(a, y_axis_name, 2, 0, tiled=True).transpose(
-                    [1, 2, 0]
-                )
-            case "x_z":
-                return lax.all_to_all(a, x_axis_name, 2, 0, tiled=True).transpose(
-                    [1, 2, 0]
-                )
-            case "z_x":
-                return lax.all_to_all(a, x_axis_name, 2, 1, tiled=True).transpose(
-                    [2, 0, 1]
-                )
-            case _:
-                raise ValueError("Invalid kind")
+    def _impl(a):
+        if jaxdecomp.config.transpose_axis_contiguous:
+            match kind:
+                case "x_y":
+                    return lax.all_to_all(a, y_axis_name, 2, 1, tiled=True).transpose([2, 0, 1])
+                case "y_z":
+                    return lax.all_to_all(a, x_axis_name, 2, 1, tiled=True).transpose([2, 0, 1])
+                case "z_y":
+                    return lax.all_to_all(a, x_axis_name, 2, 0, tiled=True).transpose([1, 2, 0])
+                case "y_x":
+                    return lax.all_to_all(a, y_axis_name, 2, 0, tiled=True).transpose([1, 2, 0])
+                case "x_z":
+                    return lax.all_to_all(a, x_axis_name, 2, 0, tiled=True).transpose([1, 2, 0])
+                case "z_x":
+                    return lax.all_to_all(a, x_axis_name, 2, 1, tiled=True).transpose([2, 0, 1])
+                case _:
+                    raise ValueError("Invalid kind")
+        else:
+            match kind:
+                case "x_y":
+                    return lax.all_to_all(a, y_axis_name, 2, 1, tiled=True)
+                case "y_z":
+                    return lax.all_to_all(a, x_axis_name, 1, 0, tiled=True)
+                case "z_y":
+                    return lax.all_to_all(a, x_axis_name, 0, 1, tiled=True)
+                case "y_x":
+                    return lax.all_to_all(a, y_axis_name, 1, 2, tiled=True)
+                case "x_z":
+                    return lax.all_to_all(a, x_axis_name, 2, 0, tiled=True)
+                case "z_x":
+                    return lax.all_to_all(a, x_axis_name, 0, 2, tiled=True)
+                case _:
+                    raise ValueError("Invalid kind")
+
+    if a.ndim == 3:
+        return _impl(a)
+    if a.ndim == 4:
+        return jax.vmap(_impl)(a)
     else:
-        match kind:
-            case "x_y":
-                return lax.all_to_all(a, y_axis_name, 2, 1, tiled=True)
-            case "y_z":
-                return lax.all_to_all(a, x_axis_name, 1, 0, tiled=True)
-            case "z_y":
-                return lax.all_to_all(a, x_axis_name, 0, 1, tiled=True)
-            case "y_x":
-                return lax.all_to_all(a, y_axis_name, 1, 2, tiled=True)
-            case "x_z":
-                return lax.all_to_all(a, x_axis_name, 2, 0, tiled=True)
-            case "z_x":
-                return lax.all_to_all(a, x_axis_name, 0, 2, tiled=True)
-            case _:
-                raise ValueError("Invalid kind")
+        raise ValueError(f"Unsupported input shape {a.shape}")
 
 
-spmd_transpose_primitive = custom_spmd_rule(
-    spmd_transpose, static_argnums=(1,), multiple_results=False
-)
+spmd_transpose_primitive = custom_spmd_rule(spmd_transpose, static_argnums=(1,), multiple_results=False)
 
 
 def get_output_specs(spec, kind):
@@ -143,43 +137,12 @@ def get_output_specs(spec, kind):
     return transposed_specs
 
 
-def get_input_specs_from_origin(spec, kind):
-    spec = spec + (None,) * (3 - len(spec))
-    if jaxdecomp.config.transpose_axis_contiguous:
-        match kind:
-            case "x_y" | "z_y" | "x_z":
-                transposed_specs = (spec[0], spec[1], None)
-            case "y_z" | "y_x" | "z_x":
-                transposed_specs = (spec[1], spec[0], None)
-            case _:
-                raise ValueError("Invalid kind")
-    else:
-        match kind:
-            case "x_y":
-                transposed_specs = (spec[0], spec[1], None)
-            case "y_z":
-                transposed_specs = (spec[0], None, spec[1])
-            case "z_y":
-                transposed_specs = (None, spec[0], spec[1])
-            case "y_x":
-                transposed_specs = (spec[0], None, spec[1])
-            case "x_z":
-                transposed_specs = (spec[0], spec[1], None)
-            case "z_x":
-                transposed_specs = (None, spec[1], spec[0])
-
-            case _:
-                raise ValueError("Invalid kind")
-
-    return transposed_specs
-
-
 @spmd_transpose_primitive.def_infer_sharding
 def infer_sharding_from_operands(
     kind: str,
     mesh: Mesh,
-    arg_infos: Tuple[ShapeDtypeStruct],
-    result_infos: Tuple[ShapedArray],
+    arg_infos: tuple[ShapeDtypeStruct],
+    result_infos: tuple[ShapedArray],
 ) -> NamedSharding:
     """
     Method to infer sharding information from operands for custom partitioning.
@@ -202,7 +165,24 @@ def infer_sharding_from_operands(
     """
     del mesh, result_infos
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
-    transposed_specs = get_output_specs(input_sharding.spec, kind)
+    operand = arg_infos[0]
+
+    if input_sharding is None:
+        error_during_jacfwd(f"Transpose {kind}")
+
+    if all([spec is None for spec in input_sharding.spec]):
+        error_during_jacrev(f"Transpose {kind}")
+
+    if operand.ndim == 3:
+        spec = input_sharding.spec
+        transposed_specs = get_output_specs(spec, kind)
+    elif operand.ndim == 4:
+        assert input_sharding.spec[0] is None
+        spec = input_sharding.spec[1:]
+        transposed_specs = get_output_specs(spec, kind)
+        transposed_specs = (None,) + transposed_specs
+    else:
+        raise ValueError(f"Unsupported input shape {operand.shape}")
 
     return NamedSharding(input_sharding.mesh, P(*transposed_specs))
 
@@ -211,8 +191,8 @@ def infer_sharding_from_operands(
 def partition(
     kind: str,
     mesh: Mesh,
-    arg_infos: Tuple[ShapeDtypeStruct],
-    result_infos: Tuple[ShapedArray],
+    arg_infos: tuple[ShapeDtypeStruct],
+    result_infos: tuple[ShapedArray],
 ):
     """
     Method to partition the transposition operation for custom partitioning.
@@ -237,14 +217,15 @@ def partition(
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     output_sharding: NamedSharding = result_infos.sharding  # type: ignore
     input_mesh: Mesh = arg_infos[0].sharding.mesh  # type: ignore
+    x_axis_name, y_axis_name = get_axis_names_from_mesh(input_mesh)
 
-    impl = partial(per_shard_impl, kind=kind, mesh=input_mesh)
+    impl = partial(per_shard_impl, kind=kind, x_axis_name=x_axis_name, y_axis_name=y_axis_name)
 
     return mesh, impl, output_sharding, (input_sharding,)
 
 
 @spmd_transpose_primitive.def_transpose_rule
-def vjp_transpose_rule(cotangent: Array, x: Array, kind: str) -> Tuple[Array]:
+def vjp_transpose_rule(cotangent: Array, x: Array, kind: str) -> tuple[Array]:
     match kind:
         case "x_y":
             return (spmd_transpose_primitive(cotangent, kind="y_x"),)
@@ -279,21 +260,6 @@ def transpose_impl(x: ArrayLike, kind: str) -> Array:
     Array
         Transposed array.
     """
-    if isinstance(x, ShardedArray):
-        if x.initial_sharding is None:
-            return spmd_transpose(x, kind=kind)
-        else:
-            input_mesh: Mesh = x.initial_sharding.mesh  # type: ignore
-            forward_specs = x.initial_sharding.spec  # type: ignore
-
-            in_specs = get_input_specs_from_origin(forward_specs, kind)
-            out_specs = get_output_specs(in_specs, kind)
-            in_specs = P(*in_specs)
-            out_specs = P(*out_specs)
-            pper_shard_impl = partial(per_shard_impl, kind=kind, mesh=input_mesh)
-            return shard_map(
-                pper_shard_impl, mesh=input_mesh, in_specs=in_specs, out_specs=out_specs
-            )(x)
     return spmd_transpose_primitive(x, kind=kind)
 
 
@@ -303,13 +269,31 @@ def transpose(x: ArrayLike, kind: str) -> Array:
 
 
 @transpose.defjvp
-def transpose_jvp(
-    kind: str, primals: Tuple[Array], tangents: Tuple[Array]
-) -> Tuple[Array, Array]:
+def transpose_jvp(kind: str, primals: tuple[Array], tangents: tuple[Array]) -> tuple[Array, Array]:
     (x,) = primals
     (t,) = tangents
     y = transpose(x, kind=kind)
     return y, transpose(t, kind=kind)
+
+
+@partial(jax.custom_jvp, nondiff_argnums=(1, 2, 3))
+def transpose_shard(x: ArrayLike, kind: str, mesh: Mesh, x_axis_name: str, y_axis_name: str) -> Array:
+    return per_shard_impl(x, kind, x_axis_name, y_axis_name)
+
+
+@transpose_shard.defjvp
+def transpose_shard_jvp(
+    kind: str,
+    mesh: Mesh,
+    x_axis_name: str,
+    y_axis_name: str,
+    primals: tuple[Array],
+    tangents: tuple[Array],
+) -> tuple[Array, Array]:
+    (x,) = primals
+    (t,) = tangents
+    y = transpose_shard(x, kind=kind, mesh=mesh, x_axis_name=x_axis_name, y_axis_name=y_axis_name)
+    return y, transpose_shard(t, kind=kind, mesh=mesh, x_axis_name=x_axis_name, y_axis_name=y_axis_name)
 
 
 # Custom transposition functions

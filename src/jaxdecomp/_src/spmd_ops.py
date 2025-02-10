@@ -1,66 +1,16 @@
-import sys
 from abc import ABCMeta, abstractmethod
 from functools import partial
-from typing import Any, Hashable, Optional, Tuple, Type
+from typing import Any, Optional
 
 import jax
-from jax import core
-from jax._src import dispatch
-from jax._src import mesh as mesh_lib
-from jax.experimental.custom_partitioning import custom_partitioning
-from jax.interpreters import mlir, xla
-from jax.sharding import Mesh, NamedSharding
-from jaxdecomplib import _jaxdecomp
-
-from jaxdecomp.typing import PdimsType, TransposablePdimsType
-
-if sys.version_info < (3, 11):
-    pass
-else:
-    pass
-
-
 import jax.extend as jex
-from jax._src import custom_api_util
-from jax.interpreters import ad
+from jax import core
+from jax._src import custom_api_util, dispatch
+from jax.experimental.custom_partitioning import custom_partitioning
+from jax.interpreters import ad, mlir, xla
+
+from jax.interpreters import batching
 # Imports
-
-Specs = Any
-AxisName = Hashable
-
-
-def get_pencil_type(mesh: Optional[Mesh] = None) -> str:
-    """Returns the pencil decomposition type based on the mesh configuration.
-
-    Args:
-        mesh: The device mesh (Optional[Mesh]). If not provided, uses the current physical mesh.
-
-    Returns:
-        A string representing the pencil decomposition type.
-
-    Raises:
-        ValueError: If an unknown pencil type is encountered.
-    """
-    if mesh is None:
-        mesh = mesh_lib.thread_resources.env.physical_mesh
-    if mesh.empty:
-        pdims = None
-    else:
-        pdims = mesh.devices.shape[::-1]
-        if len(pdims) == 1:
-            pdims = (1,) + pdims
-
-        if len(pdims) != 2:
-            raise ValueError("Only one or two-dimensional meshes are supported.")
-
-    if pdims == (1, 1) or pdims is None:
-        return _jaxdecomp.NO_DECOMP
-    elif pdims[0] == 1:
-        return _jaxdecomp.SLAB_XY
-    elif pdims[1] == 1:
-        return _jaxdecomp.SLAB_YZ
-    else:
-        return _jaxdecomp.PENCILS
 
 
 class BasePrimitive(metaclass=ABCMeta):
@@ -70,7 +20,7 @@ class BasePrimitive(metaclass=ABCMeta):
 
     name: str
     multiple_results: bool
-    impl_static_args: Tuple[Any, ...]
+    impl_static_args: tuple[Any, ...]
     inner_primitive: Optional[jex.core.Primitive]
     outer_primitive: Optional[jex.core.Primitive]
     outer_lowering: custom_partitioning
@@ -130,8 +80,16 @@ class BasePrimitive(metaclass=ABCMeta):
         """
         return NotImplemented
 
+    @staticmethod
+    @abstractmethod
+    def batching(*args, **kwargs) -> Any:
+        """
+        Describes the batching rule for batching.
+        """
+        return NotImplemented
 
-def register_primitive(cls: Type[BasePrimitive]) -> None:
+
+def register_primitive(cls: type[BasePrimitive]) -> None:
     """
     Registers a JAX primitive.
 
@@ -159,9 +117,8 @@ def register_primitive(cls: Type[BasePrimitive]) -> None:
         outer_p.multiple_results = cls.multiple_results
         outer_p.def_impl(cls.impl)
         outer_p.def_abstract_eval(cls.outer_abstract)
-        outer_p_lower = custom_partitioning(
-            cls.impl, static_argnums=cls.impl_static_args
-        )
+        batching.primitive_batchers[outer_p] = cls.batching
+        outer_p_lower = custom_partitioning(cls.impl, static_argnums=cls.impl_static_args)
         outer_p_lower.def_partition(
             infer_sharding_from_operands=cls.infer_sharding_from_operands,
             partition=cls.partition,
@@ -173,53 +130,6 @@ def register_primitive(cls: Type[BasePrimitive]) -> None:
         cls.outer_primitive = outer_p
     else:
         raise ValueError("register_primitive only accepts BasePrimitive")
-
-
-def get_axis_size(sharding: NamedSharding, index: int) -> int:
-    """Returns the size of the axis for a given sharding spec.
-
-    Args:
-        sharding: The sharding specification (PartitionSpec).
-        index: The index of the axis.
-
-    Returns:
-        The size of the axis (int).
-    """
-    axis_name = sharding.spec[index]
-    if axis_name is None:
-        return 1
-    else:
-        return sharding.mesh.shape[sharding.spec[index]]
-
-
-def get_pdims_from_sharding(sharding: NamedSharding) -> TransposablePdimsType:
-    """Returns the processor dimensions from a sharding specification.
-
-    Args:
-        sharding: The sharding specification (PartitionSpec).
-
-    Returns:
-        A tuple of processor dimensions (Tuple[int, ...]).
-    """
-    return tuple([get_axis_size(sharding, i) for i in range(len(sharding.spec))])  # type: ignore
-
-
-def get_pdims_from_mesh(mesh: Optional[Mesh]) -> PdimsType:
-    """Returns the processor dimensions from the device mesh.
-
-    Args:
-        mesh: The device mesh (Mesh).
-
-    Returns:
-        A tuple of processor dimensions (Tuple[int, int]).
-    """
-    if mesh is None or mesh.empty:
-        pdims = (1, 1)
-    else:
-        pdims = mesh.devices.shape[::-1]
-        assert len(pdims) == 2
-
-    return pdims
 
 
 @custom_api_util.register_custom_decorator_type
@@ -239,9 +149,7 @@ class custom_spmd_rule:
         self.primitive.def_impl(fun)
 
         def abstract_eval(*args, **kwargs):
-            return jax.make_jaxpr(self.fun, static_argnums=self.static_argnums)(
-                *args, **kwargs
-            ).out_avals[0]
+            return jax.make_jaxpr(self.fun, static_argnums=self.static_argnums)(*args, **kwargs).out_avals[0]
 
         self.primitive.def_abstract_eval(abstract_eval)
 
@@ -250,6 +158,7 @@ class custom_spmd_rule:
         self.infer_sharding_from_operands = None
         self.jvp_rule = None
         self.transpose_rule = None
+        self.batching_rule = None
 
     def def_partition(self, partition):
         self.partition = partition
@@ -265,9 +174,7 @@ class custom_spmd_rule:
         assert partition_rule is not None, "Partition rule is required"
         assert infer_sharding_rule is not None, "Infer sharding rule is required"
 
-        paritioned_fn = custom_partitioning(
-            self.fun, static_argnums=self.static_argnums
-        )
+        paritioned_fn = custom_partitioning(self.fun, static_argnums=self.static_argnums)
         paritioned_fn.def_partition(
             infer_sharding_from_operands=infer_sharding_rule,
             partition=partition_rule,
@@ -288,6 +195,10 @@ class custom_spmd_rule:
     def def_transpose_rule(self, transpose_rule):
         self.transpose_rule = transpose_rule
         ad.primitive_transposes[self.primitive] = transpose_rule
+
+    def def_batching_rule(self, batching_rule):
+        self.batching_rule = batching_rule
+        batching.primitive_batchers[self.primitive] = batching_rule
 
     def __call__(self, *args, **kwargs):
         def internal_call(*args, **kwargs):

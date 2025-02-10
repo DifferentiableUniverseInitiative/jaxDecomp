@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, Tuple
+from typing import Any
 
 import jax
 import jaxlib.mlir.ir as ir
@@ -8,7 +8,8 @@ from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
 from jax._src.lib.mlir.dialects import hlo
 from jax._src.numpy.util import promote_dtypes_complex
-from jax.core import Primitive, ShapedArray
+from jax.core import ShapedArray
+from jax.extend.core import Primitive
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
@@ -20,15 +21,15 @@ from jaxdecomp._src.fft_utils import FftType, fftn
 from jaxdecomp._src.pencil_utils import (
     get_lowering_args,
     get_output_specs,
-    get_pencil_type,
+    get_pencil_type_from_mesh,
+    get_pdims_from_sharding,
     get_transpose_order,
 )
 from jaxdecomp._src.spmd_ops import (
     BasePrimitive,
-    get_pdims_from_sharding,
     register_primitive,
 )
-from jaxdecomp.typing import GdimsType, PdimsType, TransposablePdimsType
+from jaxdecomp.typing import GdimsType, TransposablePdimsType
 
 
 class FFTPrimitive(BasePrimitive):
@@ -38,7 +39,7 @@ class FFTPrimitive(BasePrimitive):
 
     name: str = "fft"
     multiple_results: bool = False
-    impl_static_args: Tuple[int, int] = (1, 2)
+    impl_static_args: tuple[int, int] = (1, 2)
     inner_primitive: Any = None
     outer_primitive: Any = None
 
@@ -115,12 +116,19 @@ class FFTPrimitive(BasePrimitive):
         return ShapedArray(output_shape, x.dtype)
 
     @staticmethod
+    def batching(batched_args: tuple[Array], batched_axis, fft_type: FftType, adjoint: bool):
+        raise NotImplementedError("""
+            Batching not implemented for FFT primitive using cudecomp
+            Please use the JAX backend for batching
+            """)
+
+    @staticmethod
     def lowering(
         ctx,
         a: ir.Value,
         *,
         fft_type: FftType,
-        pdims: PdimsType,
+        pdims: TransposablePdimsType,
         global_shape: GdimsType,
         adjoint: bool,
         mesh: Mesh,
@@ -150,6 +158,7 @@ class FFTPrimitive(BasePrimitive):
         list
             List of results from the operation.
         """
+        del pdims
         (x_aval,) = ctx.avals_in
         (aval_out,) = ctx.avals_out
         dtype = x_aval.dtype
@@ -163,25 +172,21 @@ class FFTPrimitive(BasePrimitive):
         forward = fft_type in (FftType.FFT,)
         is_double = np.finfo(dtype).dtype == np.float64
 
-        pencil_type = get_pencil_type(mesh)
-        pdims, global_shape = get_lowering_args(fft_type, global_shape, mesh)
+        pencil_type = get_pencil_type_from_mesh(mesh)
+        original_pdims, global_shape = get_lowering_args(fft_type, global_shape, mesh)
         local_transpose = jaxdecomp.config.transpose_axis_contiguous
 
         config = _jaxdecomp.GridConfig()
-        config.pdims = pdims
+        config.pdims = original_pdims
         config.gdims = global_shape[::-1]
         config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
         config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
-        workspace_size, opaque = _jaxdecomp.build_fft_descriptor(
-            config, forward, is_double, adjoint, local_transpose, pencil_type
-        )
+        workspace_size, opaque = _jaxdecomp.build_fft_descriptor(config, forward, is_double, adjoint, local_transpose, pencil_type)
 
         n = len(a_type.shape)
         layout = tuple(range(n - 1, -1, -1))
 
-        workspace = mlir.full_like_aval(
-            ctx, 0, ShapedArray(shape=[workspace_size], dtype=np.byte)
-        )
+        workspace = mlir.full_like_aval(ctx, 0, ShapedArray(shape=[workspace_size], dtype=np.byte))
 
         result = custom_call(
             "pfft3d",
@@ -254,10 +259,7 @@ class FFTPrimitive(BasePrimitive):
             Result of the per-shard FFT operation.
         """
         if fft_type == FftType.IFFT and pdims[0] == 1:
-            if (
-                jaxdecomp.config.transpose_axis_contiguous_2
-                and jaxdecomp.config.transpose_axis_contiguous
-            ):
+            if jaxdecomp.config.transpose_axis_contiguous:
                 x = x.transpose([1, 2, 0])
         assert FFTPrimitive.inner_primitive is not None
 
@@ -277,8 +279,8 @@ class FFTPrimitive(BasePrimitive):
         fft_type: FftType,
         adjoint: bool,
         mesh: Mesh,
-        arg_infos: Tuple[ShapeDtypeStruct],
-        result_infos: Tuple[ShapedArray],
+        arg_infos: tuple[ShapeDtypeStruct],
+        result_infos: tuple[ShapedArray],
     ) -> NamedSharding:
         """
         Infer sharding for FFT primitive based on operands.
@@ -314,9 +316,9 @@ class FFTPrimitive(BasePrimitive):
         fft_type: FftType,
         adjoint: bool,
         mesh: Mesh,
-        arg_shapes: Tuple[ShapeDtypeStruct],
+        arg_shapes: tuple[ShapeDtypeStruct],
         result_shape: ShapeDtypeStruct,
-    ) -> Tuple[Mesh, partial, NamedSharding, Tuple[NamedSharding]]:
+    ) -> tuple[Mesh, partial, NamedSharding, tuple[NamedSharding]]:
         """
         Partition the FFT primitive for XLA.
 
@@ -408,9 +410,7 @@ def pfft(x: Array, fft_type: FftType, adjoint: bool = False) -> Primitive:
     return output
 
 
-def _pfft_fwd_rule(
-    x: Array, fft_type: FftType, adjoint: bool
-) -> Tuple[Primitive, None]:
+def _pfft_fwd_rule(x: Array, fft_type: FftType, adjoint: bool) -> tuple[Primitive, None]:
     """
     Forward rule for pfft.
 
@@ -431,9 +431,7 @@ def _pfft_fwd_rule(
     return pfft_impl(x, fft_type=fft_type, adjoint=adjoint), None
 
 
-def _pfft_bwd_rule(
-    fft_type: FftType, adjoint: bool, _, g: Primitive
-) -> Tuple[Primitive]:
+def _pfft_bwd_rule(fft_type: FftType, adjoint: bool, _, g: Primitive) -> tuple[Primitive]:
     """
     Backward rule for pfft.
 

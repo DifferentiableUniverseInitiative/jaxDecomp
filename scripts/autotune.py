@@ -17,9 +17,7 @@ config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
 config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
 
 # Run autotune
-tuned_config = jaxdecomp.get_autotuned_config(
-    config, False, False, True, True, (32, 32, 32), (True, True, True)
-)
+tuned_config = jaxdecomp.get_autotuned_config(config, False, False, True, True, (32, 32, 32), (True, True, True))
 
 if rank == 0:
     print(rank, "*** Results of optimization ***")

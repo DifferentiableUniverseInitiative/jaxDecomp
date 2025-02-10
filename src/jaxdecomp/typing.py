@@ -1,12 +1,12 @@
-from typing import Sequence, Tuple, Type
+from collections.abc import Sequence
 
-GdimsType = Tuple[int, int, int]
+GdimsType = tuple[int, int, int]
 # pdims is only two integers
 # but in some cases we need to represent ('x' , None , 'y') as (Nx , 1 , Ny)
-TransposablePdimsType = Tuple[int, int, int]
-PdimsType = Tuple[int, int]
+TransposablePdimsType = tuple[int, int, int]
+PdimsType = tuple[int, int]
 
-HaloExtentType = Tuple[int, int]
-Periodicity = Tuple[bool, bool]
+HaloExtentType = tuple[int, int]
+Periodicity = tuple[bool, bool]
 
-HLOResult = Sequence[Type]
+HLOResult = Sequence[type]

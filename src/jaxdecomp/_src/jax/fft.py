@@ -1,28 +1,31 @@
 from functools import partial
-from typing import Tuple, Type, Union
 
 import jax
 from jax import lax
 from jax._src.api import ShapeDtypeStruct
 from jax._src.core import ShapedArray
 from jax._src.typing import Array
-from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
+from jax._src.interpreters import batching
 
 import jaxdecomp
-from jaxdecomp._src.fft_utils import COMPLEX  # yapf: disable
-from jaxdecomp._src.fft_utils import FftType  # yapf: disable
-from jaxdecomp._src.fft_utils import ADJOINT, FORWARD_FFTs, fft, fft2, fftn
-from jaxdecomp._src.pencil_utils import get_output_specs, get_transpose_order
-from jaxdecomp._src.spmd_ops import custom_spmd_rule , get_pencil_type  # yapf: disable
-from jaxdecomp._src.sharded_array import ShardedArray
+from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
+from jaxdecomp._src.fft_utils import (
+    ADJOINT,
+    COMPLEX,  # yapf: disable
+    FftType,  # yapf: disable
+    FORWARD_FFTs,
+    fft,
+    fft2,
+    fftn,
+)
+from jaxdecomp._src.pencil_utils import get_output_specs, get_transpose_order, get_axis_names_from_mesh, get_pencil_type_from_axis_names
+from jaxdecomp._src.spmd_ops import custom_spmd_rule
 
 
-def _fft_slab_xy(
-    operand: Array, fft_type: FftType, adjoint: bool, x_axis_name: str
-) -> Array:
+def _fft_slab_xy(operand: Array, fft_type: FftType, adjoint: bool, x_axis_name: str) -> Array:
     """
     Performs the FFT slab XY operation.
 
@@ -44,9 +47,7 @@ def _fft_slab_xy(
     """
     operand = fft2(operand, fft_type, axes=(2, 1), adjoint=adjoint)
     if jaxdecomp.config.transpose_axis_contiguous:
-        operand = lax.all_to_all(operand, x_axis_name, 2, 0, tiled=True).transpose(
-            [1, 2, 0]
-        )
+        operand = lax.all_to_all(operand, x_axis_name, 2, 0, tiled=True).transpose([1, 2, 0])
         operand = fft(operand, COMPLEX(fft_type), axis=-1, adjoint=adjoint)
     else:
         operand = lax.all_to_all(operand, x_axis_name, 2, 0, tiled=True)
@@ -54,9 +55,7 @@ def _fft_slab_xy(
     return operand
 
 
-def _fft_slab_yz(
-    operand: Array, fft_type: FftType, adjoint: bool, y_axis_name: str
-) -> Array:
+def _fft_slab_yz(operand: Array, fft_type: FftType, adjoint: bool, y_axis_name: str) -> Array:
     """
     Performs the FFT slab YZ operation.
 
@@ -79,14 +78,10 @@ def _fft_slab_yz(
     operand = fft(operand, fft_type, axis=-1, adjoint=adjoint)
     if jaxdecomp.config.transpose_axis_contiguous:
         # transpose to (X / py, Z , Y) with specs P('y', 'z')
-        operand = lax.all_to_all(operand, y_axis_name, 2, 1, tiled=True).transpose(
-            [2, 0, 1]
-        )
+        operand = lax.all_to_all(operand, y_axis_name, 2, 1, tiled=True).transpose([2, 0, 1])
         # FFT on YZ plane
         operand = fft2(operand, COMPLEX(fft_type), axes=(2, 1), adjoint=adjoint)
-
-        if jaxdecomp.config.transpose_axis_contiguous_2:
-            operand = operand.transpose([2, 0, 1])
+        operand = operand.transpose([2, 0, 1])
     else:
         # transpose to (Z , Y , X / py) with specs P('z', None, 'y')
         operand = lax.all_to_all(operand, y_axis_name, 2, 1, tiled=True)
@@ -96,9 +91,7 @@ def _fft_slab_yz(
     return operand
 
 
-def _fft_pencils(
-    operand: Array, fft_type: FftType, adjoint: bool, x_axis_name: str, y_axis_name: str
-) -> Array:
+def _fft_pencils(operand: Array, fft_type: FftType, adjoint: bool, x_axis_name: str, y_axis_name: str) -> Array:
     """
     Performs the FFT pencils operation.
 
@@ -123,15 +116,11 @@ def _fft_pencils(
     operand = fft(operand, fft_type, axis=-1, adjoint=adjoint)
     if jaxdecomp.config.transpose_axis_contiguous:
         # transpose to (X / py, Z / pz , Y) with specs P('y', 'z')
-        operand = lax.all_to_all(operand, y_axis_name, 2, 1, tiled=True).transpose(
-            [2, 0, 1]
-        )
+        operand = lax.all_to_all(operand, y_axis_name, 2, 1, tiled=True).transpose([2, 0, 1])
         # FFT on the Y axis
         operand = fft(operand, COMPLEX(fft_type), axis=-1, adjoint=adjoint)
         # transpose to (Y / pz, X / py, Z) with specs P('z', 'y')
-        operand = lax.all_to_all(operand, x_axis_name, 2, 1, tiled=True).transpose(
-            [2, 0, 1]
-        )
+        operand = lax.all_to_all(operand, x_axis_name, 2, 1, tiled=True).transpose([2, 0, 1])
         # FFT on the Z axis
         operand = fft(operand, COMPLEX(fft_type), axis=-1, adjoint=adjoint)
     else:
@@ -146,9 +135,7 @@ def _fft_pencils(
     return operand
 
 
-def _ifft_slab_xy(
-    operand: Array, fft_type: FftType, adjoint: bool, x_axis_name: str
-) -> Array:
+def _ifft_slab_xy(operand: Array, fft_type: FftType, adjoint: bool, x_axis_name: str) -> Array:
     """
     Performs the IFFT slab XY operation.
 
@@ -173,9 +160,7 @@ def _ifft_slab_xy(
         # First IFFT on Z
         operand = fft(operand, COMPLEX(fft_type), axis=-1, adjoint=adjoint)
         # transpose to (Z / Pz , Y , X) with specs P('z', 'y')
-        operand = lax.all_to_all(operand, x_axis_name, 2, 1, tiled=True).transpose(
-            [2, 0, 1]
-        )
+        operand = lax.all_to_all(operand, x_axis_name, 2, 1, tiled=True).transpose([2, 0, 1])
         # IFFT on XY plane
         operand = fft2(operand, fft_type, axes=(2, 1), adjoint=adjoint)
     else:
@@ -189,9 +174,7 @@ def _ifft_slab_xy(
     return operand
 
 
-def _ifft_slab_yz(
-    operand: Array, fft_type: FftType, adjoint: bool, y_axis_name: str
-) -> Array:
+def _ifft_slab_yz(operand: Array, fft_type: FftType, adjoint: bool, y_axis_name: str) -> Array:
     """
     Performs the IFFT slab YZ operation.
 
@@ -212,15 +195,12 @@ def _ifft_slab_yz(
         Resulting array after the IFFT slab YZ operation.
     """
     if jaxdecomp.config.transpose_axis_contiguous:
-        if jaxdecomp.config.transpose_axis_contiguous_2:
-            operand = operand.transpose([1, 2, 0])
+        operand = operand.transpose([1, 2, 0])
         # input is (X / py, Z , Y) with specs P('y', 'z')
         # First IFFT
         operand = fft2(operand, COMPLEX(fft_type), axes=(2, 1), adjoint=adjoint)
         # transpose to (Z , Y / Py, X) with specs P('z', 'y')
-        operand = lax.all_to_all(operand, y_axis_name, 2, 0, tiled=True).transpose(
-            [1, 2, 0]
-        )
+        operand = lax.all_to_all(operand, y_axis_name, 2, 0, tiled=True).transpose([1, 2, 0])
         # IFFT on X axis
         operand = fft(operand, fft_type, axis=-1, adjoint=adjoint)
     else:
@@ -235,9 +215,7 @@ def _ifft_slab_yz(
     return operand
 
 
-def _ifft_pencils(
-    operand: Array, fft_type: FftType, adjoint: bool, x_axis_name: str, y_axis_name: str
-) -> Array:
+def _ifft_pencils(operand: Array, fft_type: FftType, adjoint: bool, x_axis_name: str, y_axis_name: str) -> Array:
     """
     Performs the IFFT pencils operation.
 
@@ -264,15 +242,11 @@ def _ifft_pencils(
         # First IFFT on Z
         operand = fft(operand, COMPLEX(fft_type), axis=-1, adjoint=adjoint)
         # transpose to (X / py, Z / pz , Y) with specs P('y', 'z')
-        operand = lax.all_to_all(operand, x_axis_name, 2, 0, tiled=True).transpose(
-            [1, 2, 0]
-        )
+        operand = lax.all_to_all(operand, x_axis_name, 2, 0, tiled=True).transpose([1, 2, 0])
         # IFFT on the Y axis
         operand = fft(operand, COMPLEX(fft_type), axis=-1, adjoint=adjoint)
         # transpose to (Z / Pz , Y / Py  , X) with specs P('z', 'y')
-        operand = lax.all_to_all(operand, y_axis_name, 2, 0, tiled=True).transpose(
-            [1, 2, 0]
-        )
+        operand = lax.all_to_all(operand, y_axis_name, 2, 0, tiled=True).transpose([1, 2, 0])
         # IFFT on the X axis
         operand = fft(operand, fft_type, axis=-1, adjoint=adjoint)
     else:
@@ -309,10 +283,19 @@ def spmd_fft(x: Array, fft_type: FftType, adjoint: bool) -> Array:
         Resulting array after the FFT operation.
     """
     transpose_order = get_transpose_order(fft_type)
-    return fftn(x, fft_type, adjoint=adjoint).transpose(transpose_order)
+
+    def _impl(x):
+        return fftn(x, fft_type, adjoint=adjoint).transpose(transpose_order)
+
+    if x.ndim == 3:
+        return _impl(x)
+    if x.ndim == 4:
+        return jax.vmap(_impl)(x)
+    else:
+        raise ValueError(f"Unsupported input shape {x.shape}")
 
 
-def per_shard_impl(x: Array, fft_type: FftType, adjoint: bool, mesh: Mesh) -> Array:
+def per_shard_impl(x: Array, fft_type: FftType, adjoint: bool, x_axis_name: str, y_axis_name: str) -> Array:
     """
     Per-shard implementation of the FFT operation.
 
@@ -332,46 +315,46 @@ def per_shard_impl(x: Array, fft_type: FftType, adjoint: bool, mesh: Mesh) -> Ar
     Array
         Resulting array after the per-shard FFT operation.
     """
-    assert (
-        len(mesh.axis_names) <= 2
-    ), "Only one or two-dimensional meshes are supported."
-    axis_names: Tuple[str | None, ...] = mesh.axis_names
-    x_axis_name, y_axis_name = (
-        axis_names if len(axis_names) == 2 else (*axis_names, None)
-    )
     assert isinstance(fft_type, FftType)  # type: ignore
-    pencil_type = get_pencil_type(mesh)
-    if fft_type in FORWARD_FFTs:
-        match pencil_type:
-            case _jaxdecomp.SLAB_XY:
-                assert x_axis_name is not None
-                return _fft_slab_xy(x, fft_type, adjoint, x_axis_name)
-            case _jaxdecomp.SLAB_YZ:
-                assert y_axis_name is not None
-                return _fft_slab_yz(x, fft_type, adjoint, y_axis_name)
-            case _jaxdecomp.PENCILS:
-                assert (x_axis_name is not None) and (y_axis_name is not None)
-                return _fft_pencils(x, fft_type, adjoint, x_axis_name, y_axis_name)
-            case _:
-                raise ValueError(f"Unsupported pencil type {pencil_type}")
+    pencil_type = get_pencil_type_from_axis_names(x_axis_name, y_axis_name)
+
+    def _impl(x):
+        if fft_type in FORWARD_FFTs:
+            match pencil_type:
+                case _jaxdecomp.SLAB_XY:
+                    assert x_axis_name is not None
+                    return _fft_slab_xy(x, fft_type, adjoint, x_axis_name)
+                case _jaxdecomp.SLAB_YZ:
+                    assert y_axis_name is not None
+                    return _fft_slab_yz(x, fft_type, adjoint, y_axis_name)
+                case _jaxdecomp.PENCILS:
+                    assert (x_axis_name is not None) and (y_axis_name is not None)
+                    return _fft_pencils(x, fft_type, adjoint, x_axis_name, y_axis_name)
+                case _:
+                    raise ValueError(f"Unsupported pencil type {pencil_type}")
+        else:
+            match pencil_type:
+                case _jaxdecomp.SLAB_XY:
+                    assert x_axis_name is not None
+                    return _ifft_slab_xy(x, fft_type, adjoint, x_axis_name)
+                case _jaxdecomp.SLAB_YZ:
+                    assert y_axis_name is not None
+                    return _ifft_slab_yz(x, fft_type, adjoint, y_axis_name)
+                case _jaxdecomp.PENCILS:
+                    assert (x_axis_name is not None) and (y_axis_name is not None)
+                    return _ifft_pencils(x, fft_type, adjoint, x_axis_name, y_axis_name)
+                case _:
+                    raise ValueError(f"Unsupported pencil type {pencil_type}")
+
+    if x.ndim == 3:
+        return _impl(x)
+    if x.ndim == 4:
+        return jax.vmap(_impl)(x)
     else:
-        match pencil_type:
-            case _jaxdecomp.SLAB_XY:
-                assert x_axis_name is not None
-                return _ifft_slab_xy(x, fft_type, adjoint, x_axis_name)
-            case _jaxdecomp.SLAB_YZ:
-                assert y_axis_name is not None
-                return _ifft_slab_yz(x, fft_type, adjoint, y_axis_name)
-            case _jaxdecomp.PENCILS:
-                assert (x_axis_name is not None) and (y_axis_name is not None)
-                return _ifft_pencils(x, fft_type, adjoint, x_axis_name, y_axis_name)
-            case _:
-                raise ValueError(f"Unsupported pencil type {pencil_type}")
+        raise ValueError(f"Unsupported input shape {x.shape}")
 
 
-spmd_fft_primitive = custom_spmd_rule(
-    spmd_fft, static_argnums=(1, 2), multiple_results=False
-)
+spmd_fft_primitive = custom_spmd_rule(spmd_fft, static_argnums=(1, 2), multiple_results=False)
 
 
 @spmd_fft_primitive.def_infer_sharding
@@ -379,8 +362,8 @@ def infer_sharding_from_operands(
     fft_type: FftType,
     adjoint: bool,
     mesh: Mesh,
-    arg_infos: Tuple[ShapeDtypeStruct],
-    result_infos: Tuple[ShapedArray],
+    arg_infos: tuple[ShapeDtypeStruct],
+    result_infos: tuple[ShapedArray],
 ) -> NamedSharding:
     """
     Infers the sharding for the result based on the input operands.
@@ -405,9 +388,25 @@ def infer_sharding_from_operands(
     """
     del mesh, result_infos
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
+    if input_sharding is None:
+        error_during_jacfwd("pfft")
+
+    if all([spec is None for spec in input_sharding.spec]):
+        error_during_jacrev("pfft")
+
     input_mesh: Mesh = input_sharding.mesh  # type: ignore
-    spec = input_sharding.spec
-    transposed_specs = get_output_specs(fft_type, spec, mesh=input_mesh, backend="jax")
+    operand = arg_infos[0]
+    if operand.ndim == 3:
+        spec = input_sharding.spec
+        transposed_specs = get_output_specs(fft_type, spec, mesh=input_mesh, backend="jax")
+    elif operand.ndim == 4:
+        assert input_sharding.spec[0] is None
+        spec = input_sharding.spec[1:]
+        transposed_specs = get_output_specs(fft_type, spec, mesh=input_mesh, backend="jax")
+        assert len(transposed_specs) == 3
+        transposed_specs = (None,) + transposed_specs
+    else:
+        raise ValueError(f"Unsupported input shape {operand.shape}")
 
     return NamedSharding(input_sharding.mesh, P(*transposed_specs))
 
@@ -417,8 +416,8 @@ def partition(
     fft_type: FftType,
     adjoint: bool,
     mesh: Mesh,
-    arg_infos: Tuple[ShapeDtypeStruct],
-    result_infos: Tuple[ShapedArray],
+    arg_infos: tuple[ShapeDtypeStruct],
+    result_infos: tuple[ShapedArray],
 ):
     """
     Partitions the FFT operation for distributed execution.
@@ -444,16 +443,21 @@ def partition(
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     output_sharding: NamedSharding = result_infos.sharding  # type: ignore
     input_mesh: Mesh = arg_infos[0].sharding.mesh  # type: ignore
+    x_axis_name, y_axis_name = get_axis_names_from_mesh(input_mesh)
 
-    impl = partial(per_shard_impl, fft_type=fft_type, adjoint=adjoint, mesh=input_mesh)
+    impl = partial(
+        per_shard_impl,
+        fft_type=fft_type,
+        adjoint=adjoint,
+        x_axis_name=x_axis_name,
+        y_axis_name=y_axis_name,
+    )
 
     return mesh, impl, output_sharding, (input_sharding,)
 
 
 @spmd_fft_primitive.def_transpose_rule
-def transpose_rule(
-    cotangent: Array, x: Array, fft_type: FftType, adjoint: bool
-) -> Tuple[Array]:
+def transpose_rule(cotangent: Array, x: Array, fft_type: FftType, adjoint: bool) -> tuple[Array]:
     """
     Transpose rule for the FFT operation.
 
@@ -471,15 +475,36 @@ def transpose_rule(
     Array
         Resulting array after the transpose operation.
     """
-    return (
-        spmd_fft_primitive(cotangent, fft_type=ADJOINT(fft_type), adjoint=not adjoint),
-    )
+    return (spmd_fft_primitive(cotangent, fft_type=ADJOINT(fft_type), adjoint=not adjoint),)
+
+
+@spmd_fft_primitive.def_batching_rule
+def batching_rule(batched_args: tuple[Array], batched_axis, fft_type: FftType, adjoint: bool) -> Array:
+    """
+    Batching rule for the FFT operation.
+
+    Parameters
+    ----------
+    batched_args : Tuple[Array]
+        Batched input arrays.
+    fft_type : FftType
+        Type of FFT operation to perform.
+    adjoint : bool
+        Whether to compute the adjoint FFT.
+
+    Returns
+    -------
+    Array
+        Resulting array after the FFT operation.
+    """
+    (x,) = batched_args
+    (bd,) = batched_axis
+    x = batching.moveaxis(x, bd, 0)
+    return spmd_fft_primitive(x, fft_type=fft_type, adjoint=adjoint), 0
 
 
 @partial(jax.jit, static_argnums=(1, 2))
-def pfft_impl(
-    x: Type[Union[Array, ShardedArray]], fft_type: FftType, adjoint: bool
-) -> Array:
+def pfft_impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:
     """
     Lowering function for pfft primitive.
 
@@ -497,33 +522,6 @@ def pfft_impl(
     Array
         Resulting array after the pfft operation.
     """
-    if isinstance(x, ShardedArray):
-        if x.initial_sharding is None:
-            return spmd_fft(x, fft_type=fft_type, adjoint=adjoint)
-        else:
-            input_mesh: Mesh = x.initial_sharding.mesh  # type: ignore
-            forward_specs = x.initial_sharding.spec  # type: ignore
-            backward_specs = get_output_specs(
-                FftType.FFT, forward_specs, mesh=input_mesh, backend="jax"
-            )
-
-            in_specs = forward_specs if fft_type in FORWARD_FFTs else backward_specs
-            out_specs = backward_specs if fft_type in FORWARD_FFTs else forward_specs
-
-            in_specs = P(*in_specs)
-            out_specs = P(*out_specs)
-
-            pper_shard_impl = partial(
-                per_shard_impl, fft_type=fft_type, adjoint=adjoint, mesh=input_mesh
-            )
-            return shard_map(
-                pper_shard_impl,
-                mesh=input_mesh,
-                in_specs=in_specs,
-                out_specs=out_specs,
-                check_rep=False,
-            )(x)
-
     return spmd_fft_primitive(x, fft_type=fft_type, adjoint=adjoint)
 
 
@@ -550,9 +548,7 @@ def pfft(x: Array, fft_type: FftType, adjoint: bool = False) -> Array:
 
 
 @pfft.defjvp
-def pfft_jvp(
-    fft_type: FftType, adjoint: bool, primals: Tuple[Array], tangents: Tuple[Array]
-) -> Tuple[Array, Array]:
+def pfft_jvp(fft_type: FftType, adjoint: bool, primals: tuple[Array], tangents: tuple[Array]) -> tuple[Array, Array]:
     (x,) = primals
     (x_dot,) = tangents
 

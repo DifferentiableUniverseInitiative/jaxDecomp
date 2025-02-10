@@ -1,239 +1,196 @@
+
 # jaxDecomp: JAX Library for 3D Domain Decomposition and Parallel FFTs
+
 [![Build](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/actions/workflows/github-deploy.yml/badge.svg)](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/actions/workflows/github-deploy.yml)
 [![Code Formatting](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/actions/workflows/formatting.yml/badge.svg)](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/actions/workflows/formatting.yml)
-[![Tests](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/actions/workflows/tests.yml/badge.svg)](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/actions/workflows/tests.yml/badge.svg)
+[![Tests](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/actions/workflows/tests.yml/badge.svg)](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/actions/workflows/tests.yml)
 [![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+> **Important**
+> Version `0.2.0` includes a **pure JAX backend** that **no longer requires MPI**. For multi-node runs, MPI and NCCL backends are still available through **cuDecomp**.
 
-> [!IMPORTANT]
-> Version `0.2.0` has a pure JAX backend and no longer requires MPI .. MPI and NCCL backends are still available through cuDecomp
+`jaxDecomp` provides JAX bindings for NVIDIA's [cuDecomp](https://nvidia.github.io/cuDecomp/index.html) library [(Romero et al. 2022)](https://dl.acm.org/doi/abs/10.1145/3539781.3539797), enabling **multi-node parallel FFTs and halo exchanges** directly in low-level NCCL/CUDA-Aware MPI from your JAX code.
 
-
-JAX bindings for NVIDIA's [cuDecomp](https://nvidia.github.io/cuDecomp/index.html) library [(Romero et al. 2022)](https://dl.acm.org/doi/abs/10.1145/3539781.3539797), allowing for efficient **multi-node parallel FFTs and halo exchanges** directly in low level NCCL/CUDA-Aware MPI from your JAX code :tada:
+---
 
 ## Usage
 
-Here is an example of how to use `jaxDecomp` to perform a 3D FFT on a 3D array distributed across multiple GPUs. This example also includes a halo exchange operation, which is a common operation in many scientific computing applications.
+Below is a simple code snippet illustrating how to perform a **3D FFT** on a distributed 3D array, followed by a halo exchange. For demonstration purposes, we force 8 CPU devices via environment variables:
 
 ```python
+import os
+os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
+os.environ["JAX_PLATFORM_NAME"] = "cpu"
+
 import jax
-from jax.experimental import mesh_utils, multihost_utils
-from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
-from jax import numpy as jnp
 import jaxdecomp
-from functools import partial
-# Initialize jax distributed to instruct jax local process which GPU to use
-jax.distributed.initialize()
-rank = jax.process_index()
 
-# Setup a processor mesh (should be same size as "size")
+# Create a 2x4 mesh of devices on CPU
 pdims = (2, 4)
-global_shape = (1024, 1024, 1024)
-
-# Initialize an array with the expected gobal size
-local_shape = (global_shape[0] // pdims[1], global_shape[1] // pdims[0],
-               global_shape[2])
-# Remap to the global array from the local slice
-devices = mesh_utils.create_device_mesh(pdims)
-mesh = Mesh(devices.T, axis_names=('x', 'y'))
+mesh = jax.make_mesh(pdims, axis_names=('x', 'y'))
 sharding = NamedSharding(mesh, P('x', 'y'))
-global_array = jax.make_array_from_callback(
-    global_shape,
-    sharding,
-    data_callback=lambda _: jax.random.normal(
-        jax.random.PRNGKey(rank), local_shape))
 
-padding_width = ((32, 32), (32, 32), (0, 0))  # Has to a tuple of tuples
+# Create a random 3D array and enforce sharding
+a = jax.random.normal(jax.random.PRNGKey(0), (1024, 1024, 1024))
+a = jax.lax.with_sharding_constraint(a, sharding)
 
+# Parallel FFTs
+k_array = jaxdecomp.fft.pfft3d(a)
+rec_array = jaxdecomp.fft.pifft3d(a)
 
-@partial(
-    shard_map, mesh=mesh, in_specs=(P('x', 'y'), P()), out_specs=P('x', 'y'))
-def pad(arr, padding):
-  return jnp.pad(arr, padding)
-
-
-@partial(
-    shard_map, mesh=mesh, in_specs=(P('x', 'y'), P()), out_specs=P('x', 'y'))
-def reduce_halo(x, pad_width):
-
-  halo_x , _ = pad_width[0]
-  halo_y , _ = pad_width[1]
-  # Apply corrections along x
-  x = x.at[halo_x:halo_x + halo_x // 2].add(x[:halo_x // 2])
-  x = x.at[-(halo_x + halo_x // 2):-halo_x].add(x[-halo_x // 2:])
-  # Apply corrections along y
-  x = x.at[:, halo_y:halo_y + halo_y // 2].add(x[:, :halo_y // 2])
-  x = x.at[:, -(halo_y + halo_y // 2):-halo_y].add(x[:, -halo_y // 2:])
-
-  return x[halo_x:-halo_x, halo_y:-halo_y]
-
-
-@jax.jit
-def modify_array(array):
-  return 2 * array + 1
-
-
-# Forward FFT
-karray = jaxdecomp.fft.pfft3d(global_array)
-# Do some operation on your array
-karray = modify_array(karray)
-kvec = jaxdecomp.fft.fftfreq3d(karray)
-# Do a gradient in the X axis
-karray_gradient = 1j * kvec[0] * karray
-# Reverse FFT
-recarray = jaxdecomp.fft.pifft3d(karray_gradient).real
-# Add halo regions to our array
-padded_array = pad(recarray, padding_width)
-# Perform a halo exchange
-exchanged_array = jaxdecomp.halo_exchange(
-    padded_array, halo_extents=(16, 16), halo_periods=(True, True))
-# Reduce the halo regions and remove the padding
-reduced_array = reduce_halo(exchanged_array, padding_width)
-
-# Gather the results (only if it fits on CPU memory)
-gathered_array = multihost_utils.process_allgather(recarray, tiled=True)
-
-# Finalize the distributed JAX
-jax.distributed.shutdown()
+# Parallel halo exchange
+exchanged = jaxdecomp.halo_exchange(a, halo_extents=(16, 16), halo_periods=(True, True))
 ```
-**Note**: All these functions are jittable and have well defined derivatives!
 
-This script would have to be run on 8 GPUs in total with something like
+All these functions are **JIT**-compatible and support **automatic differentiation** (with [some caveats](docs/02_caveats.md)).
 
+See also:
+- [Basic Usage](docs/01-basic_usage.md)
+- [Distributed LPT Example](examples/lpt_nbody_demo.py)
+
+---
+
+## Running on an HPC Cluster
+
+On HPC clusters (e.g., Jean Zay, Perlmutter), you typically launch your script with:
+```bash
+srun python demo.py
+```
+or
 ```bash
 mpirun -n 8 python demo.py
 ```
-or on a slurm cluster like Jean jean-zay
 
-```bash
-srun -n 8 python demo.py
-```
+See the Slurm [README](slurms/README.md) and [template script](slurms/template.slurm) for more details.
+
+---
 
 ## Using cuDecomp (MPI and NCCL)
 
-You can also use the cuDecomp backend by compiling the library with the right flag (check the [installation instructions](#install)) and setting the backend to use MPI or NCCL. Here is how you can do it:
+For **multi-node** or advanced features, compile and install with cuDecomp enabled:
 
 ```python
 import jaxdecomp
-# Initialise the library, and optionally selects a communication backend (defaults to NCCL)
+
+# Optionally select communication backends (defaults to NCCL)
 jaxdecomp.config.update('halo_comm_backend', jaxdecomp.HALO_COMM_MPI)
 jaxdecomp.config.update('transpose_comm_backend', jaxdecomp.TRANSPOSE_COMM_MPI_A2A)
 
-# and then call the functions with the cuDecomp backends
-karray = jaxdecomp.fft.pfft3d(global_array , backend='cudecomp')
-recarray = jaxdecomp.fft.pifft3d(karray , backend='cudecomp')
+# Then specify 'backend="cudecomp"' in your FFT or halo calls:
+karray = jaxdecomp.fft.pfft3d(global_array, backend='cudecomp')
+recarray = jaxdecomp.fft.pifft3d(karray, backend='cudecomp')
 exchanged_array = jaxdecomp.halo_exchange(
-    padded_array, halo_extents=(16, 16), halo_periods=(True, True), backend='cudecomp')
-
+    padded_array, halo_extents=(16, 16), halo_periods=(True, True), backend='cudecomp'
+)
 ```
-
-please check the tests in [tests](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/tree/main/tests) folder for more examples.
-
-On an HPC cluster like Jean Zay you should do this
-
-```bash
-$ srun python demo.py
-```
-
-Check the slurm [README](slurms/README.md) and [template](slurms/template.slurm) for more information on how to run on a Jean Zay.
 
 ## Install
 
-### Installing the pure JAX version (Easy)
+### 1. Pure JAX Version (Easy / Recommended)
 
-jaxDecomp is available on pypi and can be installed via pip:
+`jaxDecomp` is on PyPI:
 
-First install desired JAX version
+1. **Install the appropriate JAX wheel**:
+   - **GPU**:
+     ```bash
+     pip install --upgrade "jax[cuda]"
+     ```
+   - **CPU**:
+     ```bash
+     pip install --upgrade "jax[cpu]"
+     ```
+2. **Install `jaxdecomp`**:
+   ```bash
+   pip install jaxdecomp
+   ```
 
-For GPU
-```bash
-pip install -U jax[cuda12]
-```
-For CPU
-```bash
-pip install -U jax[cpu]
-```
-Then you can pip install jaxdecomp
+This setup uses the pure-JAX backend—**no** MPI required.
 
-```bash
-pip install jaxdecomp
-```
+### 2. JAX + cuDecomp Backend (Advanced)
 
-### Installing JAX and cuDecomp (Advanced)
-
-You need to install from this github after installing or loading the correct modules
-
-This install procedure assumes that the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) is available in your environment. You can either install it from the NVIDIA website, or better yet, it may be available as a module on your cluster.
-
-### Building jaxDecomp
+If you need **multi-node** support, you can build from GitHub with cuDecomp enabled. This requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) or a similar environment providing a CUDA-aware MPI toolchain.
 
 ```bash
-pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -CCmake.define.JD_CUDECOMP_BACKEND=ON
+pip install -U pip
+pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -Ccmake.define.JD_CUDECOMP_BACKEND=ON
 ```
 
-If CMake complains of not finding the NVHPC SDK, you can manually specify the location
-of the sdk's cmake files like so:
-```
-$ export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:$NVCOMPILERS/$NVARCH/22.9/cmake
-$ pip install --user .
-```
+- If CMake cannot find NVHPC, set:
+  ```bash
+  export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:$NVCOMPILERS/$NVARCH/22.9/cmake
+  ```
+  and then install again.
 
-### Specific Install Notes for Specific Machines
+---
 
-#### IDRIS [Jean Zay](http://www.idris.fr/eng/jean-zay/cpu/jean-zay-cpu-hw-eng.html) HPE SGI 8600 supercomputer
+## Machine-Specific Notes
 
-As of October. 2024, the following works:
+### IDRIS Jean Zay (HPE SGI 8600)
 
-You need to load modules in that order exactly.
+As of October 2024, loading modules **in this exact order** works:
+
 ```bash
-# Load NVHPC 23.9 because it has cuda 12.2
-module load nvidia-compilers/23.9 cuda/12.2.0 cudnn/8.9.7.29-cuda  openmpi/4.1.5-cuda nccl/2.18.5-1-cuda cmake
-# Installing jax
-pip install --upgrade "jax[cuda12]"
-# Installing jaxdecomp
-export CMAKE_PREFIX_PATH=$NVHPC_ROOT/cmake # Not always needed
-pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -CCmake.define.JD_CUDECOMP_BACKEND=ON
+module load nvidia-compilers/23.9 cuda/12.2.0 cudnn/8.9.7.29-cuda openmpi/4.1.5-cuda nccl/2.18.5-1-cuda cmake
+
+# Install JAX
+pip install --upgrade "jax[cuda]"
+
+# Install jaxDecomp with cuDecomp
+export CMAKE_PREFIX_PATH=$NVHPC_ROOT/cmake # sometimes needed
+pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -Ccmake.define.JD_CUDECOMP_BACKEND=ON
 ```
 
-__Note__: This is needed **only** if you want to use the cuDecomp backend. If you are using the pure JAX backend, you can skip the NVHPC SDK installation and just `pip install jaxdecomp` **after** installing the correct JAX version for your hardware.
+**Note**: If using only the pure-JAX backend, you do not need NVHPC.
 
-#### NERSC [Perlmutter](https://docs.nersc.gov/systems/perlmutter/architecture/) HPE Cray EX supercomputer
+### NERSC Perlmutter (HPE Cray EX)
 
-As of Nov. 2022, the following works:
+As of November 2022:
+
 ```bash
 module load PrgEnv-nvhpc python
 export CRAY_ACCEL_TARGET=nvidia80
-# Installing jax
-pip install --upgrade "jax[cuda12]"
-# Installing jaxdecomp
+
+# Install JAX
+pip install --upgrade "jax[cuda]"
+
+# Install jaxDecomp w/ cuDecomp
 export CMAKE_PREFIX_PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/22.5/cmake
 pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -CCmake.define.JD_CUDECOMP_BACKEND=ON
 ```
-## Backend configuration (Only for cuDecomp)
 
-__Note__: For the JAX backend, only NCCL is available.
+---
 
-We can set the default communication backend to use for cuDecomp operations either through a `config` module, or environment variables. This will allow the users to choose at startup (although can be changed afterwards) the communication backend, making it possible to use CUDA-aware MPI or NVSHMEM as preferred.
+## Backend Configuration (cuDecomp Only)
 
-Here is how it would like:
+By default, cuDecomp uses NCCL for inter-device communication. You can customize this at runtime:
+
 ```python
-jaxdecomp.config.update('transpose_comm_backend', 'NCCL')
-# We could for instance time how long it takes to execute in this mode
-%timeit pfft3(y)
+import jaxdecomp
 
-# And then update the backend
-jaxdecomp.config.update('transpose_comm_backend', 'MPI')
-# And measure again
-%timeit pfft3(y)
+# Choose MPI or NVSHMEM for halo and transpose ops
+jaxdecomp.config.update('transpose_comm_backend', jaxdecomp.TRANSPOSE_COMM_MPI_A2A)
+jaxdecomp.config.update('halo_comm_backend', jaxdecomp.HALO_COMM_MPI)
 ```
 
-## Autotune computational mesh (Only for cuDecomp)
+This can also be managed via environment variables, as described in the [docs](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/tree/main/docs).
 
-We can also make things fancier, since cuDecomp is able to autotune, we could use it to tell us what is the best way to partition the data given the available GPUs, something like this:
+---
+
+## Autotune Computational Mesh (cuDecomp Only)
+
+The cuDecomp library can **autotune** the partition layout to maximize performance:
+
 ```python
 automesh = jaxdecomp.autotune(shape=[512,512,512])
-# This is a JAX Sharding spec object, optimized for the given GPUs
-# and shape of the tensor
+# 'automesh' is an optimized partition layout.
+# You can then create a JAX Sharding spec from this:
+from jax.sharding import PositionalSharding
 sharding = PositionalSharding(automesh)
 ```
+
+---
+
+**License**: This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
+
+For more details, see the [examples](examples/) directory and the [documentation](docs/). Contributions and issues are welcome!

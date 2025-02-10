@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, Tuple
+from typing import Any
 
 import jax
 import jaxlib.mlir.ir as ir
@@ -17,10 +17,10 @@ from jaxlib.hlo_helpers import custom_call
 import jaxdecomp
 from jaxdecomp._src.spmd_ops import (
     BasePrimitive,
-    get_pdims_from_sharding,
     register_primitive,
 )
-from jaxdecomp.typing import GdimsType, TransposablePdimsType
+from jaxdecomp._src.pencil_utils import get_pdims_from_sharding, get_pdims_from_mesh
+from jaxdecomp.typing import GdimsType, TransposablePdimsType, PdimsType
 
 
 class TransposePrimitive(BasePrimitive):
@@ -43,7 +43,7 @@ class TransposePrimitive(BasePrimitive):
 
     name: str = "transpose"
     multiple_results: bool = False
-    impl_static_args: Tuple[int] = (1,)
+    impl_static_args: tuple[int] = (1,)
     inner_primitive: Any = None
     outer_primitive: Any = None
 
@@ -212,13 +212,9 @@ class TransposePrimitive(BasePrimitive):
         config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
         config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
 
-        workspace_size, opaque = _jaxdecomp.build_transpose_descriptor(
-            config, transpose_type, is_double, local_transpose
-        )
+        workspace_size, opaque = _jaxdecomp.build_transpose_descriptor(config, transpose_type, is_double, local_transpose)
 
-        workspace = mlir.full_like_aval(
-            ctx, 0, ShapedArray(shape=[workspace_size], dtype=np.byte)
-        )
+        workspace = mlir.full_like_aval(ctx, 0, ShapedArray(shape=[workspace_size], dtype=np.byte))
 
         result = custom_call(
             "transpose",
@@ -231,6 +227,13 @@ class TransposePrimitive(BasePrimitive):
             backend_config=opaque,
         )
         return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
+
+    @staticmethod
+    def batching(batched_args: tuple[Array], batched_axis, kind: str):
+        raise NotImplementedError("""
+            Batching not implemented for Transpose primitive using cudecomp
+            Please use the JAX backend for batching
+            """)
 
     @staticmethod
     def impl(x: Array, kind: str) -> Array:
@@ -249,21 +252,22 @@ class TransposePrimitive(BasePrimitive):
         Array
             Transposed array.
         """
-        match kind:
-            case "x_y" | "y_z":
-                return x.transpose([2, 0, 1])
-            case "y_x" | "z_y":
-                return x.transpose([1, 2, 0])
-            case _:
-                raise ValueError(
-                    "Invalid kind (x_z and z_x not supported with cudecomp)"
-                )
+        if jaxdecomp.config.transpose_axis_contiguous:
+            match kind:
+                case "x_y" | "y_z":
+                    return x.transpose([2, 0, 1])
+                case "y_x" | "z_y":
+                    return x.transpose([1, 2, 0])
+                case _:
+                    raise ValueError("Invalid kind (x_z and z_x not supported with cudecomp)")
+        else:
+            return x
 
     @staticmethod
     def per_shard_impl(
         x: ArrayLike,
         kind: str,
-        pdims: TransposablePdimsType,
+        pdims: PdimsType,
         out_pdims: TransposablePdimsType,
         global_shape: GdimsType,
     ) -> Array:
@@ -288,16 +292,14 @@ class TransposePrimitive(BasePrimitive):
         Array
             Transposed array bound to the inner primitive.
         """
-        return TransposePrimitive.inner_primitive.bind(
-            x, kind=kind, pdims=pdims, out_pdims=out_pdims, global_shape=global_shape
-        )
+        return TransposePrimitive.inner_primitive.bind(x, kind=kind, pdims=pdims, out_pdims=out_pdims, global_shape=global_shape)
 
     @staticmethod
     def infer_sharding_from_operands(
         kind: str,
         mesh: Mesh,
-        arg_infos: Tuple[ShapeDtypeStruct],
-        result_infos: Tuple[ShapedArray],
+        arg_infos: tuple[ShapeDtypeStruct],
+        result_infos: tuple[ShapedArray],
     ) -> NamedSharding:
         """
         Method to infer sharding information from operands for custom partitioning.
@@ -358,8 +360,8 @@ class TransposePrimitive(BasePrimitive):
     def partition(
         kind: str,
         mesh: Mesh,
-        arg_infos: Tuple[ShapeDtypeStruct],
-        result_infos: Tuple[ShapedArray],
+        arg_infos: tuple[ShapeDtypeStruct],
+        result_infos: tuple[ShapedArray],
     ):
         """
         Method to partition the transposition operation for custom partitioning.
@@ -384,7 +386,7 @@ class TransposePrimitive(BasePrimitive):
         output_sharding: NamedSharding = result_infos.sharding  # type: ignore
         input_mesh: Mesh = arg_infos[0].sharding.mesh  # type: ignore
         global_shape = arg_infos[0].shape
-        original_pdims: TransposablePdimsType = input_mesh.devices.shape[::-1]  # type: ignore # yapf: disable
+        original_pdims = get_pdims_from_mesh(input_mesh)
         out_pdims = get_pdims_from_sharding(output_sharding)
 
         impl = partial(
@@ -442,7 +444,7 @@ def transpose(x: ArrayLike, kind: str) -> Array:
     return out
 
 
-def transpose_fwd_rule(x: ArrayLike, kind: str) -> Tuple[Array, None]:
+def transpose_fwd_rule(x: ArrayLike, kind: str) -> tuple[Array, None]:
     """
     Forward rule for transposition with custom VJP.
 
@@ -461,7 +463,7 @@ def transpose_fwd_rule(x: ArrayLike, kind: str) -> Tuple[Array, None]:
     return transpose_impl(x, kind), None
 
 
-def transpose_bwd_rule(kind: str, _, g: Array) -> Tuple[Array]:
+def transpose_bwd_rule(kind: str, _, g: Array) -> tuple[Array]:
     """
     Backward rule for transposition with custom VJP.
 
