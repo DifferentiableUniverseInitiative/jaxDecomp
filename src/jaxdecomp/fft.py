@@ -1,5 +1,6 @@
 from functools import partial
-from typing import Optional, Sequence
+from typing import Optional
+from collections.abc import Sequence
 
 import jax.numpy as jnp
 from jax import jit, lax, tree
@@ -79,9 +80,7 @@ def _fft_norm(s: Array, func_name: str, norm: Optional[str]) -> Array:
         return 1 / jnp.sqrt(jnp.prod(s))
     elif norm == "forward":
         return jnp.array(1) if func_name.startswith("i") else 1 / jnp.prod(s)
-    raise ValueError(
-        f'Invalid norm value {norm}; should be "backward", "ortho" or "forward".'
-    )
+    raise ValueError(f'Invalid norm value {norm}; should be "backward", "ortho" or "forward".')
 
 
 @partial(jit, static_argnums=(0, 1, 3, 4))
@@ -122,12 +121,7 @@ def _do_pfft(
 
     match typ:
         case FftType.FFT | FftType.IFFT:
-            arr = tree.map(
-                lambda arr: lax.convert_element_type(
-                    arr, dtypes.to_complex_dtype(dtypes.dtype(arr))
-                ),
-                arr,
-            )
+            lax.convert_element_type(arr, dtypes.to_complex_dtype(dtypes.dtype(arr)))
         case FftType.RFFT | FftType.IRFFT:
             raise ValueError("Not implemented wait (SOON)")
 
@@ -138,15 +132,11 @@ def _do_pfft(
     else:
         raise ValueError(f"Unknown backend value '{backend}'")
 
-    transformed *= _fft_norm(
-        jnp.array(arr.shape, dtype=transformed.dtype), func_name, norm
-    )
+    transformed *= _fft_norm(jnp.array(arr.shape, dtype=transformed.dtype), func_name, norm)
     return transformed
 
 
-def pfft3d(
-    a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX"
-) -> Array:
+def pfft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX") -> Array:
     """
     Perform 3D FFT on the input array.
 
@@ -189,9 +179,7 @@ def pfft3d(
     return _do_pfft("fft", FftType.FFT, a, norm=norm, backend=backend)
 
 
-def pifft3d(
-    a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX"
-) -> Array:
+def pifft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX") -> Array:
     """
     Perform inverse 3D FFT on the input array.
 
@@ -219,6 +207,78 @@ def pifft3d(
     >>> original_array = pifft3d(k_array)
     """
     return _do_pfft("ifft", FftType.IFFT, a, norm=norm, backend=backend)
+
+def prfft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX") -> Array:
+    """
+    Perform 3D FFT on the input array.
+
+    Note
+    ----
+    The returned array is transposed compared to the input array. If the input
+    is of shape (X, Y, Z), the output will be in the shape (Y, Z, X).
+
+    Parameters
+    ----------
+    a : ArrayLike
+        Input array to transform.
+    norm : Optional[str], optional
+        Type of normalization ("backward", "ortho", or "forward"), by default "backward".
+    backend : str, optional
+        Backend to use ("JAX" or "cudecomp"), by default "JAX".
+
+    Returns
+    -------
+    Array
+        Transformed array after 3D FFT.
+
+    Example
+    -------
+    >>> import jax
+    >>> jax.distributed.initialize()
+    >>> rank = jax.process_index()
+    >>> from jax.experimental import mesh_utils
+    >>> from jax.sharding import Mesh, NamedSharding
+    >>> from jax.sharding import PartitionSpec as P
+    >>> global_shape = (16, 16, 16)
+    >>> pdims = (4, 4)
+    >>> local_shape = (global_shape[0] // pdims[1], global_shape[1] // pdims[0], global_shape[2])
+    >>> devices = mesh_utils.create_device_mesh(pdims)
+    >>> mesh = Mesh(devices.T, axis_names=('z', 'y'))
+    >>> sharding = NamedSharding(mesh, P('z', 'y'))
+    >>> global_array = jax.make_array_from_callback(global_shape, sharding, lambda _: jax.random.normal(jax.random.PRNGKey(rank), local_shape))
+    >>> k_array = pfft3d(global_array)
+    """
+    return _do_pfft("rfft", FftType.RFFT, a, norm=norm, backend=backend)
+
+
+def pirfft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX") -> Array:
+    """
+    Perform inverse 3D FFT on the input array.
+
+    Note
+    ----
+    The returned array will have its shape restored back to (X, Y, Z) after the inverse FFT.
+
+    Parameters
+    ----------
+    a : ArrayLike
+        Input array to transform.
+    norm : Optional[str], optional
+        Type of normalization ("backward", "ortho", or "forward"), by default "backward".
+    backend : str, optional
+        Backend to use ("JAX" or "cudecomp"), by default "JAX".
+
+    Returns
+    -------
+    Array
+        Transformed array after inverse 3D FFT.
+
+    Example
+    -------
+    >>> k_array = pfft3d(global_array)
+    >>> original_array = pifft3d(k_array)
+    """
+    return _do_pfft("ifft", FftType.IRFFT, a, norm=norm, backend=backend)
 
 
 def fftfreq3d(array: ArrayLike, d: float = 1.0) -> Array:
@@ -252,9 +312,7 @@ def fftfreq3d(array: ArrayLike, d: float = 1.0) -> Array:
     >>> k_array = pfft3d(global_array)
     >>> kvec = fftfreq3d(k_array)
     """
-    assert jnp.iscomplexobj(
-        array
-    ), "The input array must be complex for FFT frequency computation."
+    assert jnp.iscomplexobj(array), "The input array must be complex for FFT frequency computation."
     return _fftfreq.fftfreq3d(array, d=d)
 
 
@@ -289,7 +347,5 @@ def rfftfreq3d(array: ArrayLike, d: float = 1.0) -> Array:
     >>> k_array = pfft3d(global_array)
     >>> kvec = rfftfreq3d(k_array)
     """
-    assert jnp.iscomplexobj(
-        array
-    ), "The input array must be complex for real FFT frequency computation."
+    assert jnp.iscomplexobj(array), "The input array must be complex for real FFT frequency computation."
     return _fftfreq.rfftfreq3d(array, d=d)

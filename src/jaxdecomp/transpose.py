@@ -40,7 +40,9 @@ def transposeXtoY(x: Array, backend: str = "jax") -> Array:
     >>> mesh = Mesh(devices.T, axis_names=('z', 'y'))
     >>> sharding = NamedSharding(mesh, P('z', 'y'))
     >>> local_shape = (global_shape[0] // pdims[1], global_shape[1] // pdims[0], global_shape[2])
-    >>> global_array = jax.make_array_from_callback(global_shape, sharding, data_callback=lambda _: jax.random.normal(jax.random.PRNGKey(0), local_shape))
+    >>> global_array = jax.make_array_from_callback(global_shape,
+                                                    sharding,
+                                                    data_callback=lambda _: jax.random.normal(jax.random.PRNGKey(0), local_shape))
     >>> transposed_array = jaxdecomp.transposeXtoY(global_array)
     """
     if backend.lower() == "jax":
