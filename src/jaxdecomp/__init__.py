@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 
-from jaxdecomp._src.pencil_utils import get_output_specs
-from jaxdecomp._src.sharded_array import ShardedArray
+from jaxdecomp._src.pencil_utils import get_output_specs , get_fft_output_sharding
 from jaxdecomp.fft import fftfreq3d, pfft3d, pifft3d, rfftfreq3d
 from jaxdecomp.halo import halo_exchange
 from jaxdecomp.transpose import (
@@ -74,8 +73,8 @@ __all__ = [
     "SLAB_YZ",
     "PENCILS",
     "NO_DECOMP",
+    "get_fft_output_sharding",
     "get_output_specs",
-    "ShardedArray",
     "fftfreq3d",
     "rfftfreq3d",
     "HALO_COMM_MPI",
@@ -98,13 +97,12 @@ class JAXDecompConfig:
     halo_comm_backend: HaloCommBackend = HALO_COMM_NCCL
     transpose_comm_backend: TransposeCommBackend = TRANSPOSE_COMM_NCCL
     transpose_axis_contiguous: bool = True
-    transpose_axis_contiguous_2: bool = True
 
     def update(self, key, value):
         if hasattr(self, key):
             setattr(self, key, value)
         else:
-            raise ValueError("key %s is not a valid configuration key" % key)
+            raise ValueError(f"key {key} is not a valid configuration key")
 
 
 # Declare the global configuration object
