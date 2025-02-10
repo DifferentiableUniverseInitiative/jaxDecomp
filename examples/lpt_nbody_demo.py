@@ -1,7 +1,8 @@
 import argparse
 import os
 from functools import partial
-from typing import Any, Callable, Hashable
+from typing import Any, Callable
+from collections.abc import Hashable
 
 Specs = Any
 AxisName = Hashable
@@ -176,9 +177,7 @@ def cic_paint(displacement, halo_size):
     field = cic_op(displacement)
 
     # Run halo exchange to get the correct values at the boundaries
-    field = jaxdecomp.halo_exchange(
-        field, halo_extents=(hs // 2, hs // 2, 0), halo_periods=(True, True, True)
-    )
+    field = jaxdecomp.halo_exchange(field, halo_extents=(hs // 2, hs // 2, 0), halo_periods=(True, True, True))
 
     @partial(shmap, in_specs=(P("x", "y"),), out_specs=P("x", "y"))
     def unpad(x):
@@ -215,20 +214,14 @@ def simulation_fn(key, nc, box_size, halo_size, a=1.0):
     # Create a small function to generate the linear matter power spectrum at arbitrary k
     k = jnp.logspace(-4, 1, 128)
     pk = jc.power.linear_matter_power(cosmo, k)
-    pk_fn = jax.jit(
-        lambda x: jc.scipy.interpolate.interp(x.reshape([-1]), k, pk).reshape(x.shape)
-    )
+    pk_fn = jax.jit(lambda x: jc.scipy.interpolate.interp(x.reshape([-1]), k, pk).reshape(x.shape))
 
     # Generate a Gaussian field and gravitational forces from a power spectrum
-    intial_conditions, initial_forces = gaussian_field_and_forces(
-        key=key, nc=nc, box_size=box_size, power_spectrum=pk_fn
-    )
+    intial_conditions, initial_forces = gaussian_field_and_forces(key=key, nc=nc, box_size=box_size, power_spectrum=pk_fn)
 
     # Compute the LPT displacement that particles initialy placed on a regular grid
     # would experience at scale factor a, by simple Zeldovich approximation
-    initial_displacement = (
-        jc.background.growth_factor(cosmo, jnp.atleast_1d(a)) * initial_forces
-    )
+    initial_displacement = jc.background.growth_factor(cosmo, jnp.atleast_1d(a)) * initial_forces
 
     # Paints the displaced particles on a mesh to obtain the density field
     final_field = cic_paint(initial_displacement, halo_size)
@@ -255,16 +248,12 @@ def main(args):
 
     # Run the simulation on the compute mesh
     with mesh:
-        initial_conds, final_field = simulation_fn(
-            key=key, nc=args.nc, box_size=args.box_size, halo_size=args.halo_size
-        )
+        initial_conds, final_field = simulation_fn(key=key, nc=args.nc, box_size=args.box_size, halo_size=args.halo_size)
 
     # Create output directory to save the results
     output_dir = args.output
     os.makedirs(output_dir, exist_ok=True)
-    np.save(
-        f"{output_dir}/initial_conditions_{rank}.npy", initial_conds.addressable_data(0)
-    )
+    np.save(f"{output_dir}/initial_conditions_{rank}.npy", initial_conds.addressable_data(0))
     np.save(f"{output_dir}/field_{rank}.npy", final_field.addressable_data(0))
     print(f"Finished saved to {output_dir}")
 
@@ -274,18 +263,10 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Distributed LPT N-body simulation.")
-    parser.add_argument(
-        "--pdims", type=str, default="1x1", help="Processor grid dimensions"
-    )
-    parser.add_argument(
-        "--nc", type=int, default=256, help="Number of cells in the mesh"
-    )
-    parser.add_argument(
-        "--box_size", type=float, default=512.0, help="Box size in Mpc/h"
-    )
-    parser.add_argument(
-        "--halo_size", type=int, default=32, help="Halo size for painting"
-    )
+    parser.add_argument("--pdims", type=str, default="1x1", help="Processor grid dimensions")
+    parser.add_argument("--nc", type=int, default=256, help="Number of cells in the mesh")
+    parser.add_argument("--box_size", type=float, default=512.0, help="Box size in Mpc/h")
+    parser.add_argument("--halo_size", type=int, default=32, help="Halo size for painting")
     parser.add_argument("--output", type=str, default="out")
     args = parser.parse_args()
 

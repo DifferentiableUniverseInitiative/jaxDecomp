@@ -25,9 +25,7 @@ array = jax.random.normal(
 # Remap to the global array from the local slice
 devices = mesh_utils.create_device_mesh(pdims[::-1])
 mesh = Mesh(devices, axis_names=("z", "y"))
-global_array = multihost_utils.host_local_array_to_global_array(
-    array, mesh, P("z", "y")
-)
+global_array = multihost_utils.host_local_array_to_global_array(array, mesh, P("z", "y"))
 
 
 @jax.jit

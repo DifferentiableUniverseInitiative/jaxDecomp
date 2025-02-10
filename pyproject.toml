@@ -43,5 +43,29 @@ CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
 [tool.cibuildwheel]
 test-extras = "test"
 test-command = "pytest {project}/tests"
+
 [tool.ruff]
-extend-ignore = ["E402"]
+line-length = 150
+src = ["src"]
+exclude = ["third_party"]
+
+[tool.ruff.lint]
+select = [
+    # pycodestyle
+    'E',
+    # pyflakes
+    'F',
+    # pyupgrade
+    'UP',
+    # flake8-debugger
+    'T10',
+]
+ignore = [
+    'E402', # module level import not at top of file
+    'E203',
+    'E731',
+    'E701',
+    'E741',
+    'E722',
+    'UP037', # conflicts with jaxtyping Array annotations
+]
