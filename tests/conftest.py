@@ -56,7 +56,15 @@ def setup_and_teardown_session():
 
 
 def compare_sharding(sharding1, sharding2):
-    from jaxdecomp._src.spmd_ops import get_pdims_from_sharding
+    def get_axis_size(sharding, idx):
+        axis_name = sharding.spec[idx]
+        if axis_name is None:
+            return 1
+        else:
+            return sharding.mesh.shape[sharding.spec[idx]]
+
+    def get_pdims_from_sharding(sharding):
+        return tuple([get_axis_size(sharding, i) for i in range(len(sharding.spec))])
 
     pdims1 = get_pdims_from_sharding(sharding1)
     pdims2 = get_pdims_from_sharding(sharding2)
@@ -101,9 +109,7 @@ def device_arange(pdims):
         print(f"index is {x} and value is {a}")
         return a
 
-    aranged = jax.make_array_from_callback(
-        mesh.devices.shape, sharding, data_callback=generate_aranged
-    )
+    aranged = jax.make_array_from_callback(mesh.devices.shape, sharding, data_callback=generate_aranged)
 
     return aranged
 
@@ -117,9 +123,7 @@ def create_ones_spmd_array(global_shape, pdims):
     size = jax.device_count()
     assert len(global_shape) == 3
     assert len(pdims) == 2
-    assert (
-        prod(pdims) == size
-    ), "The product of pdims must be equal to the number of MPI processes"
+    assert prod(pdims) == size, "The product of pdims must be equal to the number of MPI processes"
 
     local_shape = (
         global_shape[0] // pdims[1],
@@ -131,9 +135,7 @@ def create_ones_spmd_array(global_shape, pdims):
     devices = mesh_utils.create_device_mesh(pdims)
     mesh = Mesh(devices.T, axis_names=("z", "y"))
     sharding = NamedSharding(mesh, P("z", "y"))
-    global_array = jax.make_array_from_callback(
-        global_shape, sharding, data_callback=lambda _: jax.numpy.ones(local_shape)
-    )
+    global_array = jax.make_array_from_callback(global_shape, sharding, data_callback=lambda _: jax.numpy.ones(local_shape))
 
     return global_array, mesh
 
@@ -148,9 +150,7 @@ def create_spmd_array(global_shape, pdims):
     size = jax.device_count()
     assert len(global_shape) == 3
     assert len(pdims) == 2
-    assert (
-        prod(pdims) == size
-    ), "The product of pdims must be equal to the number of MPI processes"
+    assert prod(pdims) == size, "The product of pdims must be equal to the number of MPI processes"
 
     local_shape = (
         global_shape[0] // pdims[1],
@@ -165,9 +165,7 @@ def create_spmd_array(global_shape, pdims):
     global_array = jax.make_array_from_callback(
         global_shape,
         sharding,
-        data_callback=lambda x: jax.random.normal(
-            jax.random.PRNGKey(process_slices(x)), local_shape
-        ),
+        data_callback=lambda x: jax.random.normal(jax.random.PRNGKey(process_slices(x)), local_shape),
     )
 
     return global_array, mesh
@@ -193,6 +191,4 @@ def assert_array_equal(x, y):
 
     x_leaves = jax.tree.leaves(x)
     y_leaves = jax.tree.leaves(y)
-    return jax.tree.all(
-        jax.tree.map(lambda x, y: jax.numpy.array_equal(x, y), x_leaves, y_leaves)
-    )
+    return jax.tree.all(jax.tree.map(lambda x, y: jax.numpy.array_equal(x, y), x_leaves, y_leaves))

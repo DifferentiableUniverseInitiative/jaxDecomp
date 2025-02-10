@@ -9,8 +9,6 @@ from conftest import (
 initialize_distributed()
 import jax
 
-from jaxdecomp import ShardedArray
-
 size = jax.device_count()
 from functools import partial
 from itertools import product
@@ -83,9 +81,7 @@ def test_halo_against_cudecomp(pdims):
 
     # perform halo exchange
     updated_array = pad(global_array)
-    jax_exchanged = jaxdecomp.halo_exchange(
-        updated_array, halo_extents=halo_extents, halo_periods=periodic, backend="JAX"
-    )
+    jax_exchanged = jaxdecomp.halo_exchange(updated_array, halo_extents=halo_extents, halo_periods=periodic, backend="JAX")
     cudecomp_exchanged = jaxdecomp.halo_exchange(
         updated_array,
         halo_extents=halo_extents,
@@ -104,7 +100,7 @@ def test_halo_against_cudecomp(pdims):
 
 
 class TestHaloExchange:
-    def run_test(self, global_shape, pdims, shardedArrayAPI, backend):
+    def run_test(self, global_shape, pdims, backend):
         print("*" * 80)
         print(f"Testing with pdims {pdims}")
 
@@ -112,8 +108,6 @@ class TestHaloExchange:
 
         global_array, mesh = create_ones_spmd_array(global_shape, pdims)
         halo_size = 2
-        if shardedArrayAPI:
-            global_array = ShardedArray(global_array, global_array.sharding)
 
         halo_x = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
         halo_y = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
@@ -209,13 +203,9 @@ class TestHaloExchange:
             # if up down padding check the up down slices
             if pdims[1] > 1:
                 # Check the upper padding
-                assert_array_equal(
-                    current_slice[:halo_size], up_slice[-2 * halo_size : -halo_size]
-                )
+                assert_array_equal(current_slice[:halo_size], up_slice[-2 * halo_size : -halo_size])
                 # Check the lower padding
-                assert_array_equal(
-                    current_slice[-halo_size:], down_slice[halo_size : halo_size * 2]
-                )
+                assert_array_equal(current_slice[-halo_size:], down_slice[halo_size : halo_size * 2])
 
             # if left right padding check the left right slices
             if pdims[0] > 1:
@@ -234,50 +224,39 @@ class TestHaloExchange:
                 # Check the upper left corner
                 assert_array_equal(
                     current_slice[:halo_size, :halo_size],
-                    upper_left_corner[
-                        -2 * halo_size : -halo_size, -2 * halo_size : -halo_size
-                    ],
+                    upper_left_corner[-2 * halo_size : -halo_size, -2 * halo_size : -halo_size],
                 )
                 # Check the upper right corner
                 assert_array_equal(
                     current_slice[:halo_size, -halo_size:],
-                    upper_right_corner[
-                        -2 * halo_size : -halo_size, halo_size : halo_size * 2
-                    ],
+                    upper_right_corner[-2 * halo_size : -halo_size, halo_size : halo_size * 2],
                 )
                 # Check the lower left corner
                 assert_array_equal(
                     current_slice[-halo_size:, :halo_size],
-                    lower_left_corner[
-                        halo_size : halo_size * 2, -2 * halo_size : -halo_size
-                    ],
+                    lower_left_corner[halo_size : halo_size * 2, -2 * halo_size : -halo_size],
                 )
                 # Check the lower right corner
                 assert_array_equal(
                     current_slice[-halo_size:, -halo_size:],
-                    lower_right_corner[
-                        halo_size : halo_size * 2, halo_size : halo_size * 2
-                    ],
+                    lower_right_corner[halo_size : halo_size * 2, halo_size : halo_size * 2],
                 )
 
     @pytest.mark.skipif(not is_on_cluster(), reason="Only run on cluster")
     @pytest.mark.parametrize("pdims", pdims)
-    @pytest.mark.parametrize("shardedArrayAPI", [True, False])
-    def test_cudecomp_halo(self, pdims, shardedArrayAPI):
-        self.run_test((32, 32, 32), pdims, shardedArrayAPI, "CUDECOMP")
+    def test_cudecomp_halo(self, pdims):
+        self.run_test((32, 32, 32), pdims, "CUDECOMP")
 
     @pytest.mark.parametrize("pdims", pdims)
-    @pytest.mark.parametrize("shardedArrayAPI", [True, False])
     def test_jax_halo(
         self,
         pdims,
-        shardedArrayAPI,
     ):
-        self.run_test((16, 16, 16), pdims, shardedArrayAPI, "JAX")
+        self.run_test((16, 16, 16), pdims, "JAX")
 
 
 class TestHaloExchangeGrad:
-    def run_test(self, global_shape, pdims, shardedArrayAPI, backend):
+    def run_test(self, global_shape, pdims, backend):
         print("*" * 80)
         print(f"Testing with pdims {pdims}")
 
@@ -285,8 +264,6 @@ class TestHaloExchangeGrad:
 
         global_array, mesh = create_ones_spmd_array(global_shape, pdims)
         halo_size = 2
-        # if shardedArrayAPI:
-        #    global_array = ShardedArray(global_array, global_array.sharding)
 
         halo_x = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
         halo_y = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
@@ -347,10 +324,8 @@ class TestHaloExchangeGrad:
         assert_array_equal(model(global_array * 2, obs), jnp.full_like(global_array, 3))
 
     @pytest.mark.parametrize("pdims", pdims)
-    @pytest.mark.parametrize("shardedArrayAPI", [True, False])
     def test_jax_halo(
         self,
         pdims,
-        shardedArrayAPI,
     ):
-        self.run_test((16, 16, 16), pdims, shardedArrayAPI, "JAX")
+        self.run_test((16, 16, 16), pdims, "JAX")
