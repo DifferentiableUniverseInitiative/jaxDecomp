@@ -78,7 +78,7 @@ The following table outlines the transposition steps involved in `jaxDecomp`, wh
 
 Domain decomposition is a method used in parallel computing to break down large computational domains into smaller subdomains, facilitating efficient data distribution across multiple GPUs. In the context of 3D FFTs, domain decomposition and transpositions work together to manage the data, with transpositions gathering one axis while distributing another for the FFT.
 
-In `jaxDecomp`, the X-axis always starts as undistributed, and the decomposition dimensions (pdims) are defined by the `P_y` and `P_z` parameters.
+In `jaxDecomp`, the Z-axis always starts as undistributed, and the decomposition dimensions (pdims) are defined by the `P_x` and `P_y` parameters.
 
 #### Pencil Decomposition
 
@@ -251,18 +251,13 @@ with mesh:
 
 The performance benchmarks for jaxDecomp were conducted on the Jean Zay supercomputer using A100 GPUs (each with 80 GB of memory). These tests demonstrate the scalability and efficiency of jaxDecomp in handling large-scale FFT operations. The results show that jaxDecomp scales well even when distributed across multiple nodes, maintaining efficient performance as the number of GPUs and the problem size increase.
 
-In our comparisons, we measure jaxDecomp with the cuDecomp backend against a pure JAX FFT implementation. The benchmarks indicate that jaxDecomp is slightly faster than native JAX and more memory-efficient, due in part to its in-place local transpositions and distribution-aware FFT routines. These advantages become particularly relevant at large scales, where memory usage and throughput are critical factors.
-
+In our comparisons, we measure jaxDecomp with the cuDecomp backend against a pure JAX FFT implementation. The benchmarks indicate that `cuDecomp` is slightly faster than native `JAX`.
 
 ![*Figure 1: Strong scaling results on the Jean Zay supercomputer using A100 GPUs.*](assets/strong_scaling.png){ width=100% }
 
 ---
 
 ![*Figure 2: Weak scaling results showing that jaxDecomp maintains high efficiency as both problem size and GPU count increase.*](assets/weak_scaling.png){ width=100% }
-
-
-
-Below is an updated **Example** section with a centered figure and an illustrative caption. Adjust the specific wording or styling as appropriate for your document.
 
 
 # Example
