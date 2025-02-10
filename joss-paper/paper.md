@@ -253,17 +253,12 @@ The performance benchmarks for jaxDecomp were conducted on the Jean Zay supercom
 
 In our comparisons, we measure jaxDecomp with the cuDecomp backend against a pure JAX FFT implementation. The benchmarks indicate that jaxDecomp is slightly faster than native JAX and more memory-efficient, due in part to its in-place local transpositions and distribution-aware FFT routines. These advantages become particularly relevant at large scales, where memory usage and throughput are critical factors.
 
-<div align="center">
-  <img src="assets/strong_scaling.png" alt="Strong scaling results" width="65%">
-</div>
 
-*Figure 1: Strong scaling results on the Jean Zay supercomputer using A100 GPUs.*
+![*Figure 1: Strong scaling results on the Jean Zay supercomputer using A100 GPUs.*](assets/strong_scaling.png){ width=65% }
 
-<div align="center">
-  <img src="assets/weak_scaling.png" alt="Weak scaling results" width="65%">
-</div>
+---
 
-*Figure 2: Weak scaling results showing that jaxDecomp maintains high efficiency as both problem size and GPU count increase.*
+![*Figure 2: Weak scaling results showing that jaxDecomp maintains high efficiency as both problem size and GPU count increase.*](assets/weak_scaling.png){ width=65% }
 
 
 
@@ -293,11 +288,9 @@ def pm_forces(density):
 
 A more detailed example of an LPT simulation can be found in the [jaxdecomp_lpt example](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/blob/main/examples/lpt_nbody_demo.py).
 
-<div align="center">
-  <img src="assets/LPT_density_field_z0_2048.png" alt="LPT density field at z=0 for a 2048³ grid" width="50%">
-</div>
 
-*Figure 1: Visualization of an LPT density field at z=0 for a 2048³ grid generated using jaxDecomp.*
+![Figure 3: Visualization of an LPT density field at z=0 for a 2048³ grid generated using jaxDecomp.](assets/LPT_density_field_z0_2048.png){ width=50% }
+
 
 # Stability and releases
 
@@ -311,3 +304,6 @@ This work was granted access to the HPC resources of IDRIS under the allocation 
 We also acknowledge the SCIPOL scipol.in2p3.fr funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation program (PI: Josquin Errard, Grant agreement No. 101044073).
 
 # References
+
+
+
