@@ -254,11 +254,11 @@ The performance benchmarks for jaxDecomp were conducted on the Jean Zay supercom
 In our comparisons, we measure jaxDecomp with the cuDecomp backend against a pure JAX FFT implementation. The benchmarks indicate that jaxDecomp is slightly faster than native JAX and more memory-efficient, due in part to its in-place local transpositions and distribution-aware FFT routines. These advantages become particularly relevant at large scales, where memory usage and throughput are critical factors.
 
 
-![*Figure 1: Strong scaling results on the Jean Zay supercomputer using A100 GPUs.*](assets/strong_scaling.png){ width=65% }
+![*Figure 1: Strong scaling results on the Jean Zay supercomputer using A100 GPUs.*](assets/strong_scaling.png){ width=100% }
 
 ---
 
-![*Figure 2: Weak scaling results showing that jaxDecomp maintains high efficiency as both problem size and GPU count increase.*](assets/weak_scaling.png){ width=65% }
+![*Figure 2: Weak scaling results showing that jaxDecomp maintains high efficiency as both problem size and GPU count increase.*](assets/weak_scaling.png){ width=100% }
 
 
 
