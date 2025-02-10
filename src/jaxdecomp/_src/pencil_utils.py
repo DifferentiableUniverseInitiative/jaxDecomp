@@ -124,7 +124,8 @@ def get_transpose_order(fft_type: FftType, mesh: Optional[Mesh] = None) -> tuple
     """
     if not jaxdecomp.config.transpose_axis_contiguous:
         return (0, 1, 2)
-    else:
+
+    if mesh is None:
         match fft_type:
             case FftType.FFT | FftType.RFFT:
                 return (1, 2, 0)
@@ -132,6 +133,31 @@ def get_transpose_order(fft_type: FftType, mesh: Optional[Mesh] = None) -> tuple
                 return (2, 0, 1)
             case _:
                 raise TypeError("Only complex FFTs are currently supported through pfft.")
+
+    pencil_type = get_pencil_type_from_mesh(mesh)
+    match fft_type:
+        case FftType.FFT:
+            match pencil_type:
+                case _jaxdecomp.SLAB_YZ:
+                    return (1, 2, 0)
+                case _jaxdecomp.SLAB_XY | _jaxdecomp.PENCILS:
+                    return (1, 2, 0)
+                case _jaxdecomp.NO_DECOMP:
+                    return (0, 1, 2)
+                case _:
+                    raise TypeError("Unknown pencil type")
+        case FftType.IFFT:
+            match pencil_type:
+                case _jaxdecomp.SLAB_YZ:
+                    return (2, 0, 1)
+                case _jaxdecomp.SLAB_XY | _jaxdecomp.PENCILS:
+                    return (2, 0, 1)
+                case _jaxdecomp.NO_DECOMP:
+                    return (0, 1, 2)
+                case _:
+                    raise TypeError("Unknown pencil type")
+        case _:
+            raise TypeError("Only complex FFTs are currently supported through pfft.")
 
 
 def get_lowering_args(fft_type: FftType, global_shape: GdimsType, mesh: Mesh) -> tuple[PdimsType, GdimsType]:
