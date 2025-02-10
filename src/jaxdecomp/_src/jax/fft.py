@@ -81,9 +81,7 @@ def _fft_slab_yz(operand: Array, fft_type: FftType, adjoint: bool, y_axis_name: 
         operand = lax.all_to_all(operand, y_axis_name, 2, 1, tiled=True).transpose([2, 0, 1])
         # FFT on YZ plane
         operand = fft2(operand, COMPLEX(fft_type), axes=(2, 1), adjoint=adjoint)
-
-        if jaxdecomp.config.transpose_axis_contiguous_2:
-            operand = operand.transpose([2, 0, 1])
+        operand = operand.transpose([2, 0, 1])
     else:
         # transpose to (Z , Y , X / py) with specs P('z', None, 'y')
         operand = lax.all_to_all(operand, y_axis_name, 2, 1, tiled=True)
@@ -197,8 +195,7 @@ def _ifft_slab_yz(operand: Array, fft_type: FftType, adjoint: bool, y_axis_name:
         Resulting array after the IFFT slab YZ operation.
     """
     if jaxdecomp.config.transpose_axis_contiguous:
-        if jaxdecomp.config.transpose_axis_contiguous_2:
-            operand = operand.transpose([1, 2, 0])
+        operand = operand.transpose([1, 2, 0])
         # input is (X / py, Z , Y) with specs P('y', 'z')
         # First IFFT
         operand = fft2(operand, COMPLEX(fft_type), axes=(2, 1), adjoint=adjoint)
