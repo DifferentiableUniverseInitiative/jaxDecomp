@@ -1,5 +1,4 @@
 from functools import partial
-from typing import Tuple
 
 import jax
 from jax import lax
@@ -11,7 +10,7 @@ FftType = lax.FftType
 
 
 @partial(jax.jit, static_argnums=(1,))
-def fftfreq3d(k_array: Array, d: float = 1.0) -> Tuple[Array, Array, Array]:
+def fftfreq3d(k_array: Array, d: float = 1.0) -> tuple[Array, Array, Array]:
     """
     Computes the 3D FFT frequencies for a given array, assuming a Z-pencil configuration.
 
@@ -56,7 +55,7 @@ def fftfreq3d(k_array: Array, d: float = 1.0) -> Tuple[Array, Array, Array]:
 
 
 @partial(jax.jit, static_argnums=(1,))
-def rfftfreq3d(k_array: Array, d: float = 1.0) -> Tuple[Array, Array, Array]:
+def rfftfreq3d(k_array: Array, d: float = 1.0) -> tuple[Array, Array, Array]:
     """
     Computes the 3D FFT frequencies for a real input array, assuming a Z-pencil configuration.
     The FFT is computed for the real input on the X axis using rfft.
