@@ -134,7 +134,7 @@ def get_transpose_order(fft_type: FftType, mesh: Optional[Mesh] = None) -> tuple
                 raise TypeError("Only complex FFTs are currently supported through pfft.")
 
 
-def get_lowering_args(fft_type: FftType, global_shape: GdimsType, mesh: Mesh) -> GdimsType:
+def get_lowering_args(fft_type: FftType, global_shape: GdimsType, mesh: Mesh) -> tuple[PdimsType, GdimsType]:
     """Returns the lowering arguments based on FFT type, global shape, and mesh.
 
     Args:
@@ -180,13 +180,13 @@ def get_lowering_args(fft_type: FftType, global_shape: GdimsType, mesh: Mesh) ->
 
     return pdims, global_shape
 
-def get_fft_output_sharding(fft_sharding):
 
+def get_fft_output_sharding(fft_sharding):
     spec = fft_sharding.spec
     mesh = fft_sharding.mesh
     out_specs = get_output_specs(FftType.FFT, spec, mesh)
 
-    return NamedSharding(mesh ,P( *out_specs))
+    return NamedSharding(mesh, P(*out_specs))
 
 
 def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = "JAX") -> tuple[Optional[int], ...]:
@@ -213,10 +213,7 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = "JAX
             case _jaxdecomp.SLAB_XY:
                 transposed_specs = (spec[1], spec[0], None)
             case _jaxdecomp.SLAB_YZ:
-                if jaxdecomp.config.transpose_axis_contiguous_2:
-                    transposed_specs = (None, spec[1], spec[0])
-                else:
-                    transposed_specs = (spec[1], spec[0], None)
+                transposed_specs = (None, spec[1], spec[0])
             case _jaxdecomp.PENCILS:
                 transposed_specs = spec
             case _:

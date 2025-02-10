@@ -3,7 +3,7 @@ from typing import Optional
 from collections.abc import Sequence
 
 import jax.numpy as jnp
-from jax import jit, lax, tree
+from jax import jit, lax
 from jax._src import dtypes
 from jax._src.typing import Array, ArrayLike
 
@@ -207,6 +207,7 @@ def pifft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX"
     >>> original_array = pifft3d(k_array)
     """
     return _do_pfft("ifft", FftType.IFFT, a, norm=norm, backend=backend)
+
 
 def prfft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX") -> Array:
     """

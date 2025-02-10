@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 
-from jaxdecomp._src.pencil_utils import get_output_specs , get_fft_output_sharding
+from jaxdecomp._src.pencil_utils import get_output_specs, get_fft_output_sharding
 from jaxdecomp.fft import fftfreq3d, pfft3d, pifft3d, rfftfreq3d
 from jaxdecomp.halo import halo_exchange
 from jaxdecomp.transpose import (

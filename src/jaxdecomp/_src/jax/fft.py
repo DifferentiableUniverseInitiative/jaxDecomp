@@ -11,7 +11,7 @@ from jaxdecomplib import _jaxdecomp
 from jax._src.interpreters import batching
 
 import jaxdecomp
-from jaxdecomp._src.error import error_during_jacfwd , error_during_jacrev
+from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
 from jaxdecomp._src.fft_utils import (
     ADJOINT,
     COMPLEX,  # yapf: disable
@@ -389,11 +389,11 @@ def infer_sharding_from_operands(
     del mesh, result_infos
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     if input_sharding is None:
-        error_during_jacfwd("pfft") 
+        error_during_jacfwd("pfft")
 
     if all([spec is None for spec in input_sharding.spec]):
         error_during_jacrev("pfft")
-        
+
     input_mesh: Mesh = input_sharding.mesh  # type: ignore
     operand = arg_infos[0]
     if operand.ndim == 3:

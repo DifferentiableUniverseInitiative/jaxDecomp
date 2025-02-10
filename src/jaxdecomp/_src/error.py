@@ -1,4 +1,3 @@
-
 def error_during_jacfwd(function_name):
     raise ValueError(f"""
         Input sharding was found to be none while lowering the SPMD rule.

@@ -23,14 +23,13 @@ from jaxdecomp._src.pencil_utils import (
     get_output_specs,
     get_pencil_type_from_mesh,
     get_pdims_from_sharding,
-    get_pdims_from_mesh,
     get_transpose_order,
 )
 from jaxdecomp._src.spmd_ops import (
     BasePrimitive,
     register_primitive,
 )
-from jaxdecomp.typing import GdimsType, PdimsType, TransposablePdimsType
+from jaxdecomp.typing import GdimsType, TransposablePdimsType
 
 
 class FFTPrimitive(BasePrimitive):

@@ -10,7 +10,7 @@ from jax.sharding import PartitionSpec as P
 import jaxdecomp
 from jaxdecomp._src.spmd_ops import custom_spmd_rule
 from jaxdecomp._src.pencil_utils import get_axis_names_from_mesh
-from jaxdecomp._src.error import error_during_jacfwd , error_during_jacrev
+from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
 
 
 def spmd_transpose(x: Array, kind: str) -> Array:
@@ -168,10 +168,10 @@ def infer_sharding_from_operands(
     operand = arg_infos[0]
 
     if input_sharding is None:
-        error_during_jacfwd(f"Transpose {kind}") 
+        error_during_jacfwd(f"Transpose {kind}")
 
     if all([spec is None for spec in input_sharding.spec]):
-        error_during_jacrev(f"Transpose {kind}") 
+        error_during_jacrev(f"Transpose {kind}")
 
     if operand.ndim == 3:
         spec = input_sharding.spec

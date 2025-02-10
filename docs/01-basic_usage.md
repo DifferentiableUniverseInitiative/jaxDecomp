@@ -1,6 +1,6 @@
 # Basic Usage
 
-This example demonstrates how to run a JAX-based script in a **distributed** setup with `jaxDecomp`.  
+This example demonstrates how to run a JAX-based script in a **distributed** setup with `jaxDecomp`.
 You can launch this script with **8 processes** (and thus 8 GPUs) via:
 ```bash
 mpirun -n 8 python demo.py
@@ -12,10 +12,10 @@ srun -n 8 python demo.py
 
 Below is a full example script illustrating:
 
-1. **Initializing JAX distributed** across multiple GPUs  
-2. **Creating a globally sharded 3D array**  
-3. **Performing a parallel FFT**  
-4. **Applying a halo exchange**  
+1. **Initializing JAX distributed** across multiple GPUs
+2. **Creating a globally sharded 3D array**
+3. **Performing a parallel FFT**
+4. **Applying a halo exchange**
 5. **Gathering results** back to a single process
 
 ```python

@@ -9,7 +9,7 @@ from jaxdecomplib import _jaxdecomp
 from jaxtyping import Array
 
 from jaxdecomp._src.spmd_ops import custom_spmd_rule
-from jaxdecomp._src.error import error_during_jacfwd , error_during_jacrev
+from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
 
 from jaxdecomp._src.pencil_utils import get_axis_names_from_mesh, get_pencil_type_from_axis_names
 from jaxdecomp.typing import HaloExtentType, Periodicity
@@ -287,7 +287,7 @@ def infer_sharding_from_operands(
     del halo_periods, result_infos, halo_extents, mesh
     halo_exchange_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     if halo_exchange_sharding is None:
-        error_during_jacfwd("Halo Exchange") 
+        error_during_jacfwd("Halo Exchange")
 
     if all([spec is None for spec in halo_exchange_sharding.spec]):
         error_during_jacrev("Halo Exchange")
