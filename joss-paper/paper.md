@@ -33,22 +33,26 @@ bibliography: paper.bib
 
 # Abstract
 
+
 `JAX` [@JAX] has seen widespread adoption in both machine learning and scientific computing due to its flexibility and performance, as demonstrated in projects like `JAX-Cosmo` [@JAXCOSMO]. However, its application in distributed high-performance computing (HPC) has been limited by the complex nature of inter-GPU communications required in HPC scientific software, which is more challenging compared to deep learning networks. Previous solutions, such as `MPI4JAX` [@mpi4jax], provided support for single program multiple data (SPMD) operations but faced significant scaling limitations.
 
-Recently, JAX has made a major push towards simplified SPMD programming, with the unification of the JAX array API and the introduction of several powerful APIs, such as `pjit`, `shard_map`, and `custom_partitioning`. However, not all native JAX operations have specialized distribution strategies, and `pjitting` a program can lead to excessive communication overhead for some operations, particularly the 3D Fast Fourier Transform (FFT), which is one of the most critical and widely used algorithms in scientific computing. Distributed FFTs are essential for many simulation and solvers, especially in fields like cosmology and fluid dynamics, where large-scale data processing is required.
+Recently, JAX has introduced the unified JAX array API and several powerful tools such as `pjit`, `shard_map`, and `custom_partitioning` to simplify SPMD programming. Nonetheless, many NumPy and SciPy operators that *“work”* on distributed arrays will internally gather the entire array onto a single device, defeating the purpose of distributing large computations. This limitation is particularly problematic for the 3D Fast Fourier Transform (FFT), one of the most essential operations in scientific computing and a core component of large-scale simulations in fields like cosmology and fluid dynamics.
 
-To address these limitations, we introduce jaxDecomp, a JAX library that wraps NVIDIA's `cuDecomp` domain decomposition library [@cuDecomp]. jaxDecomp integrates specialized HPC code into the JAX ecosystem, providing JAX primitives with highly efficient CUDA implementations for key operations such as 3D FFTs and halo exchanges. By integrating seamlessly with JAX, jaxDecomp supports running on multiple GPUs and nodes, enabling large-scale, distributed scientific computations. Implemented as JAX primitives, jaxDecomp builds directly on top of the distributed Array strategy in JAX and is compatible with JAX transformations such as `jax.grad` and `jax.jit`, ensuring fast execution and differentiability with a Python, easy-to-use interface. Using cuDecomp, jaxDecomp can switch between `NCCL`, `CUDA-Aware MPI`, and `NVSHMEM` for distributed array transpose operations, allowing it to best fit the specific HPC cluster configuration.
+To address these challenges, we present **jaxDecomp**, a JAX library that wraps NVIDIA’s `cuDecomp` domain decomposition library [@cuDecomp] and also implements all operators as JAX primitives. jaxDecomp integrates specialized HPC code into the JAX ecosystem for key distributed operations, including 3D FFTs and halo exchanges, and scales seamlessly to multiple GPUs and nodes. By building on the distributed array strategy in JAX, it remains compatible with standard JAX transformations such as `jax.grad` and `jax.jit`, ensuring a Pythonic, differentiable interface. jaxDecomp can use NCCL, CUDA-Aware MPI, or NVSHMEM for inter-GPU data transposition, providing flexibility to match specific HPC cluster configurations.
 
-In our benchmarks, jaxDecomp demonstrates significant performance improvements, offering a speedup of %XX over cuFFTMP, while being much more user-friendly. This makes it an ideal solution for researchers requiring both high performance and ease of use in distributed FFT operations within the JAX environment.
+In our benchmarks, jaxDecomp demonstrates strong performance while being trivial to install and use. In contrast, cuFFTMP is more difficult to set up, lacks differentiability, and relies solely on NVSHMEM—which manages memory outside of XLA and thus does not interact as well with the JAX ecosystem. Consequently, jaxDecomp is an ideal solution for researchers requiring both high performance and ease of use in distributed FFT operations within the JAX environment.
 
 
 # Statement of Need
 
-For numerical simulations on HPC systems, having a distributed, easy-to-use, and differentiable FFT is critical for achieving peak performance and scalability. While it is technically feasible to implement distributed FFTs using native JAX, for performance and memory-critical simulations, it is better to use specialized HPC codes. These codes, however, are not typically differentiable. The need for differentiable, performant, and memory-efficient code has risen due to the recent introduction of differentiable algorithms such as Hamiltonian Monte Carlo (HMC) [@HMC] and the No-U-Turn Sampler (NUTS) [@NUTS].
+# Statement of Need
 
-In scientific applications such as particle mesh (PM) simulations for cosmology, existing frameworks like `FlowPM` [@FlowPM], a `mesh-TensorFlow` [@TF-MESH] based simulation, are distributed but no longer actively maintained. Similarly, JAX-based frameworks like `pmwd` [@pmwd] are limited to 512 volumes due to the lack of distribution capabilities. These examples underscore the critical need for scalable and efficient solutions. jaxDecomp addresses this gap by enabling distributed and differentiable 3D FFTs within JAX, thereby facilitating the simulation of large cosmological volumes on HPC clusters effectively.
+For numerical simulations on HPC systems, a distributed, easy-to-use, and differentiable FFT is essential for achieving peak performance and scalability. While it is possible to implement distributed FFTs purely in JAX, there is a pressing need for a solution that can serve as a near drop-in replacement for `jnp.fft` and install seamlessly—especially for HPC users who must integrate efficiently with existing cluster infrastructure.
 
-While it is technically feasible to implement distributed FFTs using native JAX, there are significant benefits to using jaxDecomp. Although the performance difference may be marginal, jaxDecomp offers several advantages that make it a valuable tool for HPC applications. Firstly, jaxDecomp provides the ability to easily switch backends between NCCL, MPI, and NVSHMEM, optimizing performance based on the specific HPC cluster configuration. Secondly, jaxDecomp performs operations in place, which is more memory-efficient, minimizing the use of intermediate memory and enhancing overall performance. This is crucial for memory-bound codes such as cosmological simulations.
+In scientific applications such as cosmological particle mesh (PM) simulations, specialized frameworks like `FlowPM` [@FlowPM] (built on `mesh-TensorFlow` [@TF-MESH]) or JAX-based codes like `pmwd` [@pmwd] often struggle to scale beyond single-node memory constraints or rely on manually implemented distribution strategies. These limitations underscore the demand for a scalable, high-performance approach to distributed FFTs that remains differentiable for advanced algorithms (e.g., Hamiltonian Monte Carlo [@HMC] and the No-U-Turn Sampler (NUTS) [@NUTS]).
+
+jaxDecomp addresses this gap by providing a ready-to-use library that wraps NVIDIA’s `cuDecomp` for distributed 3D FFTs, halo exchanges, and related operations, all exposed as fully differentiable JAX primitives. This seamless approach allows users to transparently switch between NCCL, MPI, or NVSHMEM backends, optimizing performance for the specific configuration of each HPC cluster. Consequently, jaxDecomp simplifies large-scale simulation workflows and mitigates the overhead of implementing distributed FFTs directly in JAX while preserving memory efficiency and ease of use.
+
 
 # Implementation
 
@@ -245,33 +249,41 @@ with mesh:
 
 ### Benchmarks
 
-The performance benchmarks for jaxDecomp were conducted on the Jean Zay supercomputer using the A100 GPUs (each with 80 GB of memory). These tests demonstrate the scalability and efficiency of jaxDecomp in handling large-scale FFT operations.
+The performance benchmarks for jaxDecomp were conducted on the Jean Zay supercomputer using A100 GPUs (each with 80 GB of memory). These tests demonstrate the scalability and efficiency of jaxDecomp in handling large-scale FFT operations. The results show that jaxDecomp scales well even when distributed across multiple nodes, maintaining efficient performance as the number of GPUs and the problem size increase.
 
-The tests show that jaxDecomp scales very well, even when distributed across multiple nodes, maintaining efficient performance. In particular, jaxDecomp demonstrates efficient computation as the number of GPUs and problem size increase.
+In our comparisons, we measure jaxDecomp with the cuDecomp backend against a pure JAX FFT implementation. The benchmarks indicate that jaxDecomp is slightly faster than native JAX and more memory-efficient, due in part to its in-place local transpositions and distribution-aware FFT routines. These advantages become particularly relevant at large scales, where memory usage and throughput are critical factors.
 
-We compare the performance of jaxDecomp with the native JAX FFT implementation, showing that jaxDecomp is slightly faster than the native JAX implementation, but also more memory efficient due to its in-place local transpositions and FFTs.
+<div align="center">
+  <img src="assets/strong_scaling.png" alt="Strong scaling results" width="65%">
+</div>
+
+*Figure 1: Strong scaling results on the Jean Zay supercomputer using A100 GPUs.*
+
+<div align="center">
+  <img src="assets/weak_scaling.png" alt="Weak scaling results" width="65%">
+</div>
+
+*Figure 2: Weak scaling results showing that jaxDecomp maintains high efficiency as both problem size and GPU count increase.*
 
 
-Strong scaling             |  Weak scaling
-:-------------------------:|:-------------------------:
-![](assets/strong_scaling_fft.png)  |  ![](assets/weak_scaling_fft.png)
-![](assets/strong_scaling_ifft.png)  |  ![](assets/weak_scaling_ifft.png)
+
+Below is an updated **Example** section with a centered figure and an illustrative caption. Adjust the specific wording or styling as appropriate for your document.
 
 
 # Example
 
-In the provided example, the code computes gravitational forces using a Particle-Mesh (PM) scheme within a JAX-based environment. The code can run on multiple GPUs and nodes using `jaxDecomp` and `JAX` while being fully differentiable.
+In the following example, the code computes gravitational forces using a Particle-Mesh (PM) scheme within a JAX-based environment. The code can run on multiple GPUs and nodes using `jaxDecomp` and `JAX` while remaining fully differentiable.
 
-This method is particularly relevant for particle mesh simulations, as demonstrated in the PMWD paper. The PMWD framework is designed to run on a single GPU, but it is limited to grid sizes of up to 512 due to its inability to scale beyond a single device.
+This method is particularly relevant for particle-mesh simulations, as demonstrated in the PMWD paper. The PMWD framework is designed to run on a single GPU, but it is limited to grid sizes of up to 512 due to its inability to scale beyond a single device.
 
 ```python
 import jax
 import jax.numpy as jnp
-from jaxdecomp import pfft3d, ipfft3d
+from jaxdecomp import pfft3d, ipfft3d , fftfreq3d
 
 def pm_forces(density):
     delta_k = pfft3d(density)
-    ky, kz, kx = [jnp.fft.fftfreq(s) * 2 * jnp.pi for s in density.shape]
+    ky, kz, kx = fftfreq3d(delta_k)
     kk = kx**2 + ky**2 + kz**2
     laplace_kernel = jnp.where(kk == 0, 1., -1. / kk)
     pot_k = delta_k * laplace_kernel
@@ -279,11 +291,13 @@ def pm_forces(density):
     return jnp.stack(forces, axis=-1)
 ```
 
-A more detailed example of an LPT simulation can be found in the [jaxdecomp_lpt](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/blob/main/examples/lpt_nbody_demo.py).
+A more detailed example of an LPT simulation can be found in the [jaxdecomp_lpt example](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/blob/main/examples/lpt_nbody_demo.py).
 
-Here is an example of an LPT density field:
+<div align="center">
+  <img src="assets/LPT_density_field_z0_2048.png" alt="LPT density field at z=0 for a 2048³ grid" width="50%">
+</div>
 
-![](assets/LPT_density_field_z0_2048.png)
+*Figure 1: Visualization of an LPT density field at z=0 for a 2048³ grid generated using jaxDecomp.*
 
 # Stability and releases
 
