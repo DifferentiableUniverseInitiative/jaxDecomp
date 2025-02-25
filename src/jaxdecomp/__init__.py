@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 
-from jaxdecomp._src.pencil_utils import get_output_specs, get_fft_output_sharding
+from jaxdecomp._src.pencil_utils import get_fft_output_sharding, get_output_specs
 from jaxdecomp.fft import fftfreq3d, pfft3d, pifft3d, rfftfreq3d
 from jaxdecomp.halo import halo_exchange
 from jaxdecomp.transpose import (
@@ -44,49 +44,49 @@ from ._src import (
 )
 
 try:
-    __version__ = version("jaxDecomp")
+    __version__ = version('jaxDecomp')
 except PackageNotFoundError:
     # package is not installed
     pass
 
 __all__ = [
-    "config",
-    "init",
-    "finalize",
-    "get_pencil_info",
-    "get_autotuned_config",
-    "make_config",
-    "halo_exchange",
-    "pfft3d",
-    "pifft3d",
-    "transposeXtoY",
-    "transposeYtoX",
-    "transposeYtoZ",
-    "transposeZtoY",
-    "transposeXtoZ",
-    "transposeZtoX",
-    "TRANSPOSE_XY",
-    "TRANSPOSE_YX",
-    "TRANSPOSE_YZ",
-    "TRANSPOSE_ZY",
-    "SLAB_XY",
-    "SLAB_YZ",
-    "PENCILS",
-    "NO_DECOMP",
-    "get_fft_output_sharding",
-    "get_output_specs",
-    "fftfreq3d",
-    "rfftfreq3d",
-    "HALO_COMM_MPI",
-    "HALO_COMM_MPI_BLOCKING",
-    "HALO_COMM_NVSHMEM",
-    "HALO_COMM_NVSHMEM_BLOCKING",
-    "TRANSPOSE_COMM_MPI_A2A",
-    "TRANSPOSE_COMM_MPI_P2P",
-    "TRANSPOSE_COMM_MPI_P2P_PL",
-    "TRANSPOSE_COMM_NCCL_PL",
-    "TRANSPOSE_COMM_NVSHMEM",
-    "TRANSPOSE_COMM_NVSHMEM_PL",
+    'config',
+    'init',
+    'finalize',
+    'get_pencil_info',
+    'get_autotuned_config',
+    'make_config',
+    'halo_exchange',
+    'pfft3d',
+    'pifft3d',
+    'transposeXtoY',
+    'transposeYtoX',
+    'transposeYtoZ',
+    'transposeZtoY',
+    'transposeXtoZ',
+    'transposeZtoX',
+    'TRANSPOSE_XY',
+    'TRANSPOSE_YX',
+    'TRANSPOSE_YZ',
+    'TRANSPOSE_ZY',
+    'SLAB_XY',
+    'SLAB_YZ',
+    'PENCILS',
+    'NO_DECOMP',
+    'get_fft_output_sharding',
+    'get_output_specs',
+    'fftfreq3d',
+    'rfftfreq3d',
+    'HALO_COMM_MPI',
+    'HALO_COMM_MPI_BLOCKING',
+    'HALO_COMM_NVSHMEM',
+    'HALO_COMM_NVSHMEM_BLOCKING',
+    'TRANSPOSE_COMM_MPI_A2A',
+    'TRANSPOSE_COMM_MPI_P2P',
+    'TRANSPOSE_COMM_MPI_P2P_PL',
+    'TRANSPOSE_COMM_NCCL_PL',
+    'TRANSPOSE_COMM_NVSHMEM',
+    'TRANSPOSE_COMM_NVSHMEM_PL',
 ]
 
 
@@ -102,7 +102,7 @@ class JAXDecompConfig:
         if hasattr(self, key):
             setattr(self, key, value)
         else:
-            raise ValueError(f"key {key} is not a valid configuration key")
+            raise ValueError(f'key {key} is not a valid configuration key')
 
 
 # Declare the global configuration object

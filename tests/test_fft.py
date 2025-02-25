@@ -10,7 +10,7 @@ import jax  # noqa: E402
 
 size = jax.device_count()
 
-jax.config.update("jax_enable_x64", True)
+jax.config.update('jax_enable_x64', True)
 
 from functools import partial
 
@@ -37,17 +37,17 @@ local_transpose = [True, False]
 
 class TestFFTs:
     def run_test(self, pdims, global_shape, local_transpose, backend):
-        print("*" * 80)
-        print(f"Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} ")
+        print('*' * 80)
+        print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} ')
         if pdims[0] == 1:
             penciltype = SLAB_XY
         elif pdims[1] == 1:
             penciltype = SLAB_YZ
         else:
             penciltype = PENCILS
-        print(f"Decomposition type {penciltype}")
+        print(f'Decomposition type {penciltype}')
 
-        jaxdecomp.config.update("transpose_axis_contiguous", local_transpose)
+        jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
 
         global_array, mesh = create_spmd_array(global_shape, pdims)
 
@@ -56,9 +56,9 @@ class TestFFTs:
         # Perform inverse FFT
         rec_array = jaxdecomp.fft.pifft3d(karray, backend=backend)
 
-        print(f"orignal shard {global_array.sharding.spec}")
-        print(f"sharding of karray {karray.sharding.spec}")
-        print(f"sharding of rec_array {rec_array.sharding.spec}")
+        print(f'orignal shard {global_array.sharding.spec}')
+        print(f'sharding of karray {karray.sharding.spec}')
+        print(f'sharding of rec_array {rec_array.sharding.spec}')
 
         # assert compare_sharding(karray.sharding, dist_jax_karray.sharding)
         # assert compare_sharding(rec_array.sharding, dist_jax_rec_array.sharding)
@@ -84,31 +84,31 @@ class TestFFTs:
         assert_allclose(gathered_array.real, gathered_rec_array.real, rtol=1e-5, atol=1e-5)
         assert_allclose(gathered_array.imag, gathered_rec_array.imag, rtol=1e-5, atol=1e-5)
 
-        print("Reconstruction check OK!")
+        print('Reconstruction check OK!')
 
         jax_karray_transposed = jax_karray.transpose(transpose_back)
         assert_allclose(gathered_karray.real, jax_karray_transposed.real, rtol=1e-5, atol=1e-5)
         assert_allclose(gathered_karray.imag, jax_karray_transposed.imag, rtol=1e-5, atol=1e-5)
 
-        print("FFT with transpose check OK!")
+        print('FFT with transpose check OK!')
 
         # Trigger rejit in case local transpose is switched
         jax.clear_caches()
 
-    @pytest.mark.skipif(not is_on_cluster(), reason="Only run on cluster")
+    @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
     # Cartesian product tests
-    @pytest.mark.parametrize("local_transpose", local_transpose)  # Test with and without local transpose
-    @pytest.mark.parametrize("pdims", decomp)  # Test with Slab and Pencil decompositions
-    @pytest.mark.parametrize("global_shape", global_shapes)  # Test cubes, non-cubes and primes
+    @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
+    @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
+    @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_cudecomp_fft(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend="cuDecomp")
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp')
 
     # Cartesian product tests
-    @pytest.mark.parametrize("local_transpose", local_transpose)  # Test with and without local transpose
-    @pytest.mark.parametrize("pdims", decomp)  # Test with Slab and Pencil decompositions
-    @pytest.mark.parametrize("global_shape", global_shapes)  # Test cubes, non-cubes and primes
+    @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
+    @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
+    @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_jax_fft(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend="jax")
+        self.run_test(pdims, global_shape, local_transpose, backend='jax')
 
 
 class TestFFTsGrad:
@@ -130,7 +130,7 @@ class TestFFTsGrad:
         else:
             transpose_back = [1, 2, 0]
 
-        print("*" * 80)
+        print('*' * 80)
         # Cartesian product tests
         print(f"""
                 Testing with pdims {pdims}
@@ -138,11 +138,11 @@ class TestFFTsGrad:
                             local transpose {local_transpose}
                             backend {backend}
                 """)
-        jaxdecomp.config.update("transpose_axis_contiguous", local_transpose)
+        jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
         global_array, mesh = create_spmd_array(global_shape, pdims)
 
-        print("-" * 40)
-        print("Testing fwd grad")
+        print('-' * 40)
+        print('Testing fwd grad')
 
         @jax.jit
         def spmd_grad(arr):
@@ -162,12 +162,12 @@ class TestFFTsGrad:
         gathered_grads = all_gather(array_grad)
         jax_grad = jax.grad(local_grad)(gathered_array)
 
-        print(f"Shape of JAX array {jax_grad.shape}")
+        print(f'Shape of JAX array {jax_grad.shape}')
         # Check the gradients
         assert_allclose(jax_grad, gathered_grads, rtol=1e-5, atol=1e-5)
 
-        print("-" * 40)
-        print("Testing backward grad")
+        print('-' * 40)
+        print('Testing backward grad')
 
         @jax.jit
         def inv_spmd_grad(arr):
@@ -189,38 +189,38 @@ class TestFFTsGrad:
 
         ifft_jax_grad = jax.grad(inv_local_grad)(jax_karray)
 
-        print(f"Shape of JAX array {ifft_jax_grad.shape}")
+        print(f'Shape of JAX array {ifft_jax_grad.shape}')
 
         # Check the gradients
         assert_allclose(ifft_jax_grad, ifft_gathered_grads, rtol=1e-5, atol=1e-5)
 
-        print("Grad check OK!")
+        print('Grad check OK!')
 
         # Temporary solution because I need to find a way to retrigger the jit compile if the config changes
         jax.clear_caches()
 
-    @pytest.mark.skipif(not is_on_cluster(), reason="Only run on cluster")
-    @pytest.mark.parametrize("local_transpose", local_transpose)  # Test with and without local transpose
-    @pytest.mark.parametrize("pdims", decomp)  # Test with Slab and Pencil decompositions
-    @pytest.mark.parametrize("global_shape", global_shapes)  # Test cubes, non-cubes and primes
+    @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
+    @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
+    @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
+    @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_cudecomp_grad(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend="cuDecomp")
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp')
 
-    @pytest.mark.parametrize("local_transpose", local_transpose)  # Test with and without local transpose
-    @pytest.mark.parametrize("pdims", decomp)  # Test with Slab and Pencil decompositions
-    @pytest.mark.parametrize("global_shape", global_shapes)  # Test cubes, non-cubes and primes
+    @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
+    @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
+    @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_jax_grad(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend="jax")
+        self.run_test(pdims, global_shape, local_transpose, backend='jax')
 
 
 class TestFFTFreq:
     def run_test(self, pdims, global_shape, local_transpose, backend):
-        print("*" * 80)
-        print(f"Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose}")
+        print('*' * 80)
+        print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose}')
 
-        jaxdecomp.config.update("transpose_axis_contiguous", local_transpose)
+        jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
         if not local_transpose:
-            pytest.skip(reason="Not implemented yet")
+            pytest.skip(reason='Not implemented yet')
 
         global_array, mesh = create_spmd_array(global_shape, pdims)
 
@@ -253,22 +253,22 @@ class TestFFTFreq:
         for i in range(3):
             assert_allclose(jax_gradients[i], gathered_gradients[i], rtol=1e-5, atol=1e-5)
 
-        print("Gradient check OK!")
+        print('Gradient check OK!')
 
         # Trigger rejit in case local transpose is switched
         jax.clear_caches()
 
-    @pytest.mark.skipif(not is_on_cluster(), reason="Only run on cluster")
+    @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
     # Cartesian product tests
-    @pytest.mark.parametrize("local_transpose", local_transpose)  # Test with and without local transpose
-    @pytest.mark.parametrize("pdims", decomp)  # Test with Slab and Pencil decompositions
-    @pytest.mark.parametrize("global_shape", global_shapes)  # Test cubes, non-cubes and primes
+    @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
+    @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
+    @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_cudecomp_fft(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend="cuDecomp")
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp')
 
     # Cartesian product tests
-    @pytest.mark.parametrize("local_transpose", local_transpose)  # Test with and without local transpose
-    @pytest.mark.parametrize("pdims", decomp)  # Test with Slab and Pencil decompositions
-    @pytest.mark.parametrize("global_shape", global_shapes)  # Test cubes, non-cubes and primes
+    @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
+    @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
+    @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_jax_fft(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend="jax")
+        self.run_test(pdims, global_shape, local_transpose, backend='jax')

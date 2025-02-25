@@ -4,11 +4,11 @@ import jax
 from jax import lax
 from jax._src.api import ShapeDtypeStruct
 from jax._src.core import ShapedArray
+from jax._src.interpreters import batching
 from jax._src.typing import Array
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
-from jax._src.interpreters import batching
 
 import jaxdecomp
 from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
@@ -21,7 +21,7 @@ from jaxdecomp._src.fft_utils import (
     fft2,
     fftn,
 )
-from jaxdecomp._src.pencil_utils import get_output_specs, get_transpose_order, get_axis_names_from_mesh, get_pencil_type_from_axis_names
+from jaxdecomp._src.pencil_utils import get_axis_names_from_mesh, get_output_specs, get_pencil_type_from_axis_names, get_transpose_order
 from jaxdecomp._src.spmd_ops import custom_spmd_rule
 
 
@@ -292,7 +292,7 @@ def spmd_fft(x: Array, fft_type: FftType, adjoint: bool) -> Array:
     if x.ndim == 4:
         return jax.vmap(_impl)(x)
     else:
-        raise ValueError(f"Unsupported input shape {x.shape}")
+        raise ValueError(f'Unsupported input shape {x.shape}')
 
 
 def per_shard_impl(x: Array, fft_type: FftType, adjoint: bool, x_axis_name: str, y_axis_name: str) -> Array:
@@ -331,7 +331,7 @@ def per_shard_impl(x: Array, fft_type: FftType, adjoint: bool, x_axis_name: str,
                     assert (x_axis_name is not None) and (y_axis_name is not None)
                     return _fft_pencils(x, fft_type, adjoint, x_axis_name, y_axis_name)
                 case _:
-                    raise ValueError(f"Unsupported pencil type {pencil_type}")
+                    raise ValueError(f'Unsupported pencil type {pencil_type}')
         else:
             match pencil_type:
                 case _jaxdecomp.SLAB_XY:
@@ -344,14 +344,14 @@ def per_shard_impl(x: Array, fft_type: FftType, adjoint: bool, x_axis_name: str,
                     assert (x_axis_name is not None) and (y_axis_name is not None)
                     return _ifft_pencils(x, fft_type, adjoint, x_axis_name, y_axis_name)
                 case _:
-                    raise ValueError(f"Unsupported pencil type {pencil_type}")
+                    raise ValueError(f'Unsupported pencil type {pencil_type}')
 
     if x.ndim == 3:
         return _impl(x)
     if x.ndim == 4:
         return jax.vmap(_impl)(x)
     else:
-        raise ValueError(f"Unsupported input shape {x.shape}")
+        raise ValueError(f'Unsupported input shape {x.shape}')
 
 
 spmd_fft_primitive = custom_spmd_rule(spmd_fft, static_argnums=(1, 2), multiple_results=False)
@@ -389,24 +389,24 @@ def infer_sharding_from_operands(
     del mesh, result_infos
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     if input_sharding is None:
-        error_during_jacfwd("pfft")
+        error_during_jacfwd('pfft')
 
     if all([spec is None for spec in input_sharding.spec]):
-        error_during_jacrev("pfft")
+        error_during_jacrev('pfft')
 
     input_mesh: Mesh = input_sharding.mesh  # type: ignore
     operand = arg_infos[0]
     if operand.ndim == 3:
         spec = input_sharding.spec
-        transposed_specs = get_output_specs(fft_type, spec, mesh=input_mesh, backend="jax")
+        transposed_specs = get_output_specs(fft_type, spec, mesh=input_mesh, backend='jax')
     elif operand.ndim == 4:
         assert input_sharding.spec[0] is None
         spec = input_sharding.spec[1:]
-        transposed_specs = get_output_specs(fft_type, spec, mesh=input_mesh, backend="jax")
+        transposed_specs = get_output_specs(fft_type, spec, mesh=input_mesh, backend='jax')
         assert len(transposed_specs) == 3
         transposed_specs = (None,) + transposed_specs
     else:
-        raise ValueError(f"Unsupported input shape {operand.shape}")
+        raise ValueError(f'Unsupported input shape {operand.shape}')
 
     return NamedSharding(input_sharding.mesh, P(*transposed_specs))
 

@@ -1,15 +1,15 @@
 import argparse
 import os
+from collections.abc import Hashable
 from functools import partial
 from typing import Any, Callable
-from collections.abc import Hashable
 
 Specs = Any
 AxisName = Hashable
 
 import jax
 
-jax.config.update("jax_enable_x64", False)
+jax.config.update('jax_enable_x64', False)
 
 import jax.numpy as jnp
 import jax_cosmo as jc
@@ -58,8 +58,8 @@ def fttk(nc: int):
 
     @partial(
         shmap,
-        in_specs=(P("x"), P("y"), P(None)),
-        out_specs=(P("x"), P(None, "y"), P(None)),
+        in_specs=(P('x'), P('y'), P(None)),
+        out_specs=(P('x'), P(None, 'y'), P(None)),
     )
     def get_kvec(ky, kz, kx):
         return (ky.reshape([-1, 1, 1]),
@@ -148,11 +148,11 @@ def cic_paint(displacement, halo_size):
     local_mesh_shape = _global_to_local_size(displacement.shape[0])
     hs = halo_size
 
-    @partial(shmap, in_specs=(P("x", "y"),), out_specs=P("x", "y"))
+    @partial(shmap, in_specs=(P('x', 'y'),), out_specs=P('x', 'y'))
     def cic_op(disp):
         """CiC operation on each local slice of the mesh."""
         # Create a mesh to paint the particles on for the local slice
-        mesh = jnp.zeros(disp.shape[:-1], dtype="float32")
+        mesh = jnp.zeros(disp.shape[:-1], dtype='float32')
 
         # Padding the mesh along the two first dimensions
         mesh = jnp.pad(mesh, [[hs, hs], [hs, hs], [0, 0]])
@@ -162,7 +162,7 @@ def cic_paint(displacement, halo_size):
             jnp.arange(local_mesh_shape[0]),
             jnp.arange(local_mesh_shape[1]),
             jnp.arange(local_mesh_shape[2]),
-            indexing="ij",
+            indexing='ij',
         )
 
         # adding an offset of size halo size
@@ -179,7 +179,7 @@ def cic_paint(displacement, halo_size):
     # Run halo exchange to get the correct values at the boundaries
     field = jaxdecomp.halo_exchange(field, halo_extents=(hs // 2, hs // 2, 0), halo_periods=(True, True, True))
 
-    @partial(shmap, in_specs=(P("x", "y"),), out_specs=P("x", "y"))
+    @partial(shmap, in_specs=(P('x', 'y'),), out_specs=P('x', 'y'))
     def unpad(x):
         """Removes the padding and reduce the halo regions"""
         x = x.at[hs : hs + hs // 2].add(x[: hs // 2])
@@ -193,7 +193,7 @@ def cic_paint(displacement, halo_size):
     return field
 
 
-@partial(jax.jit, static_argnames=("nc", "box_size", "halo_size"))
+@partial(jax.jit, static_argnames=('nc', 'box_size', 'halo_size'))
 def simulation_fn(key, nc, box_size, halo_size, a=1.0):
     """
     Run a simulation to generate initial conditions and density field using LPT.
@@ -230,7 +230,7 @@ def simulation_fn(key, nc, box_size, halo_size, a=1.0):
 
 
 def main(args):
-    print(f"Running with arguments {args}")
+    print(f'Running with arguments {args}')
 
     # Setting up distributed jax
     jax.distributed.initialize()
@@ -242,9 +242,9 @@ def main(args):
     key = jax.random.split(master_key, size)[rank]
 
     # Create computing mesh and sharding information
-    pdims = tuple(map(int, args.pdims.split("x")))
+    pdims = tuple(map(int, args.pdims.split('x')))
     devices = mesh_utils.create_device_mesh(pdims)
-    mesh = Mesh(devices.T, axis_names=("x", "y"))
+    mesh = Mesh(devices.T, axis_names=('x', 'y'))
 
     # Run the simulation on the compute mesh
     with mesh:
@@ -253,21 +253,21 @@ def main(args):
     # Create output directory to save the results
     output_dir = args.output
     os.makedirs(output_dir, exist_ok=True)
-    np.save(f"{output_dir}/initial_conditions_{rank}.npy", initial_conds.addressable_data(0))
-    np.save(f"{output_dir}/field_{rank}.npy", final_field.addressable_data(0))
-    print(f"Finished saved to {output_dir}")
+    np.save(f'{output_dir}/initial_conditions_{rank}.npy', initial_conds.addressable_data(0))
+    np.save(f'{output_dir}/field_{rank}.npy', final_field.addressable_data(0))
+    print(f'Finished saved to {output_dir}')
 
     # Closing distributed jax
     jax.distributed.shutdown()
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser("Distributed LPT N-body simulation.")
-    parser.add_argument("--pdims", type=str, default="1x1", help="Processor grid dimensions")
-    parser.add_argument("--nc", type=int, default=256, help="Number of cells in the mesh")
-    parser.add_argument("--box_size", type=float, default=512.0, help="Box size in Mpc/h")
-    parser.add_argument("--halo_size", type=int, default=32, help="Halo size for painting")
-    parser.add_argument("--output", type=str, default="out")
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser('Distributed LPT N-body simulation.')
+    parser.add_argument('--pdims', type=str, default='1x1', help='Processor grid dimensions')
+    parser.add_argument('--nc', type=int, default=256, help='Number of cells in the mesh')
+    parser.add_argument('--box_size', type=float, default=512.0, help='Box size in Mpc/h')
+    parser.add_argument('--halo_size', type=int, default=32, help='Halo size for painting')
+    parser.add_argument('--output', type=str, default='out')
     args = parser.parse_args()
 
     main(args)

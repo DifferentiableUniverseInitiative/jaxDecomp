@@ -48,7 +48,7 @@ All these functions are **JIT**-compatible and support **automatic differentiati
 See also:
 - [Basic Usage](docs/01-basic_usage.md)
 - [Distributed LPT Example](examples/lpt_nbody_demo.py)
- 
+
 > **Important**
 > Multi-node FFTs work with both JAX and cuDecomp backends\
 > For CPU with JAX, Multi-node is supported starting JAX v0.5.1 (with `gloo` backend)
