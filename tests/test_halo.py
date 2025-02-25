@@ -51,14 +51,14 @@ def split_into_grid(array, pdims):
 all_gather = partial(process_allgather, tiled=True)
 
 
-@pytest.mark.skipif(not is_on_cluster(), reason="Only run on cluster")
-@pytest.mark.parametrize("pdims", pdims)
+@pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
+@pytest.mark.parametrize('pdims', pdims)
 # Test with Slab and Pencil decompositions
 def test_halo_against_cudecomp(pdims):
     jnp.set_printoptions(linewidth=200)
 
-    print("*" * 80)
-    print(f"Testing with pdims {pdims}")
+    print('*' * 80)
+    print(f'Testing with pdims {pdims}')
 
     global_shape = (16, 16, 16)
     global_array, mesh = create_spmd_array(global_shape, pdims)
@@ -75,34 +75,34 @@ def test_halo_against_cudecomp(pdims):
     periodic = (True, True)
     padding = (halo_x, halo_y, (0, 0))
 
-    @partial(shard_map, mesh=mesh, in_specs=P("z", "y"), out_specs=P("z", "y"))
+    @partial(shard_map, mesh=mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
     def pad(arr):
-        return jnp.pad(arr, padding, mode="linear_ramp", end_values=20)
+        return jnp.pad(arr, padding, mode='linear_ramp', end_values=20)
 
     # perform halo exchange
     updated_array = pad(global_array)
-    jax_exchanged = jaxdecomp.halo_exchange(updated_array, halo_extents=halo_extents, halo_periods=periodic, backend="JAX")
+    jax_exchanged = jaxdecomp.halo_exchange(updated_array, halo_extents=halo_extents, halo_periods=periodic, backend='JAX')
     cudecomp_exchanged = jaxdecomp.halo_exchange(
         updated_array,
         halo_extents=halo_extents,
         halo_periods=periodic,
-        backend="CUDECOMP",
+        backend='CUDECOMP',
     )
 
     g_array = all_gather(updated_array)
     g_jax_exchanged = all_gather(jax_exchanged)
     g_cudecomp_exchanged = all_gather(cudecomp_exchanged)
-    print(f"Original \n{g_array[:,:,0]}")
-    print(f"exchanged cudecomp \n{g_jax_exchanged[:,:,0]}")
-    print(f"exchanged jax \n{g_cudecomp_exchanged[:,:,0]}")
+    print(f'Original \n{g_array[:,:,0]}')
+    print(f'exchanged cudecomp \n{g_jax_exchanged[:,:,0]}')
+    print(f'exchanged jax \n{g_cudecomp_exchanged[:,:,0]}')
 
     assert_array_equal(g_jax_exchanged, g_cudecomp_exchanged)
 
 
 class TestHaloExchange:
     def run_test(self, global_shape, pdims, backend):
-        print("*" * 80)
-        print(f"Testing with pdims {pdims}")
+        print('*' * 80)
+        print(f'Testing with pdims {pdims}')
 
         jnp.set_printoptions(linewidth=200)
 
@@ -115,17 +115,17 @@ class TestHaloExchange:
         periodic = (True, True)
         padding = (halo_x, halo_y, (0, 0))
 
-        @partial(shard_map, mesh=mesh, in_specs=P("z", "y"), out_specs=P("z", "y"))
+        @partial(shard_map, mesh=mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
         def pad(arr):
             return jax.tree.map(
-                lambda arr: jnp.pad(arr, padding, mode="linear_ramp", end_values=20),
+                lambda arr: jnp.pad(arr, padding, mode='linear_ramp', end_values=20),
                 arr,
             )
 
-        @partial(shard_map, mesh=mesh, in_specs=P("z", "y"), out_specs=P("z", "y"))
+        @partial(shard_map, mesh=mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
         def multiply(arr):
-            z_index = lax.axis_index("z") + 1
-            y_index = lax.axis_index("y") + 1
+            z_index = lax.axis_index('z') + 1
+            y_index = lax.axis_index('y') + 1
             aranged = jnp.arange(prod(arr.shape)).reshape(arr.shape)
             arr *= z_index + y_index * pdims[0]
 
@@ -163,8 +163,8 @@ class TestHaloExchange:
         #    periodic_exchanged_gathered_array, pdims
         # )
 
-        print(f"len gathered array slices {len(gathered_array_slices)}")
-        print(f"len Y gathered array slices {len(gathered_array_slices[0])}")
+        print(f'len gathered array slices {len(gathered_array_slices)}')
+        print(f'len Y gathered array slices {len(gathered_array_slices[0])}')
 
         def next_index(x, pdims):
             return x + 1 if x < pdims - 1 else 0
@@ -173,7 +173,7 @@ class TestHaloExchange:
             return x - 1 if x > 0 else pdims - 1
 
         for z_slice, y_slice in product(range(pdims[1]), range(pdims[0])):
-            print(f"z {z_slice} y {y_slice}")
+            print(f'z {z_slice} y {y_slice}')
             original_slice = gathered_array_slices[z_slice][y_slice]
             current_slice = gathered_exchanged_slices[z_slice][y_slice]
             next_z = next_index(z_slice, pdims[1])
@@ -193,12 +193,12 @@ class TestHaloExchange:
             lower_left_corner = gathered_exchanged_slices[next_z][prev_y]
             lower_right_corner = gathered_exchanged_slices[next_z][next_y]
 
-            print(f"z {z_slice} y {y_slice}")
-            print(f"original slice \n{original_slice[:,:,0]}")
-            print(f"up slice \n{up_slice[:,:,0]}")
-            print(f"current slice \n{current_slice[:,:,0]}")
-            print(f"down slice \n{down_slice[:,:,0]}")
-            print("--" * 40)
+            print(f'z {z_slice} y {y_slice}')
+            print(f'original slice \n{original_slice[:,:,0]}')
+            print(f'up slice \n{up_slice[:,:,0]}')
+            print(f'current slice \n{current_slice[:,:,0]}')
+            print(f'down slice \n{down_slice[:,:,0]}')
+            print('--' * 40)
 
             # if up down padding check the up down slices
             if pdims[1] > 1:
@@ -242,23 +242,23 @@ class TestHaloExchange:
                     lower_right_corner[halo_size : halo_size * 2, halo_size : halo_size * 2],
                 )
 
-    @pytest.mark.skipif(not is_on_cluster(), reason="Only run on cluster")
-    @pytest.mark.parametrize("pdims", pdims)
+    @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
+    @pytest.mark.parametrize('pdims', pdims)
     def test_cudecomp_halo(self, pdims):
-        self.run_test((32, 32, 32), pdims, "CUDECOMP")
+        self.run_test((32, 32, 32), pdims, 'CUDECOMP')
 
-    @pytest.mark.parametrize("pdims", pdims)
+    @pytest.mark.parametrize('pdims', pdims)
     def test_jax_halo(
         self,
         pdims,
     ):
-        self.run_test((16, 16, 16), pdims, "JAX")
+        self.run_test((16, 16, 16), pdims, 'JAX')
 
 
 class TestHaloExchangeGrad:
     def run_test(self, global_shape, pdims, backend):
-        print("*" * 80)
-        print(f"Testing with pdims {pdims}")
+        print('*' * 80)
+        print(f'Testing with pdims {pdims}')
 
         jnp.set_printoptions(linewidth=200)
 
@@ -271,17 +271,17 @@ class TestHaloExchangeGrad:
         periodic = (True, True)
         padding = (halo_x, halo_y, (0, 0))
 
-        @partial(shard_map, mesh=mesh, in_specs=P("z", "y"), out_specs=P("z", "y"))
+        @partial(shard_map, mesh=mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
         def pad(arr):
             return jax.tree.map(
-                lambda arr: jnp.pad(arr, padding, mode="linear_ramp", end_values=20),
+                lambda arr: jnp.pad(arr, padding, mode='linear_ramp', end_values=20),
                 arr,
             )
 
-        @partial(shard_map, mesh=mesh, in_specs=P("z", "y"), out_specs=P("z", "y"))
+        @partial(shard_map, mesh=mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
         def multiply(arr):
-            z_index = lax.axis_index("z") + 1
-            y_index = lax.axis_index("y") + 1
+            z_index = lax.axis_index('z') + 1
+            y_index = lax.axis_index('y') + 1
             aranged = jnp.arange(prod(arr.shape)).reshape(arr.shape)
             arr *= z_index + y_index * pdims[0]
 
@@ -323,9 +323,9 @@ class TestHaloExchangeGrad:
         assert_array_equal(model(global_array, obs), jnp.zeros_like(global_array))
         assert_array_equal(model(global_array * 2, obs), jnp.full_like(global_array, 3))
 
-    @pytest.mark.parametrize("pdims", pdims)
+    @pytest.mark.parametrize('pdims', pdims)
     def test_jax_halo(
         self,
         pdims,
     ):
-        self.run_test((16, 16, 16), pdims, "JAX")
+        self.run_test((16, 16, 16), pdims, 'JAX')

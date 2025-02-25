@@ -3,7 +3,7 @@ requires = ["scikit-build-core>=0.4.0", "pybind11>=2.9.0"]
 build-backend = "scikit_build_core.build"
 [project]
 name = "jaxdecomp"
-version = "0.2.4"
+version = "0.2.5"
 description = "JAX bindings for the cuDecomp library"
 authors = [
   { name = "Wassim Kabalan" },
@@ -46,6 +46,7 @@ test-command = "pytest {project}/tests"
 
 [tool.ruff]
 line-length = 150
+fix = true
 src = ["src"]
 exclude = ["third_party"]
 
@@ -59,7 +60,10 @@ select = [
     'UP',
     # flake8-debugger
     'T10',
+    # isort
+    'I',
 ]
+
 ignore = [
     'E402', # module level import not at top of file
     'E203',
@@ -69,3 +73,7 @@ ignore = [
     'E722',
     'UP037', # conflicts with jaxtyping Array annotations
 ]
+
+
+[tool.ruff.format]
+quote-style = 'single'

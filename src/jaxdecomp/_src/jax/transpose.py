@@ -8,9 +8,9 @@ from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
 import jaxdecomp
-from jaxdecomp._src.spmd_ops import custom_spmd_rule
-from jaxdecomp._src.pencil_utils import get_axis_names_from_mesh
 from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
+from jaxdecomp._src.pencil_utils import get_axis_names_from_mesh
+from jaxdecomp._src.spmd_ops import custom_spmd_rule
 
 
 def spmd_transpose(x: Array, kind: str) -> Array:
@@ -31,12 +31,12 @@ def spmd_transpose(x: Array, kind: str) -> Array:
     """
     if jaxdecomp.config.transpose_axis_contiguous:
         match kind:
-            case "x_y" | "y_z" | "z_x":
+            case 'x_y' | 'y_z' | 'z_x':
                 transpose_order = (2, 0, 1)
-            case "y_x" | "z_y" | "x_z":
+            case 'y_x' | 'z_y' | 'x_z':
                 transpose_order = (1, 2, 0)
             case _:
-                raise ValueError("Invalid kind")
+                raise ValueError('Invalid kind')
     else:
         transpose_order = (0, 1, 2)
 
@@ -48,7 +48,7 @@ def spmd_transpose(x: Array, kind: str) -> Array:
     if x.ndim == 4:
         return jax.vmap(_impl)(x)
     else:
-        raise ValueError(f"Unsupported input shape {x.shape}")
+        raise ValueError(f'Unsupported input shape {x.shape}')
 
 
 def per_shard_impl(a: Array, kind: str, x_axis_name: str, y_axis_name: str) -> Array:
@@ -75,43 +75,43 @@ def per_shard_impl(a: Array, kind: str, x_axis_name: str, y_axis_name: str) -> A
     def _impl(a):
         if jaxdecomp.config.transpose_axis_contiguous:
             match kind:
-                case "x_y":
+                case 'x_y':
                     return lax.all_to_all(a, y_axis_name, 2, 1, tiled=True).transpose([2, 0, 1])
-                case "y_z":
+                case 'y_z':
                     return lax.all_to_all(a, x_axis_name, 2, 1, tiled=True).transpose([2, 0, 1])
-                case "z_y":
+                case 'z_y':
                     return lax.all_to_all(a, x_axis_name, 2, 0, tiled=True).transpose([1, 2, 0])
-                case "y_x":
+                case 'y_x':
                     return lax.all_to_all(a, y_axis_name, 2, 0, tiled=True).transpose([1, 2, 0])
-                case "x_z":
+                case 'x_z':
                     return lax.all_to_all(a, x_axis_name, 2, 0, tiled=True).transpose([1, 2, 0])
-                case "z_x":
+                case 'z_x':
                     return lax.all_to_all(a, x_axis_name, 2, 1, tiled=True).transpose([2, 0, 1])
                 case _:
-                    raise ValueError("Invalid kind")
+                    raise ValueError('Invalid kind')
         else:
             match kind:
-                case "x_y":
+                case 'x_y':
                     return lax.all_to_all(a, y_axis_name, 2, 1, tiled=True)
-                case "y_z":
+                case 'y_z':
                     return lax.all_to_all(a, x_axis_name, 1, 0, tiled=True)
-                case "z_y":
+                case 'z_y':
                     return lax.all_to_all(a, x_axis_name, 0, 1, tiled=True)
-                case "y_x":
+                case 'y_x':
                     return lax.all_to_all(a, y_axis_name, 1, 2, tiled=True)
-                case "x_z":
+                case 'x_z':
                     return lax.all_to_all(a, x_axis_name, 2, 0, tiled=True)
-                case "z_x":
+                case 'z_x':
                     return lax.all_to_all(a, x_axis_name, 0, 2, tiled=True)
                 case _:
-                    raise ValueError("Invalid kind")
+                    raise ValueError('Invalid kind')
 
     if a.ndim == 3:
         return _impl(a)
     if a.ndim == 4:
         return jax.vmap(_impl)(a)
     else:
-        raise ValueError(f"Unsupported input shape {a.shape}")
+        raise ValueError(f'Unsupported input shape {a.shape}')
 
 
 spmd_transpose_primitive = custom_spmd_rule(spmd_transpose, static_argnums=(1,), multiple_results=False)
@@ -123,16 +123,16 @@ def get_output_specs(spec, kind):
         transposed_specs = (spec[1], spec[0], None)
     else:
         match kind:
-            case "x_y":
+            case 'x_y':
                 transposed_specs = (spec[0], None, spec[1])
-            case "y_z":
+            case 'y_z':
                 transposed_specs = (None, spec[0], spec[2])
-            case "z_y":
+            case 'z_y':
                 transposed_specs = (spec[1], None, spec[2])
-            case "y_x":
+            case 'y_x':
                 transposed_specs = (spec[0], spec[2], None)
             case _:
-                raise ValueError("Invalid kind")
+                raise ValueError('Invalid kind')
 
     return transposed_specs
 
@@ -168,10 +168,10 @@ def infer_sharding_from_operands(
     operand = arg_infos[0]
 
     if input_sharding is None:
-        error_during_jacfwd(f"Transpose {kind}")
+        error_during_jacfwd(f'Transpose {kind}')
 
     if all([spec is None for spec in input_sharding.spec]):
-        error_during_jacrev(f"Transpose {kind}")
+        error_during_jacrev(f'Transpose {kind}')
 
     if operand.ndim == 3:
         spec = input_sharding.spec
@@ -182,7 +182,7 @@ def infer_sharding_from_operands(
         transposed_specs = get_output_specs(spec, kind)
         transposed_specs = (None,) + transposed_specs
     else:
-        raise ValueError(f"Unsupported input shape {operand.shape}")
+        raise ValueError(f'Unsupported input shape {operand.shape}')
 
     return NamedSharding(input_sharding.mesh, P(*transposed_specs))
 
@@ -227,20 +227,20 @@ def partition(
 @spmd_transpose_primitive.def_transpose_rule
 def vjp_transpose_rule(cotangent: Array, x: Array, kind: str) -> tuple[Array]:
     match kind:
-        case "x_y":
-            return (spmd_transpose_primitive(cotangent, kind="y_x"),)
-        case "y_z":
-            return (spmd_transpose_primitive(cotangent, kind="z_y"),)
-        case "z_y":
-            return (spmd_transpose_primitive(cotangent, kind="y_z"),)
-        case "y_x":
-            return (spmd_transpose_primitive(cotangent, kind="x_y"),)
-        case "x_z":
-            return (spmd_transpose_primitive(cotangent, kind="z_x"),)
-        case "z_x":
-            return (spmd_transpose_primitive(cotangent, kind="x_z"),)
+        case 'x_y':
+            return (spmd_transpose_primitive(cotangent, kind='y_x'),)
+        case 'y_z':
+            return (spmd_transpose_primitive(cotangent, kind='z_y'),)
+        case 'z_y':
+            return (spmd_transpose_primitive(cotangent, kind='y_z'),)
+        case 'y_x':
+            return (spmd_transpose_primitive(cotangent, kind='x_y'),)
+        case 'x_z':
+            return (spmd_transpose_primitive(cotangent, kind='z_x'),)
+        case 'z_x':
+            return (spmd_transpose_primitive(cotangent, kind='x_z'),)
         case _:
-            raise ValueError("Invalid kind")
+            raise ValueError('Invalid kind')
 
 
 @partial(jax.jit, static_argnums=(1,))
@@ -313,7 +313,7 @@ def transposeXtoY(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-    return transpose(x, "x_y")
+    return transpose(x, 'x_y')
 
 
 def transposeYtoZ(x: ArrayLike) -> Array:
@@ -330,7 +330,7 @@ def transposeYtoZ(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-    return transpose(x, "y_z")
+    return transpose(x, 'y_z')
 
 
 def transposeZtoY(x: ArrayLike) -> Array:
@@ -347,7 +347,7 @@ def transposeZtoY(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-    return transpose(x, "z_y")
+    return transpose(x, 'z_y')
 
 
 def transposeYtoX(x: ArrayLike) -> Array:
@@ -364,7 +364,7 @@ def transposeYtoX(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-    return transpose(x, "y_x")
+    return transpose(x, 'y_x')
 
 
 def transposeXtoZ(x: ArrayLike) -> Array:
@@ -381,7 +381,7 @@ def transposeXtoZ(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-    return transpose(x, "x_z")
+    return transpose(x, 'x_z')
 
 
 def transposeZtoX(x: ArrayLike) -> Array:
@@ -398,4 +398,4 @@ def transposeZtoX(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-    return transpose(x, "z_x")
+    return transpose(x, 'z_x')

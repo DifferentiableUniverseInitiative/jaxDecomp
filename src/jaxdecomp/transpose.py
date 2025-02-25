@@ -4,7 +4,7 @@ from jaxdecomp._src.cudecomp.transpose import transpose as _cudecomp_transpose
 from jaxdecomp._src.jax.transpose import transpose as _jax_transpose
 
 
-def transposeXtoY(x: Array, backend: str = "jax") -> Array:
+def transposeXtoY(x: Array, backend: str = 'jax') -> Array:
     """
     Transpose the input array from X-pencil to Y-pencil.
 
@@ -45,15 +45,15 @@ def transposeXtoY(x: Array, backend: str = "jax") -> Array:
                                                     data_callback=lambda _: jax.random.normal(jax.random.PRNGKey(0), local_shape))
     >>> transposed_array = jaxdecomp.transposeXtoY(global_array)
     """
-    if backend.lower() == "jax":
-        return _jax_transpose(x, kind="x_y")
-    elif backend.lower() == "cudecomp":
-        return _cudecomp_transpose(x, kind="x_y")
+    if backend.lower() == 'jax':
+        return _jax_transpose(x, kind='x_y')
+    elif backend.lower() == 'cudecomp':
+        return _cudecomp_transpose(x, kind='x_y')
     else:
-        raise ValueError(f"Invalid backend: {backend}")
+        raise ValueError(f'Invalid backend: {backend}')
 
 
-def transposeYtoX(x: Array, backend: str = "jax") -> Array:
+def transposeYtoX(x: Array, backend: str = 'jax') -> Array:
     """
     Transpose the input array from Y-pencil to X-pencil.
 
@@ -82,15 +82,15 @@ def transposeYtoX(x: Array, backend: str = "jax") -> Array:
     >>> import jaxdecomp
     >>> transposed_array = jaxdecomp.transposeYtoX(global_array)
     """
-    if backend.lower() == "jax":
-        return _jax_transpose(x, kind="y_x")
-    elif backend.lower() == "cudecomp":
-        return _cudecomp_transpose(x, kind="y_x")
+    if backend.lower() == 'jax':
+        return _jax_transpose(x, kind='y_x')
+    elif backend.lower() == 'cudecomp':
+        return _cudecomp_transpose(x, kind='y_x')
     else:
-        raise ValueError(f"Invalid backend: {backend}")
+        raise ValueError(f'Invalid backend: {backend}')
 
 
-def transposeYtoZ(x: Array, backend: str = "jax") -> Array:
+def transposeYtoZ(x: Array, backend: str = 'jax') -> Array:
     """
     Transpose the input array from Y-pencil to Z-pencil.
 
@@ -119,15 +119,15 @@ def transposeYtoZ(x: Array, backend: str = "jax") -> Array:
     >>> import jaxdecomp
     >>> transposed_array = jaxdecomp.transposeYtoZ(global_array)
     """
-    if backend.lower() == "jax":
-        return _jax_transpose(x, kind="y_z")
-    elif backend.lower() == "cudecomp":
-        return _cudecomp_transpose(x, kind="y_z")
+    if backend.lower() == 'jax':
+        return _jax_transpose(x, kind='y_z')
+    elif backend.lower() == 'cudecomp':
+        return _cudecomp_transpose(x, kind='y_z')
     else:
-        raise ValueError(f"Invalid backend: {backend}")
+        raise ValueError(f'Invalid backend: {backend}')
 
 
-def transposeZtoY(x: Array, backend: str = "jax") -> Array:
+def transposeZtoY(x: Array, backend: str = 'jax') -> Array:
     """
     Transpose the input array from Z-pencil to Y-pencil.
 
@@ -156,15 +156,15 @@ def transposeZtoY(x: Array, backend: str = "jax") -> Array:
     >>> import jaxdecomp
     >>> transposed_array = jaxdecomp.transposeZtoY(global_array)
     """
-    if backend.lower() == "jax":
-        return _jax_transpose(x, kind="z_y")
-    elif backend.lower() == "cudecomp":
-        return _cudecomp_transpose(x, kind="z_y")
+    if backend.lower() == 'jax':
+        return _jax_transpose(x, kind='z_y')
+    elif backend.lower() == 'cudecomp':
+        return _cudecomp_transpose(x, kind='z_y')
     else:
-        raise ValueError(f"Invalid backend: {backend}")
+        raise ValueError(f'Invalid backend: {backend}')
 
 
-def transposeXtoZ(x: Array, backend: str = "jax") -> Array:
+def transposeXtoZ(x: Array, backend: str = 'jax') -> Array:
     """
     Transpose the input array from X-pencil to Z-pencil.
 
@@ -195,15 +195,15 @@ def transposeXtoZ(x: Array, backend: str = "jax") -> Array:
     >>> import jaxdecomp
     >>> transposed_array = jaxdecomp.transposeXtoZ(global_array)
     """
-    if backend.lower() == "jax":
-        return _jax_transpose(x, kind="x_z")
-    elif backend.lower() == "cudecomp":
-        raise NotImplementedError("Cudecomp does not support x_z transpose")
+    if backend.lower() == 'jax':
+        return _jax_transpose(x, kind='x_z')
+    elif backend.lower() == 'cudecomp':
+        raise NotImplementedError('Cudecomp does not support x_z transpose')
     else:
-        raise ValueError(f"Invalid backend: {backend}")
+        raise ValueError(f'Invalid backend: {backend}')
 
 
-def transposeZtoX(x: Array, backend: str = "jax") -> Array:
+def transposeZtoX(x: Array, backend: str = 'jax') -> Array:
     """
     Transpose the input array from Z-pencil to X-pencil.
 
@@ -234,9 +234,9 @@ def transposeZtoX(x: Array, backend: str = "jax") -> Array:
     >>> import jaxdecomp
     >>> transposed_array = jaxdecomp.transposeZtoX(global_array)
     """
-    if backend.lower() == "jax":
-        return _jax_transpose(x, kind="z_x")
-    elif backend.lower() == "cudecomp":
-        raise NotImplementedError("Cudecomp does not support z_x transpose")
+    if backend.lower() == 'jax':
+        return _jax_transpose(x, kind='z_x')
+    elif backend.lower() == 'cudecomp':
+        raise NotImplementedError('Cudecomp does not support z_x transpose')
     else:
-        raise ValueError(f"Invalid backend: {backend}")
+        raise ValueError(f'Invalid backend: {backend}')

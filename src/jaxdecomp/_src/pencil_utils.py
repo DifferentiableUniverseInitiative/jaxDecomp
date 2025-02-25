@@ -1,15 +1,15 @@
-from typing import Optional
+from collections.abc import Hashable
+from typing import Any, Optional
 
 import jax
 from jax import lax
-from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
+from jax.sharding import Mesh, NamedSharding
+from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
 
 import jaxdecomp
 from jaxdecomp._src.fft_utils import FftType
 from jaxdecomp.typing import GdimsType, PdimsType, TransposablePdimsType
-from typing import Any
-from collections.abc import Hashable
 
 Specs = Any
 AxisName = Hashable
@@ -71,14 +71,14 @@ def get_pencil_type_from_mesh(mesh: Mesh) -> str:
             pdims = (1,) + pdims
 
         if len(pdims) != 2:
-            raise ValueError("Only one or two-dimensional meshes are supported.")
+            raise ValueError('Only one or two-dimensional meshes are supported.')
 
     return get_pencil_type_from_pdims(pdims)
 
 
 def get_pencil_type_from_pdims(pdims) -> str:
     if len(pdims) != 2:
-        raise ValueError("Only one or two-dimensional meshes are supported.")
+        raise ValueError('Only one or two-dimensional meshes are supported.')
 
     if pdims == (1, 1) or pdims is None:
         return _jaxdecomp.NO_DECOMP
@@ -132,7 +132,7 @@ def get_transpose_order(fft_type: FftType, mesh: Optional[Mesh] = None) -> tuple
             case FftType.IFFT | FftType.IRFFT:
                 return (2, 0, 1)
             case _:
-                raise TypeError("Only complex FFTs are currently supported through pfft.")
+                raise TypeError('Only complex FFTs are currently supported through pfft.')
 
     pencil_type = get_pencil_type_from_mesh(mesh)
     match fft_type:
@@ -145,7 +145,7 @@ def get_transpose_order(fft_type: FftType, mesh: Optional[Mesh] = None) -> tuple
                 case _jaxdecomp.NO_DECOMP:
                     return (0, 1, 2)
                 case _:
-                    raise TypeError("Unknown pencil type")
+                    raise TypeError('Unknown pencil type')
         case FftType.IFFT:
             match pencil_type:
                 case _jaxdecomp.SLAB_YZ:
@@ -155,9 +155,9 @@ def get_transpose_order(fft_type: FftType, mesh: Optional[Mesh] = None) -> tuple
                 case _jaxdecomp.NO_DECOMP:
                     return (0, 1, 2)
                 case _:
-                    raise TypeError("Unknown pencil type")
+                    raise TypeError('Unknown pencil type')
         case _:
-            raise TypeError("Only complex FFTs are currently supported through pfft.")
+            raise TypeError('Only complex FFTs are currently supported through pfft.')
 
 
 def get_lowering_args(fft_type: FftType, global_shape: GdimsType, mesh: Mesh) -> tuple[PdimsType, GdimsType]:
@@ -193,7 +193,7 @@ def get_lowering_args(fft_type: FftType, global_shape: GdimsType, mesh: Mesh) ->
                 else:
                     transpose_back_shape = (2, 0, 1)
             case _:
-                raise TypeError("only complex FFTs are currently supported through pfft.")
+                raise TypeError('only complex FFTs are currently supported through pfft.')
     else:
         transpose_back_shape = (0, 1, 2)
     # Make sure to get back the original shape of the X-Pencil
@@ -215,7 +215,7 @@ def get_fft_output_sharding(fft_sharding):
     return NamedSharding(mesh, P(*out_specs))
 
 
-def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = "JAX") -> tuple[Optional[int], ...]:
+def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = 'JAX') -> tuple[Optional[int], ...]:
     """Returns the output specs based on FFT type, spec, and mesh.
 
     Args:
@@ -243,7 +243,7 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = "JAX
             case _jaxdecomp.PENCILS:
                 transposed_specs = spec
             case _:
-                raise TypeError("Unknown pencil type")
+                raise TypeError('Unknown pencil type')
     else:
 
         def is_distributed(x):
@@ -253,12 +253,12 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = "JAX
             case FftType.FFT | FftType.RFFT:
                 if is_distributed(spec[2]):
                     raise ValueError(
-                        "Distributed FFTs with non-contiguous axes does not support a third distributed axis"
-                        f"Make sure that the device mesh is created with a 1D or 2D mesh, got spec {spec}"
+                        'Distributed FFTs with non-contiguous axes does not support a third distributed axis'
+                        f'Make sure that the device mesh is created with a 1D or 2D mesh, got spec {spec}'
                     )
                 match pencil_type:
                     case _jaxdecomp.SLAB_XY:
-                        if backend == "cudecomp":
+                        if backend == 'cudecomp':
                             transposed_specs = (None, spec[0], None)
                         else:
                             transposed_specs = (None, None, spec[0])
@@ -267,7 +267,7 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = "JAX
                     case _jaxdecomp.PENCILS:
                         transposed_specs = (None, spec[0], spec[1])
                     case _:
-                        raise TypeError("Unknown pencil type")
+                        raise TypeError('Unknown pencil type')
 
             case FftType.IFFT | FftType.IRFFT:
                 match pencil_type:
@@ -279,34 +279,34 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = "JAX
                         #       f"Make sure that you use IFFT on the output of a distributed FFT"
                         #       "or create it with a NamedSharding with a PartitionSpec of (None, jax.device_count(), None)"
                         #   )
-                        if backend == "cudecomp":
+                        if backend == 'cudecomp':
                             transposed_specs = (spec[1], None, None)
                         else:
                             transposed_specs = (spec[2], None, None)
                     case _jaxdecomp.SLAB_YZ:
                         if is_distributed(spec[0]) or is_distributed(spec[1]):
                             raise ValueError(
-                                "Distributed IFFT with a YZ slab (only X axis distributed) is not compatible with the current sharding"
-                                f"got {spec} expected {(None , None, jax.device_count())}"
-                                "Make sure that you use IFFT on the output of a distributed FFT"
-                                "or create it with a NamedSharding with a PartitionSpec of (None, None, jax.device_count())"
+                                'Distributed IFFT with a YZ slab (only X axis distributed) is not compatible with the current sharding'
+                                f'got {spec} expected {(None , None, jax.device_count())}'
+                                'Make sure that you use IFFT on the output of a distributed FFT'
+                                'or create it with a NamedSharding with a PartitionSpec of (None, None, jax.device_count())'
                             )
                         transposed_specs = (None, spec[2], None)
                     case _jaxdecomp.PENCILS:
                         if is_distributed(spec[0]):
                             raise ValueError(
-                                "Distributed IFFT with a PENCILS decomposition (Both Y and Z distributed)"
-                                " is not compatible with the current sharding"
-                                f"got {spec} expected {(None , jax.device_count() //2, jax.device_count() // (jax.device_count() //2) )} "
-                                "or any other 2D mesh"
-                                "Make sure that you use IFFT on the output of a distributed FFT"
-                                "or create it with a NamedSharding with a PartitionSpec of (None, 2 , 2) or any other 2D mesh"
+                                'Distributed IFFT with a PENCILS decomposition (Both Y and Z distributed)'
+                                ' is not compatible with the current sharding'
+                                f'got {spec} expected {(None , jax.device_count() //2, jax.device_count() // (jax.device_count() //2) )} '
+                                'or any other 2D mesh'
+                                'Make sure that you use IFFT on the output of a distributed FFT'
+                                'or create it with a NamedSharding with a PartitionSpec of (None, 2 , 2) or any other 2D mesh'
                             )
                         transposed_specs = (spec[1], spec[2], None)
                     case _:
-                        raise TypeError("Unknown pencil type")
+                        raise TypeError('Unknown pencil type')
 
             case _:
-                raise TypeError("only complex FFTs are currently supported through pfft.")
+                raise TypeError('only complex FFTs are currently supported through pfft.')
 
     return transposed_specs

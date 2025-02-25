@@ -7,9 +7,8 @@ import jax.extend as jex
 from jax import core
 from jax._src import custom_api_util, dispatch
 from jax.experimental.custom_partitioning import custom_partitioning
-from jax.interpreters import ad, mlir, xla
+from jax.interpreters import ad, batching, mlir, xla
 
-from jax.interpreters import batching
 # Imports
 
 
@@ -102,14 +101,14 @@ def register_primitive(cls: type[BasePrimitive]) -> None:
     if issubclass(cls, BasePrimitive):
 
         def name_of_wrapper_p() -> str:
-            return cls.name + "_wrapper"
+            return cls.name + '_wrapper'
 
         inner_p = core.Primitive(cls.name)
         dispatch.prim_requires_devices_during_lowering.add(inner_p)
         inner_p.multiple_results = cls.multiple_results
         inner_p.def_impl(partial(xla.apply_primitive, inner_p))
         inner_p.def_abstract_eval(cls.abstract)
-        mlir.register_lowering(inner_p, cls.lowering, platform="cuda")
+        mlir.register_lowering(inner_p, cls.lowering, platform='cuda')
         cls.inner_primitive = inner_p
 
         outer_p = core.Primitive(name_of_wrapper_p())
@@ -129,7 +128,7 @@ def register_primitive(cls: type[BasePrimitive]) -> None:
         )
         cls.outer_primitive = outer_p
     else:
-        raise ValueError("register_primitive only accepts BasePrimitive")
+        raise ValueError('register_primitive only accepts BasePrimitive')
 
 
 @custom_api_util.register_custom_decorator_type
@@ -171,8 +170,8 @@ class custom_spmd_rule:
             self.def_spmd_rule(self.partition, infer_sharding_from_operands)
 
     def def_spmd_rule(self, partition_rule, infer_sharding_rule):
-        assert partition_rule is not None, "Partition rule is required"
-        assert infer_sharding_rule is not None, "Infer sharding rule is required"
+        assert partition_rule is not None, 'Partition rule is required'
+        assert infer_sharding_rule is not None, 'Infer sharding rule is required'
 
         paritioned_fn = custom_partitioning(self.fun, static_argnums=self.static_argnums)
         paritioned_fn.def_partition(
