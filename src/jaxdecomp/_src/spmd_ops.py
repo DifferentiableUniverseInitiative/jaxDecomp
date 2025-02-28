@@ -4,7 +4,6 @@ from typing import Any, Optional
 
 import jax
 import jax.extend as jex
-from jax import core
 from jax._src import custom_api_util, dispatch
 from jax.experimental.custom_partitioning import custom_partitioning
 from jax.interpreters import ad, batching, mlir, xla
@@ -103,7 +102,7 @@ def register_primitive(cls: type[BasePrimitive]) -> None:
         def name_of_wrapper_p() -> str:
             return cls.name + '_wrapper'
 
-        inner_p = core.Primitive(cls.name)
+        inner_p = jex.core.Primitive(cls.name)
         dispatch.prim_requires_devices_during_lowering.add(inner_p)
         inner_p.multiple_results = cls.multiple_results
         inner_p.def_impl(partial(xla.apply_primitive, inner_p))
@@ -111,7 +110,7 @@ def register_primitive(cls: type[BasePrimitive]) -> None:
         mlir.register_lowering(inner_p, cls.lowering, platform='cuda')
         cls.inner_primitive = inner_p
 
-        outer_p = core.Primitive(name_of_wrapper_p())
+        outer_p = jex.core.Primitive(name_of_wrapper_p())
         dispatch.prim_requires_devices_during_lowering.add(outer_p)
         outer_p.multiple_results = cls.multiple_results
         outer_p.def_impl(cls.impl)

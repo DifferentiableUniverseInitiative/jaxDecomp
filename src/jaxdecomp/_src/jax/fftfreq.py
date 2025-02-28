@@ -3,7 +3,6 @@ from functools import partial
 import jax
 from jax import lax
 from jax import numpy as jnp
-from jax.experimental.shard_alike import shard_alike
 from jaxtyping import Array
 
 FftType = lax.FftType
@@ -42,9 +41,11 @@ def fftfreq3d(k_array: Array, d: float = 1.0) -> tuple[Array, Array, Array]:
     kz = jax.tree.unflatten(k_array_structure, (kz,))
 
     # Ensure frequencies are sharded similarly to the input array
-    ky, _ = shard_alike(ky, k_array[:, 0, 0])
-    kx, _ = shard_alike(kx, k_array[0, :, 0])
-    kz, _ = shard_alike(kz, k_array[0, 0, :])
+    # shard_alike is not doing what is expected
+    # therefore, we will not use it for now
+    # ky, _ = shard_alike(ky, k_array[:, 0, 0])
+    # kx, _ = shard_alike(kx, k_array[0, :, 0])
+    # kz, _ = shard_alike(kz, k_array[0, 0, :])
 
     # Reshape the frequencies to match the input array's dimensionality
     ky = ky.reshape([-1, 1, 1])
@@ -86,11 +87,6 @@ def rfftfreq3d(k_array: Array, d: float = 1.0) -> tuple[Array, Array, Array]:
     kx = jax.tree.unflatten(k_array_structure, (kx,))
     ky = jax.tree.unflatten(k_array_structure, (ky,))
     kz = jax.tree.unflatten(k_array_structure, (kz,))
-
-    # Ensure frequencies are sharded similarly to the input array
-    ky, _ = shard_alike(ky, k_array[:, 0, 0])
-    kx, _ = shard_alike(kx, k_array[0, :, 0])
-    kz, _ = shard_alike(kz, k_array[0, 0, :])
 
     # Reshape the frequencies to match the input array's dimensionality
     ky = ky.reshape([-1, 1, 1])

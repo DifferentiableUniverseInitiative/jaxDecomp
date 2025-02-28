@@ -1,5 +1,5 @@
 def error_during_jacfwd(function_name):
-    raise ValueError(f"""
+    raise RuntimeError(f"""
         Input sharding was found to be none while lowering the SPMD rule.
         You are likely calling jacfwd with pfft as the first function.
         due to a bug in JAX, the sharding is not correctly passed to the SPMD rule.
@@ -9,7 +9,7 @@ def error_during_jacfwd(function_name):
 
 
 def error_during_jacrev(function_name):
-    raise ValueError(f"""
+    raise RuntimeError(f"""
         Input sharding was found to be none while lowering the SPMD rule.
         You are likely calling jacrev with pfft as the first function.
         due to a bug in JAX, the sharding is not correctly passed to the SPMD rule.
