@@ -273,29 +273,28 @@ class TestFFTFreq:
     def test_jax_fft(self, pdims, global_shape, local_transpose):
         self.run_test(pdims, global_shape, local_transpose, backend='jax')
 
+
 @pytest.mark.parametrize('pdims', decomp)
 def test_vmap(pdims):
-
-    global_shape = (8 , 8 , 8) # small shape because the shape in jacrev is (8 ,) * 6
+    global_shape = (8, 8, 8)  # small shape because the shape in jacrev is (8 ,) * 6
     global_array, mesh = create_spmd_array(global_shape, pdims)
 
     fft_sharding = jaxdecomp.get_fft_output_sharding(global_array.sharding)
 
-    batched = jnp.stack([global_array, global_array , global_array])
+    batched = jnp.stack([global_array, global_array, global_array])
 
     v_pfft = jax.vmap(jaxdecomp.fft.pfft3d)
 
     batched_out = v_pfft(batched)
 
     assert batched_out.shape == (3, 8, 8, 8)
-    assert batched_out[0].sharding.is_equivalent_to(fft_sharding, ndim = 3)
+    assert batched_out[0].sharding.is_equivalent_to(fft_sharding, ndim=3)
+
 
 @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
 def test_fwd_rev_grad(pdims):
-
-    global_shape = (8 , 8 , 8) # small shape because the shape in jacrev is (8 ,) * 6
+    global_shape = (8, 8, 8)  # small shape because the shape in jacrev is (8 ,) * 6
     global_array, mesh = create_spmd_array(global_shape, pdims)
-
 
     # Fix with explicit sharding annotation
     in_sharding = global_array.sharding
@@ -309,27 +308,26 @@ def test_fwd_rev_grad(pdims):
     try:
         fwd_grad = jax.jacfwd(forward_with_annotation)(global_array)
     except RuntimeError:
-        pytest.fail("jacfwd still failed after annotating sharding!")
+        pytest.fail('jacfwd still failed after annotating sharding!')
 
     # Ensure jacrev now runs
     try:
         rev_grad = jax.jacrev(forward_with_annotation)(global_array)
     except RuntimeError:
-        pytest.fail("jacrev still failed after annotating sharding!")
+        pytest.fail('jacrev still failed after annotating sharding!')
 
     # 5. Fix grad with output sharding annotation
     def fft_reduce_with_annotation(array):
         array = jax.lax.with_sharding_constraint(array, in_sharding)
         res = jaxdecomp.fft.pfft3d(array).real
-        res = jax.lax.with_sharding_constraint(res, fft_sharding )
+        res = jax.lax.with_sharding_constraint(res, fft_sharding)
         return res.sum()
 
     try:
         scalar_grad = jax.grad(fft_reduce_with_annotation)(global_array)
     except RuntimeError:
-        pytest.fail("grad still failed after annotating output sharding!")
+        pytest.fail('grad still failed after annotating output sharding!')
 
-    assert fwd_grad.sharding.is_equivalent_to(fft_sharding , ndim = 3)
-    assert scalar_grad.sharding.is_equivalent_to(in_sharding , ndim = 3)
-    assert rev_grad[0, 0, 0, ...].sharding.is_equivalent_to(in_sharding , ndim = 3)
-
+    assert fwd_grad.sharding.is_equivalent_to(fft_sharding, ndim=3)
+    assert scalar_grad.sharding.is_equivalent_to(in_sharding, ndim=3)
+    assert rev_grad[0, 0, 0, ...].sharding.is_equivalent_to(in_sharding, ndim=3)

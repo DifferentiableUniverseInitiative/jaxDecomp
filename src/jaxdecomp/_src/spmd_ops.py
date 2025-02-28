@@ -4,7 +4,6 @@ from typing import Any, Optional
 
 import jax
 import jax.extend as jex
-from jax import core
 from jax._src import custom_api_util, dispatch
 from jax.experimental.custom_partitioning import custom_partitioning
 from jax.interpreters import ad, batching, mlir, xla
