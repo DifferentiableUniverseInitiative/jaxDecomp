@@ -121,7 +121,7 @@ def _do_pfft(
 
     match typ:
         case FftType.FFT | FftType.IFFT:
-            lax.convert_element_type(arr, dtypes.to_complex_dtype(dtypes.dtype(arr)))
+            arr = lax.convert_element_type(arr, dtypes.to_complex_dtype(dtypes.dtype(arr)))
         case FftType.RFFT | FftType.IRFFT:
             raise ValueError('Not implemented wait (SOON)')
 
