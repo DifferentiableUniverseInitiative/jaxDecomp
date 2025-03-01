@@ -15,12 +15,12 @@ from jaxdecomplib import _jaxdecomp
 from jaxlib.hlo_helpers import custom_call
 
 import jaxdecomp
+from jaxdecomp._src.pencil_utils import get_pdims_from_mesh, get_pdims_from_sharding
 from jaxdecomp._src.spmd_ops import (
     BasePrimitive,
     register_primitive,
 )
-from jaxdecomp._src.pencil_utils import get_pdims_from_sharding, get_pdims_from_mesh
-from jaxdecomp.typing import GdimsType, TransposablePdimsType, PdimsType
+from jaxdecomp.typing import GdimsType, PdimsType, TransposablePdimsType
 
 
 class TransposePrimitive(BasePrimitive):
@@ -41,7 +41,7 @@ class TransposePrimitive(BasePrimitive):
         Outer core.Primitive object for the primitive.
     """
 
-    name: str = "transpose"
+    name: str = 'transpose'
     multiple_results: bool = False
     impl_static_args: tuple[int] = (1,)
     inner_primitive: Any = None
@@ -80,16 +80,16 @@ class TransposePrimitive(BasePrimitive):
         if global_shape == x.shape:
             return TransposePrimitive.outer_abstract(x, kind)
 
-        assert kind in ["x_y", "y_z", "z_y", "y_x"]
+        assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
 
         if jaxdecomp.config.transpose_axis_contiguous:
             match kind:
-                case "x_y" | "y_z":
+                case 'x_y' | 'y_z':
                     transpose_shape = (2, 0, 1)
-                case "z_y" | "y_x":
+                case 'z_y' | 'y_x':
                     transpose_shape = (1, 2, 0)
                 case _:
-                    raise ValueError("Invalid kind")
+                    raise ValueError('Invalid kind')
         else:
             transpose_shape = (0, 1, 2)
 
@@ -118,16 +118,16 @@ class TransposePrimitive(BasePrimitive):
         ShapedArray
             Abstract shape of the output array after transposition.
         """
-        assert kind in ["x_y", "y_z", "z_y", "y_x"]
+        assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
 
         if jaxdecomp.config.transpose_axis_contiguous:
             match kind:
-                case "x_y" | "y_z":
+                case 'x_y' | 'y_z':
                     transpose_shape = (2, 0, 1)
-                case "z_y" | "y_x":
+                case 'z_y' | 'y_x':
                     transpose_shape = (1, 2, 0)
                 case _:
-                    raise ValueError("Invalid kind")
+                    raise ValueError('Invalid kind')
         else:
             transpose_shape = (0, 1, 2)
 
@@ -173,7 +173,7 @@ class TransposePrimitive(BasePrimitive):
             Lowered MLIR results.
         """
         del out_pdims
-        assert kind in ["x_y", "y_z", "z_y", "y_x"]
+        assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
         (aval_in,) = ctx.avals_in
         (aval_out,) = ctx.avals_out
         dtype = aval_in.dtype
@@ -183,20 +183,20 @@ class TransposePrimitive(BasePrimitive):
         layout = tuple(range(len(x_type.shape) - 1, -1, -1))
 
         match kind:
-            case "x_y":
+            case 'x_y':
                 transpose_shape = (0, 1, 2)
                 transpose_type = _jaxdecomp.TRANSPOSE_XY
-            case "y_z":
+            case 'y_z':
                 transpose_shape = (1, 2, 0)
                 transpose_type = _jaxdecomp.TRANSPOSE_YZ
-            case "z_y":
+            case 'z_y':
                 transpose_shape = (2, 0, 1)
                 transpose_type = _jaxdecomp.TRANSPOSE_ZY
-            case "y_x":
+            case 'y_x':
                 transpose_shape = (1, 2, 0)
                 transpose_type = _jaxdecomp.TRANSPOSE_YX
             case _:
-                raise ValueError("Invalid kind")
+                raise ValueError('Invalid kind')
 
         local_transpose = jaxdecomp.config.transpose_axis_contiguous
         transpose_shape = transpose_shape if local_transpose else (0, 1, 2)
@@ -217,7 +217,7 @@ class TransposePrimitive(BasePrimitive):
         workspace = mlir.full_like_aval(ctx, 0, ShapedArray(shape=[workspace_size], dtype=np.byte))
 
         result = custom_call(
-            "transpose",
+            'transpose',
             result_types=[x_type],
             operands=[x, workspace],
             operand_layouts=[layout, (0,)],
@@ -254,12 +254,12 @@ class TransposePrimitive(BasePrimitive):
         """
         if jaxdecomp.config.transpose_axis_contiguous:
             match kind:
-                case "x_y" | "y_z":
+                case 'x_y' | 'y_z':
                     return x.transpose([2, 0, 1])
-                case "y_x" | "z_y":
+                case 'y_x' | 'z_y':
                     return x.transpose([1, 2, 0])
                 case _:
-                    raise ValueError("Invalid kind (x_z and z_x not supported with cudecomp)")
+                    raise ValueError('Invalid kind (x_z and z_x not supported with cudecomp)')
         else:
             return x
 
@@ -327,32 +327,32 @@ class TransposePrimitive(BasePrimitive):
             transposed_pdims = (input_sharding.spec[1], input_sharding.spec[0], None)
         else:
             match kind:
-                case "x_y":
+                case 'x_y':
                     transposed_pdims = (
                         input_sharding.spec[0],
                         None,
                         input_sharding.spec[1],
                     )
-                case "y_z":
+                case 'y_z':
                     transposed_pdims = (
                         None,
                         input_sharding.spec[0],
                         input_sharding.spec[2],
                     )
-                case "z_y":
+                case 'z_y':
                     transposed_pdims = (
                         input_sharding.spec[1],
                         None,
                         input_sharding.spec[2],
                     )
-                case "y_x":
+                case 'y_x':
                     transposed_pdims = (
                         input_sharding.spec[0],
                         input_sharding.spec[2],
                         None,
                     )
                 case _:
-                    raise ValueError("Invalid kind")
+                    raise ValueError('Invalid kind')
 
         return NamedSharding(input_sharding.mesh, P(*transposed_pdims))
 
@@ -480,16 +480,16 @@ def transpose_bwd_rule(kind: str, _, g: Array) -> tuple[Array]:
           Transposed gradient.
     """
     match kind:
-        case "x_y":
-            return (transpose_impl(g, "y_x"),)
-        case "y_z":
-            return (transpose_impl(g, "z_y"),)
-        case "z_y":
-            return (transpose_impl(g, "y_z"),)
-        case "y_x":
-            return (transpose_impl(g, "x_y"),)
+        case 'x_y':
+            return (transpose_impl(g, 'y_x'),)
+        case 'y_z':
+            return (transpose_impl(g, 'z_y'),)
+        case 'z_y':
+            return (transpose_impl(g, 'y_z'),)
+        case 'y_x':
+            return (transpose_impl(g, 'x_y'),)
         case _:
-            raise ValueError("Invalid kind")
+            raise ValueError('Invalid kind')
 
 
 transpose.defvjp(transpose_fwd_rule, transpose_bwd_rule)
@@ -511,7 +511,7 @@ def transposeXtoY(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-    return transpose(x, "x_y")
+    return transpose(x, 'x_y')
 
 
 def transposeYtoZ(x: ArrayLike) -> Array:
@@ -528,7 +528,7 @@ def transposeYtoZ(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-    return transpose(x, "y_z")
+    return transpose(x, 'y_z')
 
 
 def transposeZtoY(x: ArrayLike) -> Array:
@@ -545,7 +545,7 @@ def transposeZtoY(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-    return transpose(x, "z_y")
+    return transpose(x, 'z_y')
 
 
 def transposeYtoX(x: ArrayLike) -> Array:
@@ -562,4 +562,4 @@ def transposeYtoX(x: ArrayLike) -> Array:
     Array
         Transposed array.
     """
-    return transpose(x, "y_x")
+    return transpose(x, 'y_x')

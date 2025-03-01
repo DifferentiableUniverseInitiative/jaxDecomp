@@ -2,18 +2,17 @@ from functools import partial
 
 import jax
 from jax import ShapeDtypeStruct, lax
+from jax._src.interpreters import batching
 from jax.core import ShapedArray
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
 from jaxtyping import Array
 
-from jaxdecomp._src.spmd_ops import custom_spmd_rule
 from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
-
 from jaxdecomp._src.pencil_utils import get_axis_names_from_mesh, get_pencil_type_from_axis_names
+from jaxdecomp._src.spmd_ops import custom_spmd_rule
 from jaxdecomp.typing import HaloExtentType, Periodicity
-from jax._src.interpreters import batching
 
 
 def _halo_slab_xy(
@@ -242,14 +241,14 @@ def per_shard_impl(
                 assert (x_axis_name is not None) and (y_axis_name is not None)
                 return _halo_pencils(x, halo_extents, halo_periods, x_axis_name, y_axis_name)
             case _:
-                raise ValueError(f"Unsupported pencil type {pencil_type}")
+                raise ValueError(f'Unsupported pencil type {pencil_type}')
 
     if x.ndim == 3:
         return _impl(x)
     if x.ndim == 4:
         return jax.vmap(_impl)(x)
     else:
-        raise ValueError(f"Unsupported input shape {x.shape}")
+        raise ValueError(f'Unsupported input shape {x.shape}')
 
 
 spmd_halo_primitive = custom_spmd_rule(spmd_halo_exchange, static_argnums=(1, 2), multiple_results=False)
@@ -287,10 +286,10 @@ def infer_sharding_from_operands(
     del halo_periods, result_infos, halo_extents, mesh
     halo_exchange_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     if halo_exchange_sharding is None:
-        error_during_jacfwd("Halo Exchange")
+        error_during_jacfwd('Halo Exchange')
 
     if all([spec is None for spec in halo_exchange_sharding.spec]):
-        error_during_jacrev("Halo Exchange")
+        error_during_jacrev('Halo Exchange')
 
     return NamedSharding(halo_exchange_sharding.mesh, P(*halo_exchange_sharding.spec))
 

@@ -21,8 +21,8 @@ from jaxdecomp._src.fft_utils import FftType, fftn
 from jaxdecomp._src.pencil_utils import (
     get_lowering_args,
     get_output_specs,
-    get_pencil_type_from_mesh,
     get_pdims_from_sharding,
+    get_pencil_type_from_mesh,
     get_transpose_order,
 )
 from jaxdecomp._src.spmd_ops import (
@@ -37,7 +37,7 @@ class FFTPrimitive(BasePrimitive):
     Custom primitive for FFT operations.
     """
 
-    name: str = "fft"
+    name: str = 'fft'
     multiple_results: bool = False
     impl_static_args: tuple[int, int] = (1, 2)
     inner_primitive: Any = None
@@ -167,7 +167,7 @@ class FFTPrimitive(BasePrimitive):
         assert fft_type in (
             FftType.FFT,
             FftType.IFFT,
-        ), "Only complex FFTs are currently supported"
+        ), 'Only complex FFTs are currently supported'
 
         forward = fft_type in (FftType.FFT,)
         is_double = np.finfo(dtype).dtype == np.float64
@@ -189,7 +189,7 @@ class FFTPrimitive(BasePrimitive):
         workspace = mlir.full_like_aval(ctx, 0, ShapedArray(shape=[workspace_size], dtype=np.byte))
 
         result = custom_call(
-            "pfft3d",
+            'pfft3d',
             result_types=[a_type],
             operands=[a, workspace],
             operand_layouts=[layout, (0,)],
@@ -308,7 +308,7 @@ class FFTPrimitive(BasePrimitive):
         input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
         spec = input_sharding.spec
         input_mesh: Mesh = input_sharding.mesh  # type: ignore
-        transposed_specs = get_output_specs(fft_type, spec, input_mesh, "cudecomp")
+        transposed_specs = get_output_specs(fft_type, spec, input_mesh, 'cudecomp')
         return NamedSharding(input_mesh, P(*transposed_specs))
 
     @staticmethod

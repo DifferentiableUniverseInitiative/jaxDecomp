@@ -14,12 +14,12 @@ from jaxdecomplib import _jaxdecomp
 from jaxlib.hlo_helpers import custom_call
 
 import jaxdecomp
+from jaxdecomp._src.pencil_utils import get_pdims_from_mesh
 from jaxdecomp._src.spmd_ops import (
     BasePrimitive,
     register_primitive,
 )
 from jaxdecomp.typing import GdimsType, HaloExtentType, PdimsType, Periodicity
-from jaxdecomp._src.pencil_utils import get_pdims_from_mesh
 
 
 class HaloPrimitive(BasePrimitive):
@@ -27,7 +27,7 @@ class HaloPrimitive(BasePrimitive):
     Custom primitive for performing halo exchange operation.
     """
 
-    name: str = "halo_exchange"
+    name: str = 'halo_exchange'
     multiple_results: bool = False
     impl_static_args: tuple[int, int] = (1, 2)
     inner_primitive: Any = None
@@ -141,7 +141,7 @@ class HaloPrimitive(BasePrimitive):
 
         # Perform custom call for halo exchange
         out = custom_call(
-            "halo",
+            'halo',
             result_types=[x_type],
             operands=[x, workspace],
             operand_layouts=[layout, (0,)],

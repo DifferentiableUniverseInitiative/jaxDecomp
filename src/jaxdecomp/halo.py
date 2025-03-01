@@ -9,7 +9,7 @@ def halo_exchange(
     x: Array,
     halo_extents: HaloExtentType,
     halo_periods: Periodicity,
-    backend: str = "jax",
+    backend: str = 'jax',
 ) -> Array:
     """
     Perform a halo exchange operation using the specified backend.
@@ -72,9 +72,9 @@ def halo_exchange(
     >>> halo_periods = (True, True)
     >>> updated_array = halo_exchange(padded_array, halo_extents, halo_periods, backend="jax")
     """
-    if backend.lower() == "jax":
+    if backend.lower() == 'jax':
         return _jax_halo_exchange(x, halo_extents, halo_periods)
-    elif backend.lower() == "cudecomp":
+    elif backend.lower() == 'cudecomp':
         return _cudecomp_halo_exchange(x, halo_extents, halo_periods)
     else:
-        raise ValueError(f"Invalid backend: {backend}")
+        raise ValueError(f'Invalid backend: {backend}')

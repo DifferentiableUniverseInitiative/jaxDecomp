@@ -16,27 +16,27 @@ def initialize_distributed():
     global setup_done
     global on_cluster
     if not setup_done:
-        if "SLURM_JOB_ID" in os.environ:
+        if 'SLURM_JOB_ID' in os.environ:
             on_cluster = True
-            print("Running on cluster")
+            print('Running on cluster')
             import jax
 
             jax.distributed.initialize()
             setup_done = True
             on_cluster = True
         else:
-            print("Running locally")
+            print('Running locally')
             setup_done = True
             on_cluster = False
-            os.environ["JAX_PLATFORM_NAME"] = "cpu"
-            os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
+            os.environ['JAX_PLATFORM_NAME'] = 'cpu'
+            os.environ['XLA_FLAGS'] = '--xla_force_host_platform_device_count=8'
             import jax
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope='session', autouse=True)
 def setup_and_teardown_session():
     # Code to run at the start of the session
-    print("Starting session...")
+    print('Starting session...')
     initialize_distributed()
     # Setup code here
     # e.g., connecting to a database, initializing some resources, etc.
@@ -44,10 +44,11 @@ def setup_and_teardown_session():
     yield
 
     import jax
+
     import jaxdecomp
 
     # Code to run at the end of the session
-    print("Ending session...")
+    print('Ending session...')
     jaxdecomp.finalize()
     jax.distributed.shutdown()
 
@@ -99,14 +100,14 @@ def device_arange(pdims):
     from jax.sharding import PartitionSpec as P
 
     devices = mesh_utils.create_device_mesh(pdims)
-    mesh = Mesh(devices.T, axis_names=("z", "y"))
-    sharding = NamedSharding(mesh, P("z", "y"))
+    mesh = Mesh(devices.T, axis_names=('z', 'y'))
+    sharding = NamedSharding(mesh, P('z', 'y'))
 
     def generate_aranged(x):
         x_start = replace_none_or_zero(x[0].start)
         y_start = replace_none_or_zero(x[1].start)
         a = jnp.array([[x_start + y_start * pdims[0]]])
-        print(f"index is {x} and value is {a}")
+        print(f'index is {x} and value is {a}')
         return a
 
     aranged = jax.make_array_from_callback(mesh.devices.shape, sharding, data_callback=generate_aranged)
@@ -123,7 +124,7 @@ def create_ones_spmd_array(global_shape, pdims):
     size = jax.device_count()
     assert len(global_shape) == 3
     assert len(pdims) == 2
-    assert prod(pdims) == size, "The product of pdims must be equal to the number of MPI processes"
+    assert prod(pdims) == size, 'The product of pdims must be equal to the number of MPI processes'
 
     local_shape = (
         global_shape[0] // pdims[1],
@@ -133,8 +134,8 @@ def create_ones_spmd_array(global_shape, pdims):
 
     # Remap to the global array from the local slice
     devices = mesh_utils.create_device_mesh(pdims)
-    mesh = Mesh(devices.T, axis_names=("z", "y"))
-    sharding = NamedSharding(mesh, P("z", "y"))
+    mesh = Mesh(devices.T, axis_names=('z', 'y'))
+    sharding = NamedSharding(mesh, P('z', 'y'))
     global_array = jax.make_array_from_callback(global_shape, sharding, data_callback=lambda _: jax.numpy.ones(local_shape))
 
     return global_array, mesh
@@ -150,7 +151,7 @@ def create_spmd_array(global_shape, pdims):
     size = jax.device_count()
     assert len(global_shape) == 3
     assert len(pdims) == 2
-    assert prod(pdims) == size, "The product of pdims must be equal to the number of MPI processes"
+    assert prod(pdims) == size, 'The product of pdims must be equal to the number of MPI processes'
 
     local_shape = (
         global_shape[0] // pdims[1],
@@ -160,8 +161,8 @@ def create_spmd_array(global_shape, pdims):
 
     # Remap to the global array from the local slicei
     devices = mesh_utils.create_device_mesh(pdims)
-    mesh = Mesh(devices.T, axis_names=("z", "y"))
-    sharding = NamedSharding(mesh, P("z", "y"))
+    mesh = Mesh(devices.T, axis_names=('z', 'y'))
+    sharding = NamedSharding(mesh, P('z', 'y'))
     global_array = jax.make_array_from_callback(
         global_shape,
         sharding,

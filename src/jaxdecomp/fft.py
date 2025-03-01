@@ -1,6 +1,6 @@
+from collections.abc import Sequence
 from functools import partial
 from typing import Optional
-from collections.abc import Sequence
 
 import jax.numpy as jnp
 from jax import jit, lax
@@ -15,8 +15,8 @@ from jaxdecomp._src.jax.fft import pfft as _jax_pfft
 Shape = Sequence[int]
 
 __all__ = [
-    "pfft3d",
-    "pifft3d",
+    'pfft3d',
+    'pifft3d',
 ]
 
 
@@ -39,13 +39,13 @@ def _str_to_fft_type(s: str) -> FftType | int:
     ValueError
         If the string `s` does not match known FFT types.
     """
-    if s in ("fft", "FFT"):
+    if s in ('fft', 'FFT'):
         return FftType.FFT
-    elif s in ("ifft", "IFFT"):
+    elif s in ('ifft', 'IFFT'):
         return FftType.IFFT
-    elif s in ("rfft", "RFFT"):
+    elif s in ('rfft', 'RFFT'):
         return FftType.RFFT
-    elif s in ("irfft", "IRFFT"):
+    elif s in ('irfft', 'IRFFT'):
         return FftType.IRFFT
     else:
         raise ValueError(f"Unknown FFT type '{s}'")
@@ -74,12 +74,12 @@ def _fft_norm(s: Array, func_name: str, norm: Optional[str]) -> Array:
     ValueError
         If an invalid norm value is provided.
     """
-    if norm == "backward":
-        return 1 / jnp.prod(s) if func_name.startswith("i") else jnp.array(1)
-    elif norm == "ortho":
+    if norm == 'backward':
+        return 1 / jnp.prod(s) if func_name.startswith('i') else jnp.array(1)
+    elif norm == 'ortho':
         return 1 / jnp.sqrt(jnp.prod(s))
-    elif norm == "forward":
-        return jnp.array(1) if func_name.startswith("i") else 1 / jnp.prod(s)
+    elif norm == 'forward':
+        return jnp.array(1) if func_name.startswith('i') else 1 / jnp.prod(s)
     raise ValueError(f'Invalid norm value {norm}; should be "backward", "ortho" or "forward".')
 
 
@@ -89,7 +89,7 @@ def _do_pfft(
     fft_type: FftType,
     arr: Array,
     norm: Optional[str],
-    backend: str = "JAX",
+    backend: str = 'JAX',
 ) -> Array:
     """
     Perform 3D FFT or inverse 3D FFT on the input array.
@@ -121,13 +121,13 @@ def _do_pfft(
 
     match typ:
         case FftType.FFT | FftType.IFFT:
-            lax.convert_element_type(arr, dtypes.to_complex_dtype(dtypes.dtype(arr)))
+            arr = lax.convert_element_type(arr, dtypes.to_complex_dtype(dtypes.dtype(arr)))
         case FftType.RFFT | FftType.IRFFT:
-            raise ValueError("Not implemented wait (SOON)")
+            raise ValueError('Not implemented wait (SOON)')
 
-    if backend.lower() == "cudecomp":
+    if backend.lower() == 'cudecomp':
         transformed = _cudecomp_pfft(arr, typ)
-    elif backend.lower() == "jax":
+    elif backend.lower() == 'jax':
         transformed = _jax_pfft(arr, typ)
     else:
         raise ValueError(f"Unknown backend value '{backend}'")
@@ -136,7 +136,7 @@ def _do_pfft(
     return transformed
 
 
-def pfft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX") -> Array:
+def pfft3d(a: ArrayLike, norm: Optional[str] = 'backward', backend: str = 'JAX') -> Array:
     """
     Perform 3D FFT on the input array.
 
@@ -176,10 +176,10 @@ def pfft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX")
     >>> global_array = jax.make_array_from_callback(global_shape, sharding, lambda _: jax.random.normal(jax.random.PRNGKey(rank), local_shape))
     >>> k_array = pfft3d(global_array)
     """
-    return _do_pfft("fft", FftType.FFT, a, norm=norm, backend=backend)
+    return _do_pfft('fft', FftType.FFT, a, norm=norm, backend=backend)
 
 
-def pifft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX") -> Array:
+def pifft3d(a: ArrayLike, norm: Optional[str] = 'backward', backend: str = 'JAX') -> Array:
     """
     Perform inverse 3D FFT on the input array.
 
@@ -206,10 +206,10 @@ def pifft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX"
     >>> k_array = pfft3d(global_array)
     >>> original_array = pifft3d(k_array)
     """
-    return _do_pfft("ifft", FftType.IFFT, a, norm=norm, backend=backend)
+    return _do_pfft('ifft', FftType.IFFT, a, norm=norm, backend=backend)
 
 
-def prfft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX") -> Array:
+def prfft3d(a: ArrayLike, norm: Optional[str] = 'backward', backend: str = 'JAX') -> Array:
     """
     Perform 3D FFT on the input array.
 
@@ -249,10 +249,10 @@ def prfft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX"
     >>> global_array = jax.make_array_from_callback(global_shape, sharding, lambda _: jax.random.normal(jax.random.PRNGKey(rank), local_shape))
     >>> k_array = pfft3d(global_array)
     """
-    return _do_pfft("rfft", FftType.RFFT, a, norm=norm, backend=backend)
+    return _do_pfft('rfft', FftType.RFFT, a, norm=norm, backend=backend)
 
 
-def pirfft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX") -> Array:
+def pirfft3d(a: ArrayLike, norm: Optional[str] = 'backward', backend: str = 'JAX') -> Array:
     """
     Perform inverse 3D FFT on the input array.
 
@@ -279,7 +279,7 @@ def pirfft3d(a: ArrayLike, norm: Optional[str] = "backward", backend: str = "JAX
     >>> k_array = pfft3d(global_array)
     >>> original_array = pifft3d(k_array)
     """
-    return _do_pfft("ifft", FftType.IRFFT, a, norm=norm, backend=backend)
+    return _do_pfft('ifft', FftType.IRFFT, a, norm=norm, backend=backend)
 
 
 def fftfreq3d(array: ArrayLike, d: float = 1.0) -> Array:
@@ -313,7 +313,7 @@ def fftfreq3d(array: ArrayLike, d: float = 1.0) -> Array:
     >>> k_array = pfft3d(global_array)
     >>> kvec = fftfreq3d(k_array)
     """
-    assert jnp.iscomplexobj(array), "The input array must be complex for FFT frequency computation."
+    assert jnp.iscomplexobj(array), 'The input array must be complex for FFT frequency computation.'
     return _fftfreq.fftfreq3d(array, d=d)
 
 
@@ -348,5 +348,5 @@ def rfftfreq3d(array: ArrayLike, d: float = 1.0) -> Array:
     >>> k_array = pfft3d(global_array)
     >>> kvec = rfftfreq3d(k_array)
     """
-    assert jnp.iscomplexobj(array), "The input array must be complex for real FFT frequency computation."
+    assert jnp.iscomplexobj(array), 'The input array must be complex for real FFT frequency computation.'
     return _fftfreq.rfftfreq3d(array, d=d)

@@ -9,7 +9,7 @@
 > **Important**
 > Version `0.2.0` includes a **pure JAX backend** that **no longer requires MPI**. For multi-node runs, MPI and NCCL backends are still available through **cuDecomp**.
 
-`jaxDecomp` provides JAX bindings for NVIDIA's [cuDecomp](https://nvidia.github.io/cuDecomp/index.html) library [(Romero et al. 2022)](https://dl.acm.org/doi/abs/10.1145/3539781.3539797), enabling **multi-node parallel FFTs and halo exchanges** directly in low-level NCCL/CUDA-Aware MPI from your JAX code.
+JAX reimplementation and bindings for NVIDIA's [cuDecomp](https://nvidia.github.io/cuDecomp/index.html) library [(Romero et al. 2022)](https://dl.acm.org/doi/abs/10.1145/3539781.3539797), enabling **multi-node parallel FFTs and halo exchanges** directly in low-level NCCL/CUDA-Aware MPI from your JAX code.
 
 ---
 
@@ -43,11 +43,15 @@ rec_array = jaxdecomp.fft.pifft3d(a)
 exchanged = jaxdecomp.halo_exchange(a, halo_extents=(16, 16), halo_periods=(True, True))
 ```
 
-All these functions are **JIT**-compatible and support **automatic differentiation** (with [some caveats](docs/02_caveats.md)).
+All these functions are **JIT**-compatible and support **automatic differentiation** (with [some caveats](docs/02-caveats.md)).
 
 See also:
 - [Basic Usage](docs/01-basic_usage.md)
 - [Distributed LPT Example](examples/lpt_nbody_demo.py)
+
+> **Important**
+> Multi-node FFTs work with both JAX and cuDecomp backends\
+> For CPU with JAX, Multi-node is supported starting JAX v0.5.1 (with `gloo` backend)
 
 ---
 
@@ -64,11 +68,12 @@ mpirun -n 8 python demo.py
 
 See the Slurm [README](slurms/README.md) and [template script](slurms/template.slurm) for more details.
 
+
 ---
 
 ## Using cuDecomp (MPI and NCCL)
 
-For **multi-node** or advanced features, compile and install with cuDecomp enabled:
+For other features, compile and install with cuDecomp enabled as described in [install](#2-jax--cudecomp-backend-advanced):
 
 ```python
 import jaxdecomp
@@ -109,7 +114,7 @@ This setup uses the pure-JAX backend—**no** MPI required.
 
 ### 2. JAX + cuDecomp Backend (Advanced)
 
-If you need **multi-node** support, you can build from GitHub with cuDecomp enabled. This requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) or a similar environment providing a CUDA-aware MPI toolchain.
+If you need to use `MPI` instead of `NCCL` for `GPU` or gloo for CPU, you can build from GitHub with cuDecomp enabled. This requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) or a similar environment providing a CUDA-aware MPI toolchain.
 
 ```bash
 pip install -U pip
@@ -126,9 +131,10 @@ pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -C
 
 ## Machine-Specific Notes
 
-### IDRIS Jean Zay (HPE SGI 8600)
+### IDRIS [Jean Zay](http://www.idris.fr/eng/jean-zay/cpu/jean-zay-cpu-hw-eng.html) HPE SGI 8600 supercomputer
 
-As of October 2024, loading modules **in this exact order** works:
+
+As of February 2025, loading modules **in this exact order** works:
 
 ```bash
 module load nvidia-compilers/23.9 cuda/12.2.0 cudnn/8.9.7.29-cuda openmpi/4.1.5-cuda nccl/2.18.5-1-cuda cmake
@@ -143,7 +149,7 @@ pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -C
 
 **Note**: If using only the pure-JAX backend, you do not need NVHPC.
 
-### NERSC Perlmutter (HPE Cray EX)
+#### NERSC [Perlmutter](https://docs.nersc.gov/systems/perlmutter/architecture/) HPE Cray EX supercomputer
 
 As of November 2022:
 
