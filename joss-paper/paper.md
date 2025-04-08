@@ -98,10 +98,10 @@ For 1D decomposition (slabs), we need to perform one 1D FFT and one 2D FFT. 2D F
 
 For example, consider a $(P_y, P_z)$ decomposition with $P_z = 1$:
 
-| Step             | Decomposition                        | FFT Feasibility              |
-|------------------|--------------------------------------|------------------------------|
-| Initial          | $X \times \frac{Y}{P_y} \times Z$     | Can only do 1D FFT on Z       |
-| Transpose Z to Y | $\frac{Z}{P_y} \times X \times Y$     | Can do 2D FFT on YX           |
+| Step            | Decomposition                     | FFT Feasibility                 |
+|-----------------|-----------------------------------|---------------------------------|
+| Initial         | $X \times \frac{Y}{P_y} \times Z$  | Can only do 1D FFT on Z        |
+| Transpose Z to Y| $\frac{Z}{P_y} \times X \times Y$  | Can do 2D FFT on YX            |
 
 This is the case for the YZ slab, where the transformation sequence enables the application of a 2D FFT on the YX plane:
 
@@ -167,6 +167,7 @@ The following table shows the index ranges involved in each send and receive ope
 | To previous neighbor | $[h : 2 \cdot h]$                               | $[\text{Size} - h : \text{Size}]$ (from next neighbor) |
 
 Where :
+
     - $h$ is the **halo extent**
     - `Size` is the local size of the array along the axis
 
