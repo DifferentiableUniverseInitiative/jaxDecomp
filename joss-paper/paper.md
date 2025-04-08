@@ -85,12 +85,12 @@ In `jaxDecomp`, the Z-axis always starts as undistributed, and the decomposition
 
 In pencil decomposition, the 3D FFT is computed via three sequential 1D FFTs, each separated by a transposition that redistributes the data to align the next undistributed axis. The 1D FFT is performed on the fastest (inner-most) axis, which is undistributed at that stage of the algorithm (e.g., X in X-pencil, Y in Y-pencil, etc.).
 
-| Step                 | Origin                                        | Target                                       |
-|----------------------|-----------------------------------------------|----------------------------------------------|
-| Transpose Z to Y     | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ |
-| Transpose Y to X     | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ | $\frac{Y}{P_x} \times \frac{Z}{P_y} \times X$ |
-| Transpose X to Y     | $\frac{Y}{P_x} \times \frac{Z}{P_y} \times X$ | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ |
-| Transpose Y to Z     | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ |
+| Step             | Origin     | Target      |
+|----------------------|-----------------------------------------------|------------------------------------------|
+| Transpose Z to Y | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$| $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ |
+| Transpose Y to X | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$| $\frac{Y}{P_x} \times \frac{Z}{P_y} \times X$ |
+| Transpose X to Y | $\frac{Y}{P_x} \times \frac{Z}{P_y} \times X$| $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ |
+| Transpose Y to Z | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$| $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ |
 
 #### Slab Decomposition
 
@@ -167,11 +167,8 @@ The following table shows the index ranges involved in each send and receive ope
 | To previous neighbor | $[h : 2 \cdot h]$                               | $[\text{Size} - h : \text{Size}]$ (from next neighbor) |
 
 Where :
-
-- $h$ is the **halo extent**  
-- `Size` is the local size of the array along the axis  
-- All ranges are in Python-style slice notation
-
+- $h$ is the **halo extent**
+- `Size` is the local size of the array along the axis
 
 ![Visualization of the distributed halo exchange process in jaxDecomp](assets/halo-exchange.svg)
 
@@ -210,9 +207,6 @@ We also aim to package the code and release it on PyPI as built wheels for HPC c
 This work was granted access to the HPC resources of IDRIS under the allocation 2024-AD011014949 made by GENCI. The computations in this work were, in part, run at facilities supported by the Scientific Computing Core at the Flatiron Institute, a division of the Simons Foundation.
 
 We also acknowledge the SCIPOL scipol.in2p3.fr funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation program (PI: Josquin Errard, Grant agreement No. 101044073).
-
-# References
-
 
 
 ### Appendix
@@ -311,3 +305,6 @@ A more detailed example of an LPT simulation can be found in the [jaxdecomp_lpt 
 
 
 ![Visualization of an LPT density field at z=0 for a 2048³ grid generated using jaxDecomp.](assets/LPT_density_field_z0_2048.png){ width=65% }
+
+
+# References
