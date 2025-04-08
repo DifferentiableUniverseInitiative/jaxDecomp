@@ -34,31 +34,30 @@ bibliography: paper.bib
 # Abstract
 
 
-`JAX` [@JAX] has seen widespread adoption in both machine learning and scientific computing due to its flexibility and performance, as demonstrated in projects like `JAX-Cosmo` [@JAXCOSMO]. However, its application in distributed high-performance computing (HPC) has been limited by the complex nature of inter-GPU communications required in HPC scientific software, which is more challenging compared to deep learning networks. Previous solutions, such as `MPI4JAX` [@mpi4jax], provided support for single program multiple data (SPMD) operations but faced significant scaling limitations.
 
-Recently, JAX has introduced the unified JAX array API and several powerful tools such as `pjit`, `shard_map`, and `custom_partitioning` to simplify SPMD programming. Nonetheless, many NumPy and SciPy operators that *“work”* on distributed arrays will internally gather the entire array onto a single device, defeating the purpose of distributing large computations. This limitation is particularly problematic for the 3D Fast Fourier Transform (FFT), one of the most essential operations in scientific computing and a core component of large-scale simulations in fields like cosmology and fluid dynamics.
+`JAX` [@JAX] has seen widespread adoption in both machine learning and scientific computing due to its flexibility and performance, as demonstrated in projects like `JAX-Cosmo` [@JAXCOSMO]. However, its application in distributed high-performance computing (HPC) has been limited by the complex nature of inter-GPU communications required in HPC scientific software, which is more challenging compared to deep learning networks. Previous solutions, such as `MPI4JAX` [@mpi4jax], provided support for single program multiple data (SPMD) operations but faced significant scaling limitations, partly due to the MPI protocol’s limitations in handling large messages (typically capped at 2–4 GB per buffer on many systems).
 
-To address these challenges, we present **jaxDecomp**, a JAX library that wraps NVIDIA’s `cuDecomp` domain decomposition library [@cuDecomp] and also implements all operators as JAX primitives. jaxDecomp integrates specialized HPC code into the JAX ecosystem for key distributed operations, including 3D FFTs and halo exchanges, and scales seamlessly to multiple GPUs and nodes. By building on the distributed array strategy in JAX, it remains compatible with standard JAX transformations such as `jax.grad` and `jax.jit`, ensuring a Pythonic, differentiable interface. jaxDecomp can use NCCL, CUDA-Aware MPI, or NVSHMEM for inter-GPU data transposition, providing flexibility to match specific HPC cluster configurations.
+With the introduction of the unified JAX array API in JAX 0.4, along with powerful tools such as `pjit`, `shard_map`, and `custom_partitioning`, SPMD programming has become more accessible. Nonetheless, many NumPy and SciPy operators that *“work”* on distributed arrays will internally gather the entire array onto a single device, defeating the purpose of parallelizing large computations. This limitation is particularly problematic for the 3D Fast Fourier Transform (FFT), one of the most essential operations in scientific computing and a core component of large-scale simulations in fields like cosmology and fluid dynamics [@jax-md].
 
-In our benchmarks, jaxDecomp demonstrates strong performance while being trivial to install and use. In contrast, cuFFTMP is more difficult to set up, lacks differentiability, and relies solely on NVSHMEM—which manages memory outside of XLA and thus does not interact as well with the JAX ecosystem. Consequently, jaxDecomp is an ideal solution for researchers requiring both high performance and ease of use in distributed FFT operations within the JAX environment.
+To address these challenges, we present **jaxDecomp**, a JAX library that wraps NVIDIA’s `cuDecomp` domain decomposition library [@cuDecomp] and also implements all operators as JAX primitives. jaxDecomp integrates specialized HPC code into the JAX ecosystem for key distributed operations, including 3D FFTs and halo exchanges. It scales seamlessly to multiple GPUs and nodes. By building on the distributed array strategy in JAX, it remains compatible with standard JAX transformations such as `jax.grad` and `jax.jit`, ensuring a Pythonic, differentiable interface. jaxDecomp can use NCCL, CUDA-Aware MPI, or NVSHMEM for inter-GPU data transposition, providing flexibility to match specific HPC cluster configurations.
+
+In our benchmarks, jaxDecomp demonstrates strong performance while being trivial to install and use. In contrast, cuFFTMP requires more setup, does not support differentiability, and relies solely on NVSHMEM—which manages memory outside of XLA and thus does not interact as well with the JAX ecosystem. Consequently, jaxDecomp is an ideal solution for researchers requiring both high performance and ease of use in distributed FFT operations within the JAX environment.
 
 
 # Statement of Need
 
-# Statement of Need
+For numerical simulations on HPC systems, a distributed, easy-to-use, and differentiable FFT is essential for achieving peak performance and scalability. There is a pressing need for a solution that can serve as a true drop-in replacement for `jnp.fft` and install seamlessly—especially for HPC users who must integrate efficiently with existing cluster infrastructure.
 
-For numerical simulations on HPC systems, a distributed, easy-to-use, and differentiable FFT is essential for achieving peak performance and scalability. While it is possible to implement distributed FFTs purely in JAX, there is a pressing need for a solution that can serve as a near drop-in replacement for `jnp.fft` and install seamlessly—especially for HPC users who must integrate efficiently with existing cluster infrastructure.
+In scientific applications such as cosmological particle mesh (PM) simulations, specialized frameworks like `FlowPM` [@FlowPM] (built on `mesh-TensorFlow` [@TF-MESH]) or JAX-based codes like `pmwd` [@pmwd] often struggle to scale beyond single-node memory limits or rely on manual distribution strategies. These challenges highlight the need for a scalable, high-performance approach to distributed FFTs that remains differentiable for advanced algorithms (e.g., Hamiltonian Monte Carlo [@HMC] and the No-U-Turn Sampler (NUTS) [@NUTS]).
 
-In scientific applications such as cosmological particle mesh (PM) simulations, specialized frameworks like `FlowPM` [@FlowPM] (built on `mesh-TensorFlow` [@TF-MESH]) or JAX-based codes like `pmwd` [@pmwd] often struggle to scale beyond single-node memory constraints or rely on manually implemented distribution strategies. These limitations underscore the demand for a scalable, high-performance approach to distributed FFTs that remains differentiable for advanced algorithms (e.g., Hamiltonian Monte Carlo [@HMC] and the No-U-Turn Sampler (NUTS) [@NUTS]).
-
-jaxDecomp addresses this gap by providing a ready-to-use library that wraps NVIDIA’s `cuDecomp` for distributed 3D FFTs, halo exchanges, and related operations, all exposed as fully differentiable JAX primitives. This seamless approach allows users to transparently switch between NCCL, MPI, or NVSHMEM backends, optimizing performance for the specific configuration of each HPC cluster. Consequently, jaxDecomp simplifies large-scale simulation workflows and mitigates the overhead of implementing distributed FFTs directly in JAX while preserving memory efficiency and ease of use.
+jaxDecomp fills this gap by offering a lightweight JAX library that wraps NVIDIA’s `cuDecomp` for distributed 3D FFTs, halo exchanges, and related operations, all implemented as fully differentiable JAX primitives. This seamless approach lets users transparently switch between NCCL, MPI, or NVSHMEM backends, optimizing performance for the specific setup of each HPC cluster. As a result, jaxDecomp simplifies large-scale simulation workflows and eliminates the need to manually implement distributed FFTs in JAX, while preserving memory efficiency, compatibility with JAX transformations, and ease of use.
 
 
 # Implementation
 
 ## Distributed FFT Algorithm
 
-The distributed FFT in `jaxDecomp` is performed by applying a series of 1D FFTs along each of the three axes of a 3D array: first along the Z-axis, then the Y-axis, and finally the X-axis. In the case of a distributed FFT, local FFTs are executed on the undistributed axis, while batched FFTs are performed on the distributed axes. In order to correctly apply the FFT along each axis, it is necessary to perform a series of transpositions to rearrange the data across the axes, aligning them for efficient computation.
+The distributed FFT in `jaxDecomp` is performed by applying a series of 1D FFTs along each of the three axes of a 3D array: first along the Z-axis, then the Y-axis, and finally the X-axis. Local 1D FFTs are performed along the axis that is currently undistributed, while global transpositions are used to realign the data so that each axis becomes undistributed in turn. This sequence ensures that each FFT operates locally, with global transpositions enabling the redistribution of data between steps.
 
 ### Data Transposition
 
@@ -66,13 +65,15 @@ To effectively implement the distributed FFT, the data must be transposed betwee
 
 The following table outlines the transposition steps involved in `jaxDecomp`, which rearranges the data to facilitate the distributed FFT process:
 
-| Steps            | Operation Description                                                              |
-|------------------|------------------------------------------------------------------------------------|
-| FFT along Z      | Perform batched FFT along the Z-axis. The Z-axis is initially undistributed.        |
-| Transpose Z to Y | Transpose to $Z \times X \times Y$. Distribute the Y-axis across available GPUs.    |
-| FFT along Y      | Perform batched FFT along the Y-axis. The Y-axis is now undistributed.              |
-| Transpose Y to X | Transpose to $Y \times Z \times X$. Distribute the X-axis across available GPUs.    |
-| FFT along X      | Perform batched FFT along the X-axis. The X-axis is now undistributed.              |
+
+| Steps            | Operation Description                                    |
+|------------------|----------------------------------------------------------|
+| FFT along Z      | Batched 1D FFT along the Z-axis.                         |
+| Transpose Z to Y | Transpose to $Z \times X \times Y$. Partition the Y-axis |
+| FFT along Y      | Batched 1D FFT along the Y-axis.                         |
+| Transpose Y to X | Transpose to $Y \times Z \times X$. Partition the X-axis |
+| FFT along X      | Batched 1D FFT along the X-axis.                         |
+
 
 ### Domain Decomposition
 
@@ -82,73 +83,69 @@ In `jaxDecomp`, the Z-axis always starts as undistributed, and the decomposition
 
 #### Pencil Decomposition
 
-For pencils, we perform three 1D FFTs with a transpose between each one (two transpositions). The 1D FFT is done on the fastest axis, which is undistributed (X in X pencil, Y in Y pencil, etc.).
+In pencil decomposition, the 3D FFT is computed via three sequential 1D FFTs, each separated by a transposition that redistributes the data to align the next undistributed axis. The 1D FFT is performed on the fastest (inner-most) axis, which is undistributed at that stage of the algorithm (e.g., X in X-pencil, Y in Y-pencil, etc.).
 
-| Step               | Origin                                     | Target                                      |
-|--------------------|--------------------------------------------|---------------------------------------------|
-| Transpose Z to Y   | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ |
-| Transpose Y to X   | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ | $\frac{Y}{P_x} \times \frac{Z}{P_y} \times X$ |
-| Transpose X to Y   | $\frac{Y}{P_x} \times \frac{Z}{P_y} \times X$ | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ |
-| Transpose Y to Z   | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ |
+| Step                 | Origin                                        | Target                                       |
+|----------------------|-----------------------------------------------|----------------------------------------------|
+| Transpose Z to Y     | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ |
+| Transpose Y to X     | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ | $\frac{Y}{P_x} \times \frac{Z}{P_y} \times X$ |
+| Transpose X to Y     | $\frac{Y}{P_x} \times \frac{Z}{P_y} \times X$ | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ |
+| Transpose Y to Z     | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ |
 
 #### Slab Decomposition
 
-For 1D decomposition (slabs), we need to perform one 1D FFT and one 2D FFT. 2D FFTs present additional challenges because both the fastest and the second fastest axes must remain undistributed.
+For 1D decomposition (slabs), we need to perform one 1D FFT and one 2D FFT. 2D FFTs present additional challenges because both the fastest and second-fastest axes must remain undistributed.
 
-For example, consider a $({P_y}, {P_z})$ decomposition with $P_z = 1$:
+For example, consider a $(P_y, P_z)$ decomposition with $P_z = 1$:
 
-| Step             | Decomposition                      | FFT Feasibility          |
-|------------------|------------------------------------|--------------------------|
-| Initial          | $X \times \frac{Y}{P_y} \times Z$ | Can only do 1D FFT on Z   |
-| Transpose Z to Y | $\frac{Z}{P_y} \times X \times Y$  | Can do 2D FFT on YX       |
+| Step             | Decomposition                        | FFT Feasibility              |
+|------------------|--------------------------------------|------------------------------|
+| Initial          | $X \times \frac{Y}{P_y} \times Z$     | Can only do 1D FFT on Z       |
+| Transpose Z to Y | $\frac{Z}{P_y} \times X \times Y$     | Can do 2D FFT on YX           |
 
-This is the case for the YZ slab, where the transformation sequence enables the application of a 2D FFT on the YZ plane:
+This is the case for the YZ slab, where the transformation sequence enables the application of a 2D FFT on the YX plane:
 
-The function can be represented by:
-$$
-FFT(Z) \rightarrow TransposeZtoY \rightarrow FFT2D(YX)
-$$
+FFT2D($YX$) $\rightarrow$ TransposeYtoX $\rightarrow$ FFT($X$)
 
 For the other decomposition, with $P_y = 1$ and $P_x = 4$:
 
 | Step             | Decomposition                        | FFT Feasibility                       |
-|------------------|--------------------------------------|---------------------------------------|
-| Initial          | $\frac{X}{P_x} \times Y \times Z$     | Can do 1D FFT on Z or 2D FFT on YX      |
-| Transpose Z to Y | $Z \times \frac{X}{P_x} \times Y$    | Can only do 1D FFT on Y (already done) |
+|------------------|--------------------------------------|----------------------------------------|
+| Initial          | $\frac{X}{P_x} \times Y \times Z$     | Can do 1D FFT on Z or 2D FFT on YX     |
+| Transpose Z to Y | $Z \times \frac{X}{P_x} \times Y$     | Can only do 1D FFT on Y (already done) |
 
 To achieve an X pencil from a Z pencil in a single transposition, a coordinate transformation can be applied, effectively reinterpreting the axes from XYZ to YZX. This approach allows for slab decomposition with a single transposition step.
 
-`cuDecomp` does not provide the possibility to go from the initial pencil backward; in other words, we cannot go from a Z pencil to an X pencil in a single transposition. This is why we need to use a coordinate transformation to achieve this.
+cuDecomp does not support a direct transposition from a Z pencil to an X pencil. To achieve this, a coordinate transformation is required to reinterpret the axes.
 
 #### Slab Decomposition with Coordinate Transformation
 
-| Step               | Decomposition                      | Our Coordinates                      | Coordinate Step      | FFT Feasibility                        |
-|--------------------|------------------------------------|--------------------------------------|----------------------|----------------------------------------|
-| Initial            | $\frac{Z}{P_x} \times X \times Y$   | $\frac{X}{P_x} \times Y \times Z$     | -                    | Can do 2D FFT on ZY                     |
-| Transpose Y to Z   | $X \times \frac{Y}{P_x} \times Z$  | $Y \times \frac{Z}{P_x} \times X$    | Transpose Z to X     | Can do 1D (I)FFT on the last axis X     |
-| Transpose Z to Y   | $\frac{Z}{P_x} \times X \times Y$   | $\frac{X}{P_x} \times Y \times Z$     | Transpose X to Z     | Can do 2D IFFT on ZY                    |
+| Step               | Decomposition                        | Our Coordinates                          | Coordinate Step      | FFT Feasibility                        |
+|--------------------|--------------------------------------|------------------------------------------|----------------------|----------------------------------------|
+| Initial            | $\frac{Z}{P_x} \times X \times Y$     | $\frac{X}{P_x} \times Y \times Z$       | –                    | Can do 2D FFT on ZY                    |
+| Transpose Y to Z   | $X \times \frac{Y}{P_x} \times Z$     | $Y \times \frac{Z}{P_x} \times X$       | Transpose Z to X     | Can do 1D (I)FFT on the last axis X     |
+| Transpose Z to Y   | $\frac{Z}{P_x} \times X \times Y$     | $\frac{X}{P_x} \times Y \times Z$       | Transpose X to Z     | Can do 2D IFFT on ZY                   |
 
 This approach ensures that slab decomposition can be achieved in a single transposition step, enhancing computational efficiency.
 
-The function can be represented by:
-$$
-FFT2D(ZY) \rightarrow TransposeZtoX \rightarrow FFT(X)
-$$
+
+FFT2D($ZY$) $\rightarrow$ TransposeZtoX $\rightarrow$ FFT($X$)
 
 ### Non-Contiguous Global Transpose
 
-`jaxDecomp` also supports non-contiguous transpositions, where the transposition is performed globally without requiring local transpositions. In this case, the `P_x` and `P_y` dimensions remain associated with their original axes throughout the process, maintaining the same axis order (`X`, `Y`, `Z`). This method is particularly useful for operations that need to preserve the global data layout while performing efficient distributed computations.
+`jaxDecomp` also supports non-contiguous transpositions, where the transposition is performed globally across devices, without requiring intermediate local reshuffling on each GPU. In this case, the `P_x` and `P_y` dimensions remain associated with their original axes throughout the process, maintaining the same axis order (`X`, `Y`, `Z`). This method is particularly useful in workflows that benefit from preserving the global logical layout of the array, such as halo exchanges or certain stencil-based computations.
 
 The following table illustrates the steps for a non-contiguous global transpose, where the `P_x` and `P_y` dimensions stay aligned with the `X`, `Y`, and `Z` axes, without any permutation:
 
-| Step               | Origin                                     | Target                                      |
-|--------------------|--------------------------------------------|---------------------------------------------|
-| Z to Y   | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ |$\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$  |
-| Y to X   | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$ |$X \times \frac{Y}{P_x} \times\frac{Z}{P_y}$  |
-| X to Y   | $X \times \frac{Y}{P_x} \times\frac{Z}{P_y}$ | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$  |
-| Y to Z   |$\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$   |  $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$  |
+| Step       | Origin                                       | Target                                         |
+|------------|----------------------------------------------|------------------------------------------------|
+| Z to Y     | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$   |
+| Y to X     | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$ | $X \times \frac{Y}{P_x} \times \frac{Z}{P_y}$   |
+| X to Y     | $X \times \frac{Y}{P_x} \times \frac{Z}{P_y}$ | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$   |
+| Y to Z     | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$ | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$   |
 
-Our benchmarks did not show any significant performance difference between the contiguous and non-contiguous transpositions.
+Our benchmarks did not show any significant performance difference between the contiguous and non-contiguous transpositions. As a result, non-contiguous transposes can simplify implementation without compromising performance.
+
 
 ## Distributed Halo Exchange
 
@@ -160,12 +157,20 @@ Using cuDecomp, we can also change the communication backend to `NCCL`, `MPI`, o
 
 ### Halo Exchange Process
 
-For each axis, a slice of data of size equal to the halo extent is exchanged between neighboring subdomains.
+For each axis, `jaxDecomp` performs a bidirectional halo exchange, where a slice of width equal to the halo extent is exchanged with adjacent subdomains. This ensures that each subdomain has access to the necessary boundary data from its neighbors.
 
-| Send                                             | Receive                                               |
-|--------------------------------------------------|-----------------------------------------------------|
-| $[ \text{Size} - 2 \times \text{Halo extent} \rightarrow  extent\text{Size} - \text{Halo extent} ]$ is sent to the next  extentslice | $[ 0 \rightarrow \text{Halo extent} ]$ is received from the previous slice |
-| $[ \text{Halo extent} \rightarrow 2 \times \text{Halo extent} ]$ is sent to the previous slice | $[  extent\text{Size} - \text{Halo extent} \rightarrow \text{Size} ]$ is received from the next slice |
+The following table shows the index ranges involved in each send and receive operation:
+
+| Direction            | Sent Range (from current slice)                | Received Range (into current slice)                |
+|----------------------|------------------------------------------------|----------------------------------------------------|
+| To next neighbor     | $[\text{Size} - 2 \cdot h : \text{Size} - h]$  | $[0 : h]$ (from previous neighbor)                 |
+| To previous neighbor | $[h : 2 \cdot h]$                               | $[\text{Size} - h : \text{Size}]$ (from next neighbor) |
+
+Where :
+
+- $h$ is the **halo extent**  
+- `Size` is the local size of the array along the axis  
+- All ranges are in Python-style slice notation
 
 
 ![Visualization of the distributed halo exchange process in jaxDecomp](assets/halo-exchange.svg)
@@ -181,7 +186,45 @@ The cached data is properly destroyed at the end of the session, ensuring that n
 Additionally, jaxDecomp opportunistically creates inverse FFT (IFFT) plans when the FFT is JIT compiled. This leads to improved performance, as the IFFT plans are readily available for use, resulting in a 5x speedup in the IFFT JIT compilation process.
 
 
-# API description
+
+
+
+### Benchmarks
+
+The performance benchmarks for `jaxDecomp` were conducted on the Jean Zay supercomputer using NVIDIA A100 GPUs (each with 80 GB of memory). These tests evaluated both strong and weak scaling of large-scale 3D FFT operations across multiple nodes.
+
+We benchmarked both backends available in `jaxDecomp`: the cuDecomp-based implementation and a pure JAX-based backend. The benchmarks indicate that `cuDecomp` is slightly faster than native JAX, particularly for large, multi-node workloads.
+![*Strong scaling results on the Jean Zay supercomputer using A100 GPUs.*](assets/strong_scaling.png){ width=100% }
+
+![*Weak scaling results showing that jaxDecomp maintains high efficiency as both problem size and GPU count increase.*](assets/weak_scaling.png){ width=100% }
+
+
+
+# Stability and releases
+
+A lot of effort has been put into packaging and testing. We aim to have a 100% code coverage tests covering all four functionalities (FFT, Halo, (un)padding, and transposition). The code has been tester on the Jean Zay supercomputer, and we have been able to run simulations up to 64 GPUs.
+We also aim to package the code and release it on PyPI as built wheels for HPC clusters.
+
+# Acknowledgements
+
+This work was granted access to the HPC resources of IDRIS under the allocation 2024-AD011014949 made by GENCI. The computations in this work were, in part, run at facilities supported by the Scientific Computing Core at the Flatiron Institute, a division of the Simons Foundation.
+
+We also acknowledge the SCIPOL scipol.in2p3.fr funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation program (PI: Josquin Errard, Grant agreement No. 101044073).
+
+# References
+
+
+
+### Appendix
+
+Detailed examples demonstrating the usage of `jaxDecomp` are provided in the appendix:
+
+- **Appendix A**: Performing a distributed 3D FFT with `jaxDecomp`
+- **Appendix B**: Particle-Mesh (PM) simulation example using distributed FFTs
+
+
+
+## Appendix A: API description
 
 In this description, we show how to perform a distributed 3D FFT using `jaxDecomp` and `JAX`. The code snippet below demonstrates the initialization of the distributed mesh, the creation of the initial distributed tensor, and the execution of a distributed 3D FFT using `jaxDecomp`.
 
@@ -193,8 +236,8 @@ import jaxdecomp
 master_key = jax.random.PRNGKey(42)
 key = jax.random.split(master_key, size)[rank]
 pdims = (2 , 2)
-mesh_shape = [2048, 2048 , 2048]
-halo_size = (256 , 256 , 0)
+mesh_shape = [2048, 2048, 2048]
+halo_size = (256 , 256)
 
 # Create computing mesgh
 devices = mesh_utils.create_device_mesh(pdims)
@@ -221,14 +264,11 @@ def do_fft(z):
 
 
 def do_halo_exchange(z):
-    padding = ((halo_size[0] , halo_size[0]) , (halo_size[1] , halo_size[1]) , (0 , 0))
-    z = jaxdecomp.slice_pad(k_array , padding , pdims)
     z = jaxdecomp.halo_exchange(
                         z,
                         halo_extents=(halo_size // 2 , halo_size // 2),
                         halo_periods=(True, True, True),
                         reduce_halo=True)
-    z = jaxdecomp.slice_unpad(z , padding , pdims)
     return k_array
 
 def do_transpose(x_pencil):
@@ -240,27 +280,13 @@ def do_transpose(x_pencil):
 
 
 
-with mesh:
-    z = do_fft(z)
-    z = do_halo_exchange(z)
-    z = do_transpose(z)
+  z = do_fft(z)
+  z = do_halo_exchange(z)
+  z = do_transpose(z)
 
 ```
 
-### Benchmarks
-
-The performance benchmarks for jaxDecomp were conducted on the Jean Zay supercomputer using A100 GPUs (each with 80 GB of memory). These tests demonstrate the scalability and efficiency of jaxDecomp in handling large-scale FFT operations. The results show that jaxDecomp scales well even when distributed across multiple nodes, maintaining efficient performance as the number of GPUs and the problem size increase.
-
-In our comparisons, we measure jaxDecomp with the cuDecomp backend against a pure JAX FFT implementation. The benchmarks indicate that `cuDecomp` is slightly faster than native `JAX`.
-
-![*Figure 1: Strong scaling results on the Jean Zay supercomputer using A100 GPUs.*](assets/strong_scaling.png){ width=100% }
-
----
-
-![*Figure 2: Weak scaling results showing that jaxDecomp maintains high efficiency as both problem size and GPU count increase.*](assets/weak_scaling.png){ width=100% }
-
-
-# Example
+# Appendix B: Particle-Mesh Example (PM Forces)
 
 In the following example, the code computes gravitational forces using a Particle-Mesh (PM) scheme within a JAX-based environment. The code can run on multiple GPUs and nodes using `jaxDecomp` and `JAX` while remaining fully differentiable.
 
@@ -284,18 +310,4 @@ def pm_forces(density):
 A more detailed example of an LPT simulation can be found in the [jaxdecomp_lpt example](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/blob/main/examples/lpt_nbody_demo.py).
 
 
-![Figure 3: Visualization of an LPT density field at z=0 for a 2048³ grid generated using jaxDecomp.](assets/LPT_density_field_z0_2048.png){ width=65% }
-
-
-# Stability and releases
-
-A lot of effort has been put into packaging and testing. We aim to have a 100% code coverage tests covering all four functionalities (FFT, Halo, (un)padding, and transposition). The code has been tester on the Jean Zay supercomputer, and we have been able to run simulations up to 64 GPUs.
-We also aim to package the code and release it on PyPI as built wheels for HPC clusters.
-
-# Acknowledgements
-
-This work was granted access to the HPC resources of IDRIS under the allocation 2024-AD011014949 made by GENCI. The computations in this work were, in part, run at facilities supported by the Scientific Computing Core at the Flatiron Institute, a division of the Simons Foundation.
-
-We also acknowledge the SCIPOL scipol.in2p3.fr funded by the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation program (PI: Josquin Errard, Grant agreement No. 101044073).
-
-# References
+![Visualization of an LPT density field at z=0 for a 2048³ grid generated using jaxDecomp.](assets/LPT_density_field_z0_2048.png){ width=65% }
