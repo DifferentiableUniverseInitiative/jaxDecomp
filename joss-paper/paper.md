@@ -109,10 +109,10 @@ FFT2D($YX$) $\rightarrow$ TransposeYtoX $\rightarrow$ FFT($X$)
 
 For the other decomposition, with $P_y = 1$ and $P_x = 4$:
 
-| Step             | Decomposition                        | FFT Feasibility                       |
-|------------------|-----------------|--------|
-| Initial         | $\frac{X}{P_x} \times Y \times Z$ | Can do 1D FFT on Z or 2D FFT on YX     |
-| Transpose Z to Y| $Z \times \frac{X}{P_x} \times Y$ | Can only do 1D FFT on Y (already done) |
+| Step            | Decomposition                    | FFT Feasibility                    |
+|-----------------|----------------------------------|------------------------------------|
+| Initial         | $\frac{X}{P_x} \times Y \times Z$| Can do 1D FFT on Z or 2D FFT on YX |
+| Transpose Z to Y| $Z \times \frac{X}{P_x} \times Y$| Can only do 1D FFT on Y            |
 
 To achieve an X pencil from a Z pencil in a single transposition, a coordinate transformation can be applied, effectively reinterpreting the axes from XYZ to YZX. This approach allows for slab decomposition with a single transposition step.
 
@@ -168,8 +168,8 @@ The following table shows the index ranges involved in each send and receive ope
 
 Where :
 
-    - $h$ is the **halo extent**
-    - `Size` is the local size of the array along the axis
+ - $h$ is the **halo extent**
+ - `Size` is the local size of the array along the axis
 
 ![Visualization of the distributed halo exchange process in jaxDecomp](assets/halo-exchange.svg)
 
