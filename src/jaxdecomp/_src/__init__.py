@@ -1,4 +1,4 @@
-from jax.lib import xla_client
+import jax
 from jaxdecomplib import _jaxdecomp
 
 init = _jaxdecomp.init
@@ -35,7 +35,7 @@ from jaxdecomplib._jaxdecomp import (  # dummy line to avoid yapf reformatting
 
 # Registering ops for XLA
 for name, fn in _jaxdecomp.registrations().items():
-    xla_client.register_custom_call_target(name, fn, platform='gpu')
+    jax.ffi.register_ffi_target(name, fn, platform='CUDA', api_version=0)
 
 __all__ = [
     'init',
