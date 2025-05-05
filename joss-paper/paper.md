@@ -39,7 +39,7 @@ With the introduction of the unified JAX array API in JAX v0.4, along with power
 
 To address these challenges, we present `jaxDecomp`, a JAX library that wraps NVIDIA’s `cuDecomp` domain decomposition library \[@cuDecomp] and implements all operators as JAX primitives. `jaxDecomp` integrates specialized HPC code into the JAX ecosystem for key distributed operations, including 3D FFTs and halo exchanges. It scales seamlessly to multiple GPUs and nodes. By building on the distributed array strategy in JAX, it remains compatible with standard JAX transformations such as `jax.grad` and `jax.jit`, ensuring a Pythonic, differentiable interface. `jaxDecomp` supports NCCL, CUDA-Aware MPI, or NVSHMEM for inter-GPU data transposition, providing flexibility to match a range of HPC cluster configurations.
 
-In our benchmarks, `jaxDecomp` demonstrates strong performance while being trivial to install and use. It fills a critical gap by offering a lightweight and fully differentiable library for distributed 3D FFTs, halo exchanges, and related operations in JAX. This seamless approach simplifies large-scale simulation workflows, optimizes performance across diverse hardware setups, and eliminates the need for manual distributed FFT implementations—while preserving memory efficiency and ease of use.
+In our benchmarks, `jaxDecomp` demonstrates strong performance while being trivial to install and use. It fills a critical gap by offering a lightweight and fully differentiable library for distributed 3D FFTs, halo exchanges, and related operations in JAX. This seamless approach simplifies large-scale simulation workflows, optimizes performance across diverse hardware setups, and eliminates the need for manual distributed FFT implementations—eliminating the need for manual distributed FFT implementations, while maintaining compatibility with JAX transformations and ensuring ease of use.
 
 
 
@@ -121,7 +121,7 @@ Since `cuDecomp` does not support a direct transposition from a Z pencil to an X
 
 #### Slab Decomposition with Coordinate Transformation
 
-| Step            | Decomposition                     | Our Coordinates                   | Coordinate Step  | FFT Feasibility              |
+| Step            | Decomposition                     | Transformed Coordinates                   | Coordinate Step  | FFT Feasibility              |
 |-----------------|-----------------------------------|-----------------------------------|------------------|------------------------------|
 | Initial         | $\frac{Z}{P_x} \times X \times Y$ | $\frac{X}{P_x} \times Y \times Z$ | –                | 2D FFT on ZY                 |
 | Transpose Y to Z| $X \times \frac{Y}{P_x} \times Z$ | $Y \times \frac{Z}{P_x} \times X$ | Transpose Z to X | 1D (I)FFT on the last axis X |
@@ -199,7 +199,7 @@ We benchmarked both backends available in `jaxDecomp`: the `cuDecomp`-based impl
 
 # Stability and releases
 
-A lot of effort has been put into packaging and testing. We aim to have a 100% code coverage with tests covering all functionalities FFT, Halo Exchange, and transposition. The code has been tester on the Jean Zay supercomputer, wtih simulations distributed on 64 GPUs. The package is available on PyPI and can be installed via `pip install jaxDecomp`.
+A lot of effort has been put into packaging and testing. We aim to have a 100% code coverage with tests covering all core functionalities: FFT, halo exchange, and transposition. The code has been tested on the Jean Zay supercomputer, with simulations distributed on 64 GPUs. The package is available on PyPI and can be installed via `pip install jaxDecomp`.
 
 # Acknowledgements
 
@@ -244,7 +244,9 @@ sharding = jax.sharding.NamedSharding(mesh, P('z', 'y'))
 
 ### Initialize distributed tensors
 local_mesh_shape = [mesh_shape[0] // pdims[1], mesh_shape[1] // pdims[0], mesh_shape[2]]
-
+# Construct a global distributed array from per-device local arrays.
+# Each local array is initialized on a single device with shape = local_mesh_shape.
+# The global shape is specified by mesh_shape, and data is sharded using the provided sharding spec.
 z = jax.make_array_from_single_device_arrays(shape=mesh_shape, sharding=sharding, arrays=[jax.random.normal(key, local_mesh_shape)])
 
 
@@ -290,7 +292,7 @@ import jax.numpy as jnp
 import jaxdecomp
 
 def pm_forces(density):
-    # `density` is a 3D distributed array defined over the simulation mesh
+    # `density` is a 3D distributed array of shape (Nx, Ny, Nz) is defined over the simulation mesh distributed across (y, z) axe
     delta_k = jaxdecomp.fft.pfft3d(density)
     ky, kz, kx = jaxdecomp.fft.fftfreq3d(delta_k)
     kk = kx**2 + ky**2 + kz**2
