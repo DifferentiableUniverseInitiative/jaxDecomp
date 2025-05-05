@@ -30,11 +30,6 @@ bibliography: paper.bib
 
 ---
 
-
-Here is the updated version of the **Abstract**, incorporating the advisor’s handwritten corrections and suggestions from the image, as well as the formatting requirement to enclose `jaxDecomp` and `cuDecomp` in backticks (` `):
-
----
-
 # Abstract
 
 
@@ -53,8 +48,6 @@ In our benchmarks, `jaxDecomp` demonstrates strong performance while being trivi
 For numerical simulations on HPC systems, a distributed, easy-to-use, and differentiable FFT is essential for achieving peak performance and scalability. There is a pressing need for a solution that can serve as a true drop-in replacement for `jax.numpy.fft` and install seamlessly—especially for HPC users who must integrate efficiently with existing cluster infrastructure.
 
 In scientific applications such as cosmological particle mesh (PM) simulations, specialized frameworks like `FlowPM` [@FlowPM] built on `mesh-TensorFlow` [@TF-MESH] or JAX-based codes like `pmwd` [@pmwd] often struggle to scale beyond single-node memory limits or rely on manual distribution strategies. These challenges highlight the need for a scalable, high-performance approach to distributed FFTs that remains differentiable for advanced algorithms (like Hamiltonian Monte Carlo [@HMC] or the No-U-Turn Sampler (NUTS) [@NUTS]).
-
-`jaxDecomp` fills this gap by offering a lightweight JAX library that wraps NVIDIA’s `cuDecomp` for distributed 3D FFTs, halo exchanges, and related operations, all implemented as fully differentiable JAX primitives. This seamless approach lets users transparently switch between NCCL, MPI, or NVSHMEM backends, optimizing performance for the specific setup of each HPC cluster. As a result, `jaxDecomp` simplifies large-scale simulation workflows and eliminates the need to manually implement distributed FFTs in JAX, while preserving memory efficiency, compatibility with JAX transformations, and ease of use.
 
 
 # Implementation
@@ -128,11 +121,11 @@ Since `cuDecomp` does not support a direct transposition from a Z pencil to an X
 
 #### Slab Decomposition with Coordinate Transformation
 
-| Step               | Decomposition                        | Our Coordinates                          | Coordinate Step      | FFT Feasibility                        |
-|--------------------|--------------------------------------|------------------------------------------|----------------------|----------------------------------------|
-| Initial            | $\frac{Z}{P_x} \times X \times Y$     | $\frac{X}{P_x} \times Y \times Z$       | –                    | 2D FFT on ZY                    |
-| Transpose Y to Z   | $X \times \frac{Y}{P_x} \times Z$     | $Y \times \frac{Z}{P_x} \times X$       | Transpose Z to X     | 1D (I)FFT on the last axis X     |
-| Transpose Z to Y   | $\frac{Z}{P_x} \times X \times Y$     | $\frac{X}{P_x} \times Y \times Z$       | Transpose X to Z     | 2D IFFT on ZY                   |
+| Step            | Decomposition                     | Our Coordinates                   | Coordinate Step  | FFT Feasibility              |
+|-----------------|-----------------------------------|-----------------------------------|------------------|------------------------------|
+| Initial         | $\frac{Z}{P_x} \times X \times Y$ | $\frac{X}{P_x} \times Y \times Z$ | –                | 2D FFT on ZY                 |
+| Transpose Y to Z| $X \times \frac{Y}{P_x} \times Z$ | $Y \times \frac{Z}{P_x} \times X$ | Transpose Z to X | 1D (I)FFT on the last axis X |
+| Transpose Z to Y| $\frac{Z}{P_x} \times X \times Y$ | $\frac{X}{P_x} \times Y \times Z$ | Transpose X to Z | 2D IFFT on ZY                |
 
 This approach ensures that slab decomposition can be achieved in a single transposition step, enhancing computational efficiency.
 
@@ -146,7 +139,7 @@ This approach ensures that slab decomposition can be achieved in a single transp
 The following table illustrates the steps for a non-contiguous global transpose, where the $P_x$ and $P_y$ dimensions stay aligned with the `X`, `Y`, and `Z` axes, without any permutation:
 
 | Step       | Origin                                       | Target                                         |
-|------------|----------------------------------------------|------------------------------------------------|
+|--------------------------|-----------------------|-----------------------|
 | Transpose Z to Y     | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$   |
 | Transpose Y to X     | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$ | $X \times \frac{Y}{P_x} \times \frac{Z}{P_y}$   |
 | Transpose X to Y     | $X \times \frac{Y}{P_x} \times \frac{Z}{P_y}$ | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$   |
@@ -172,8 +165,8 @@ The following table shows the index ranges involved in each send and receive ope
 
 | Direction            | Sent Range (from current slice)                | Received Range (into current slice)                |
 |----------------------|------------------------------------------------|----------------------------------------------------|
-| To next neighbor     | $[S - 2 \cdot h : S - h]$  | $[0 : h]$ (from previous neighbor)                 |
-| To previous neighbor | $[h : 2 \cdot h]$                               | $[S - h : S]$ (from next neighbor) |
+| To next neighbor     | $[S - 2 * h : S - h]$  | $[0 : h]$ (from previous neighbor)                 |
+| To previous neighbor | $[h : 2 * h]$                               | $[S - h : S]$ (from next neighbor) |
 
 Where :
 
@@ -206,8 +199,7 @@ We benchmarked both backends available in `jaxDecomp`: the `cuDecomp`-based impl
 
 # Stability and releases
 
-A lot of effort has been put into packaging and testing. We aim to have a 100% code coverage tests covering all four functionalities (FFT, Halo, (un)padding, and transposition). The code has been tester on the Jean Zay supercomputer, and we have been able to run simulations up to 64 GPUs.
-We also aim to package the code and release it on PyPI as built wheels for HPC clusters.
+A lot of effort has been put into packaging and testing. We aim to have a 100% code coverage with tests covering all functionalities FFT, Halo Exchange, and transposition. The code has been tester on the Jean Zay supercomputer, wtih simulations distributed on 64 GPUs. The package is available on PyPI and can be installed via `pip install jaxDecomp`.
 
 # Acknowledgements
 
