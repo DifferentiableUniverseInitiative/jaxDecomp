@@ -197,6 +197,11 @@ We benchmarked both backends available in `jaxDecomp`: the `cuDecomp`-based impl
 
 A lot of effort has been put into packaging and testing. We aim to have a 100% code coverage with tests covering all core functionalities: FFT, halo exchange, and transposition. The code has been tested on the Jean Zay supercomputer, with simulations distributed on 64 GPUs. The package is available on PyPI and can be installed via `pip install jaxDecomp`.
 
+
+## Contributing and Community
+
+Contributions to `jaxDecomp` are welcome and encouraged. The project follows clear contribution guidelines and enforces consistent code formatting using `yapf` and `pre-commit` hooks. A detailed contributing guide, including setup instructions for development and formatting, is available in the [repository’s `CONTRIBUTING.md`](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/blob/main/CONTRIBUTING.md). Users and developers are invited to participate by opening issues, submitting pull requests, or joining discussions via GitHub.
+
 # Acknowledgements
 
 This work was granted access to the HPC resources of IDRIS under the allocation 2024-AD011014949 made by GENCI. The computations in this work were, in part, run at facilities supported by the Scientific Computing Core at the Flatiron Institute, a division of the Simons Foundation.
