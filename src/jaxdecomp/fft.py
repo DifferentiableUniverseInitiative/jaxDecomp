@@ -17,6 +17,8 @@ Shape = Sequence[int]
 __all__ = [
     'pfft3d',
     'pifft3d',
+    'fftfreq3d',
+    'rfftfreq3d',
 ]
 
 

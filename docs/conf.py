@@ -27,29 +27,8 @@ html_theme = 'alabaster'
 html_static_path = ['_static']
 
 
-def run_apidoc(_):
-    import os
 
-    from sphinx.ext.apidoc import main
-
-    main(
-        [
-            '--force',
-            '--module-first',
-            '--output-dir',
-            os.path.abspath('./_autosummary'),
-            os.path.abspath('../src/jaxdecomp'),
-        ]
-    )
-
-
-def setup(app):
-    app.connect('builder-inited', run_apidoc)
-
-
-import os
-import sys
-
+import os, sys
 sys.path.insert(0, os.path.abspath('../src'))
 
 extensions = [
@@ -57,12 +36,8 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
     'myst_parser',
-    # optionally 'sphinx.ext.napoleon',
-]
-
-myst_enable_extensions = [
-    'amsmath',
-    'dollarmath',
+    'sphinx.ext.viewcode', 
+    'sphinx.ext.napoleon',
 ]
 
 autosummary_generate = True

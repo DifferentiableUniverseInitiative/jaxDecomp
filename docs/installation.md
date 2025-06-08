@@ -19,7 +19,7 @@ The easiest way to get started with `jaxDecomp` is via PyPI using the pure JAX b
 2. **Install `jaxDecomp`**:
    ```bash
    pip install jaxdecomp
-````
+   ```
 
 This setup uses the JAX backend by default and is ideal for experimentation, development, and most common research workflows.
 
