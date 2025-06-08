@@ -56,7 +56,7 @@ This ensures that halo data is correctly aligned and avoids contamination from p
 
 ## Implementation Details
 
-Under the hood, `jaxDecomp` uses `jax.lax.ppermute` to perform efficient device-to-device communication in parallel. This enables halo exchange to work seamlessly with JAX transformations like `jit`, 
+Under the hood, `jaxDecomp` uses `jax.lax.ppermute` to perform efficient device-to-device communication in parallel. This enables halo exchange to work seamlessly with JAX transformations like `jit`,
 
 ## Summary
 
@@ -66,4 +66,3 @@ Under the hood, `jaxDecomp` uses `jax.lax.ppermute` to perform efficient device-
 * Internally built on `lax.ppermute`, compatible with JAX transformations.
 
 > 🔎 See the [Basic Usage](01-basic_usage.md) example to learn how to combine halo exchange with FFTs in practice.
-

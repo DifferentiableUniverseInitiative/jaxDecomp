@@ -38,7 +38,7 @@ The animation below shows how distributed pencils are rotated during a round-tri
 
 In most cases, both perform similarly. Non-contiguous transposes are useful when the logical layout (e.g., for halo exchange or diagnostics) should remain unchanged.
 
-it can be set to `False` by doing : 
+it can be set to `False` by doing :
 
 ```python
 jaxdecomp.config.update('transpose_axis_contiguous', False)

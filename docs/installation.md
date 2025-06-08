@@ -99,4 +99,3 @@ jaxdecomp.config.update('transpose_comm_backend', TRANSPOSE_COMM_MPI_A2A)
 ## Notes on Performance
 
 Backend performance varies widely depending on your cluster setup (e.g., interconnect type, topology, NCCL version, MPI implementation). We recommend benchmarking both backends on your target workload to determine the best configuration.
-

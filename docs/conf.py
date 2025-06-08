@@ -26,21 +26,30 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '**/__pycache__', '**/*.
 html_theme = 'alabaster'
 html_static_path = ['_static']
 
+
 def run_apidoc(_):
-    from sphinx.ext.apidoc import main
     import os
-    main([
-        '--force',
-        '--module-first',
-        '--output-dir', os.path.abspath('./_autosummary'),
-        os.path.abspath('../src/jaxdecomp'),
-    ])
+
+    from sphinx.ext.apidoc import main
+
+    main(
+        [
+            '--force',
+            '--module-first',
+            '--output-dir',
+            os.path.abspath('./_autosummary'),
+            os.path.abspath('../src/jaxdecomp'),
+        ]
+    )
+
 
 def setup(app):
     app.connect('builder-inited', run_apidoc)
 
 
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.abspath('../src'))
 
 extensions = [
@@ -52,8 +61,8 @@ extensions = [
 ]
 
 myst_enable_extensions = [
-    "amsmath",
-    "dollarmath",
+    'amsmath',
+    'dollarmath',
 ]
 
 autosummary_generate = True

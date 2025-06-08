@@ -87,7 +87,7 @@ This minimizes communication steps and improves performance in slab-based runs.
 
 In many workflows (e.g., halo exchanges), it’s useful to preserve the axis order across devices. `jaxDecomp` supports **non-contiguous transposes** that avoid changing the logical axis names.
 
-it can be set to `False` by doing : 
+it can be set to `False` by doing :
 
 ```python
 jaxdecomp.config.update('transpose_axis_contiguous', False)
