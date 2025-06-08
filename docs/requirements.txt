@@ -1,4 +1,4 @@
 Sphinx>=5,<6
 myst-parser>=0.18,<0.19
 sphinx-rtd-theme
-pip install -e
+pip install -e .
