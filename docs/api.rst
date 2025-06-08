@@ -6,7 +6,7 @@ FFT
 
 .. automodule:: jaxdecomp.fft
    :members:
-   
+
 
 Halo Exchange
 -----------------
@@ -17,4 +17,3 @@ Transpositions
 -----------------
 .. automodule:: jaxdecomp.transpose
    :members:
-

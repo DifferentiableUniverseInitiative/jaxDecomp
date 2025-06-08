@@ -27,8 +27,9 @@ html_theme = 'alabaster'
 html_static_path = ['_static']
 
 
+import os
+import sys
 
-import os, sys
 sys.path.insert(0, os.path.abspath('../src'))
 
 extensions = [
@@ -36,7 +37,7 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
     'myst_parser',
-    'sphinx.ext.viewcode', 
+    'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
 ]
 
