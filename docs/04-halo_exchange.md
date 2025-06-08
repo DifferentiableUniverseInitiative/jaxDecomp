@@ -12,7 +12,7 @@ For each axis, `jaxDecomp` performs a **bidirectional halo exchange**, meaning t
 
 This process is illustrated below:
 
-![Visualization of the distributed halo exchange process in `jaxDecomp`](assets/halo-exchange.svg)
+![Visualization of the distributed halo exchange process in `jaxDecomp`](../joss-paper/assets/halo-exchange.svg)
 
 ### Index Ranges
 
