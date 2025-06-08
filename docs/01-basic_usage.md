@@ -18,6 +18,13 @@ Below is a full example script illustrating:
 4. **Applying a halo exchange**
 5. **Gathering results** back to a single process
 
+⚠️ Before running, make sure:
+
+- You have MPI installed (e.g., OpenMPI or MPICH)
+- You’ve installed `jax[cuda]` or `jax[cpu]`
+- You’ve installed `jaxdecomp` (see [Installation](installation.md))
+
+
 ```python
 import jax
 from jax.experimental import mesh_utils, multihost_utils
@@ -50,8 +57,7 @@ local_shape = (
 )
 
 # Create a mesh of devices based on pdims
-devices = mesh_utils.create_device_mesh(pdims)
-mesh = Mesh(devices.T, axis_names=('x', 'y'))
+mesh = jax.make_mesh(pdims, axis_names=('x', 'y'))
 
 # Define the sharding spec
 sharding = NamedSharding(mesh, P('x', 'y'))

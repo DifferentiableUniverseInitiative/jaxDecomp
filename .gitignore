@@ -135,3 +135,8 @@ compile_commands.json
 CMakeFiles
 traces*
 notes.txt
+
+
+# Sphinx build
+docs/_build/
+docs/_autosummary/

@@ -43,7 +43,7 @@ rec_array = jaxdecomp.fft.pifft3d(a)
 exchanged = jaxdecomp.halo_exchange(a, halo_extents=(16, 16), halo_periods=(True, True))
 ```
 
-All these functions are **JIT**-compatible and support **automatic differentiation** (with [some caveats](docs/02-caveats.md)).
+All these functions are **JIT**-compatible and support **automatic differentiation** (with [some caveats](docs/06-caveats.md)).
 
 See also:
 - [Basic Usage](docs/01-basic_usage.md)
