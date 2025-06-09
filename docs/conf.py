@@ -44,6 +44,10 @@ extensions = [
 
 autosummary_generate = True
 
+myst_enable_extensions = [
+    "dollarmath",  # Enables $...$ and $$...$$
+    "amsmath"      # Enables AMS math environments
+]
 
 source_suffix = {
     '.rst': 'restructuredtext',
