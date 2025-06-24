@@ -33,16 +33,16 @@ bibliography: paper.bib
 # Summary
 
 
-`JAX` \[@JAX] has become a popular framework for machine learning and scientific computing, offering high performance and composability. However, its use in distributed high-performance computing (HPC) remains limited, primarily due to the complexity of inter-GPU communication and the lack of native support for large-scale parallel operations. Libraries like `MPI4JAX` \[@mpi4jax] and `cuFFTMP` have introduced partial solutions, but come with limitations: `MPI4JAX` is constrained by MPI buffer size limits, and `cuFFTMP` relies on explicit NVSHMEM integration, making it hard to use with the JAX ecosystem.
+`JAX` \[@JAX] has become a popular framework for machine learning and scientific computing, offering high performance, composability, and distributed computing. However, its use as a full-fledged high-performance computing (HPC) framework has remained limited due to partial native support of key distributed operations. Libraries such as `MPI4JAX` \[@mpi4jax] have proposed solutions to enable large-scale parallel computing, but come with limitations, in particular limited MPI buffer sizes and incompatibility with native JAX tensor distribution, making it hard to use with the JAX ecosystem.
 
-The introduction of JAX’s unified array API and tools like `pjit` and `custom_partitioning` has made SPMD-style programming more accessible. However, many common NumPy \[@NUMPY] and SciPy \[@SCIPY] operations still gather data onto a single device, which is particularly problematic for memory-intensive operations like 3D Fast Fourier Transforms (FFTs)—a core component in large-scale simulations across cosmology, fluid dynamics, and related fields.
+The introduction of JAX’s unified array API and tools like `pjit` and `custom_partitioning` has made SPMD-style programming more accessible. However, many HPC workflows require specialized operations such as optimized distributed Fast Fourier Transforms (FFTs) or halo exchange operations.
 
-We present `jaxDecomp`, a lightweight, fully differentiable JAX library for distributed 3D FFTs and halo exchanges. It wraps NVIDIA’s `cuDecomp` library \[@cuDecomp], exposing its functionality as JAX primitives while maintaining compatibility with JAX transformations like `jit` and `grad`. `jaxDecomp` supports various backends (NCCL, MPI, NVSHMEM) and scales efficiently across GPUs and nodes. Benchmarks show strong performance, and the library is simple to install and integrate—filling a critical gap in the HPC JAX ecosystem.
+To fill this gap, we present `jaxDecomp`, a fully differentiable JAX library for distributed 3D FFTs and halo exchanges. It wraps NVIDIA’s `cuDecomp` library \[@cuDecomp], exposing its functionality as JAX primitives while maintaining compatibility with JAX transformations like `jit` and `grad`. Beyond basic distributed FFTs, `jaxDecomp` provides halo exchange operations and automatic optimization of communication backends (NCCL, MPI, NVSHMEM) based on the target hardware. Benchmarks show competitive performance with JAX's native implementation while offering these additional HPC-specific features.
 
 
 # Statement of Need
 
-For numerical simulations on HPC systems, a distributed, easy-to-use, and differentiable FFT is essential for achieving peak performance and scalability. There is a pressing need for a solution that can serve as a true drop-in replacement for `jax.numpy.fft` and install seamlessly—especially for HPC users who must integrate efficiently with existing cluster infrastructure.
+For numerical simulations on HPC systems, a distributed, easy-to-use, and differentiable FFT is essential for achieving peak performance and scalability. While JAX now provides native distributed FFT support, this was introduced only very recently and lacks the specialized HPC features required by many applications. There is a pressing need for a solution that provides not only distributed FFTs but also halo exchanges, optimized communication backends, and seamless integration with existing cluster infrastructure.
 
 In scientific applications such as cosmological particle mesh (PM) simulations, specialized frameworks like `FlowPM` [@FlowPM] built on `mesh-TensorFlow` [@TF-MESH] or JAX-based codes like `pmwd` [@pmwd] often struggle to scale beyond single-node memory limits or rely on manual distribution strategies. These challenges highlight the need for a scalable, high-performance approach to distributed FFTs that remains differentiable for advanced algorithms (like Hamiltonian Monte Carlo [@HMC] or the No-U-Turn Sampler (NUTS) [@NUTS]).
 
@@ -160,10 +160,10 @@ For each axis, `jaxDecomp` performs a bidirectional halo exchange, where a slice
 
 The following table shows the index ranges involved in each send and receive operation:
 
-| Direction            | Sent Range (from current slice)                | Received Range (into current slice)                |
-|----------------------|------------------------------------------------|----------------------------------------------------|
-| To next neighbor     | $[S - 2 * h : S - h]$  | $[0 : h]$ (from previous neighbor)                 |
-| To previous neighbor | $[h : 2 * h]$                               | $[S - h : S]$ (from next neighbor) |
+| Direction            | Sent Range                | Received Range        |
+|----------------------|---------------------------|-----------------------|
+| To next neighbor     | $[S - 2h : S - h]$       | $[S - h : S]$         |
+| To previous neighbor | $[h : 2h]$                | $[0 : h]$             |
 
 Where :
 
@@ -174,16 +174,14 @@ Where :
 
 ### Efficient State Management
 
-jaxDecomp effectively manages the metadata and resources required for `cuDecomp` operations, ensuring both efficiency and performance. This is achieved through a caching mechanism that stores the necessary information for transpositions and halo exchanges, as well as cuFFT plans.
-
-jaxDecomp caches the metadata that `cuDecomp` uses for transpositions and halo exchanges, and also caches the cuFFT plans. All this data is created efficiently and lazily (i.e., it is generated only when needed during JAX's just-in-time (JIT) compilation of functions) and stored for subsequent use. This approach ensures that resources are allocated only when necessary, reducing overhead and improving performance.
+jaxDecomp effectively manages the metadata and resources required for `cuDecomp` operations through a caching mechanism that stores transposition and halo exchange metadata, as well as cuFFT plans. All data is created lazily during JAX's just-in-time (JIT) compilation and stored for subsequent use, ensuring resources are allocated only when necessary and reducing overhead.
 
 The cached data is properly destroyed at the end of the session, ensuring that no resources are wasted or leaked.
 
 Additionally, `jaxDecomp` opportunistically creates inverse FFT (IFFT) plans when the FFT is JIT compiled. This leads to improved performance, as the IFFT plans are readily available for use, resulting in a 5x speedup in the IFFT JIT compilation process.
 
 
-### Benchmarks
+# Benchmarks
 
 The performance benchmarks for `jaxDecomp` were conducted on the Jean Zay supercomputer using NVIDIA A100 GPUs (each with 80 GB of memory). These tests evaluated both strong and weak scaling of large-scale 3D FFT operations across multiple nodes.
 
@@ -293,13 +291,13 @@ import jax.numpy as jnp
 import jaxdecomp
 
 def pm_forces(density):
-    # `density` is a 3D distributed array of shape (Nx, Ny, Nz) is defined over the simulation mesh distributed across (y, z) axe
+    # `density` is a 3D distributed array of shape (Nx, Ny, Nz) is defined over the simulation mesh distributed across (y, z) axes
     delta_k = jaxdecomp.fft.pfft3d(density)
     ky, kz, kx = jaxdecomp.fft.fftfreq3d(delta_k)
     kk = kx**2 + ky**2 + kz**2
     laplace_kernel = jnp.where(kk == 0, 1.0, -1.0 / kk)
     pot_k = delta_k * laplace_kernel
-    forces = [-jaxdecomp.fft.ipfft3d(1j * k * pot_k) for k in [kx, ky, kz]]
+    forces = [-jaxdecomp.fft.pifft3d(1j * k * pot_k) for k in [kx, ky, kz]]
     return jnp.stack(forces, axis=-1)
 ```
 
