@@ -33,7 +33,7 @@ bibliography: paper.bib
 # Summary
 
 
-`JAX` \[@JAX] has become a popular framework for machine learning and scientific computing, offering high performance, composability, and distributed computing. However, its use as a full-fledged high-performance computing (HPC) framework has remained limited due to partial native support of key distributed operations. Libraries such as `MPI4JAX` \[@mpi4jax] have proposed solutions to enable large-scale parallel computing, but come with limitations, in particular limited MPI buffer sizes and incompatibility with native JAX tensor distribution, making it hard to use with the JAX ecosystem.
+`JAX` \[@JAX] has become a popular framework for machine learning and scientific computing, offering high performance, composability, and distributed computing. However, its use as a full-fledged high-performance computing (HPC) framework has remained limited due to partial native support of key distributed operations. Libraries like `MPI4JAX` \[@mpi4jax] enable large-scale parallelism but face limitations, notably buffer size constraints and incompatibility with native JAX distribution, making it hard to use with the JAX ecosystem.
 
 The introduction of JAX’s unified array API and tools like `pjit` and `custom_partitioning` has made SPMD-style programming more accessible. However, many HPC workflows require specialized operations such as optimized distributed Fast Fourier Transforms (FFTs) or halo exchange operations.
 
@@ -51,7 +51,7 @@ In scientific applications such as cosmological particle mesh (PM) simulations, 
 
 ## Distributed FFT Algorithm
 
-`jaxDecomp` performs 3D FFTs by applying 1D FFTs along the Z, Y, and X axes, with global transpositions between steps to ensure each axis is locally accessible. This structure enables local computation while distributing the workload across multiple devices.
+`jaxDecomp` performs 3D FFTs by applying 1D FFTs along the Z, Y, and X axes, with global transpositions between steps to ensure each axis is locally accessible. This enables fully local computation while distributing the workload across devices.
 
 The table below summarizes the FFT-transpose sequence:
 
@@ -75,7 +75,7 @@ The table below summarizes the FFT-transpose sequence:
 
 # Benchmarks
 
-The performance benchmarks for `jaxDecomp` were conducted on the Jean Zay supercomputer using NVIDIA A100 GPUs (each with 80 GB of memory). These tests evaluated both strong and weak scaling of large-scale 3D FFT operations across multiple nodes.
+Benchmarks were run on the Jean Zay supercomputer using NVIDIA A100 GPUs to evaluate strong and weak scaling of large 3D FFTs across nodes.
 
 We benchmarked both backends available in `jaxDecomp`: the `cuDecomp`-based implementation and a pure JAX-based backend. The benchmarks indicate that `cuDecomp` is slightly faster than native JAX, particularly for large, multi-node workloads.
 ![*Strong scaling results on the Jean Zay supercomputer using A100 GPUs.*](assets/strong_scaling.png){ width=100% }
@@ -90,7 +90,7 @@ A lot of effort has been put into packaging and testing. We aim to have a 100% c
 
 ## Contributing and Community
 
-Contributions to `jaxDecomp` are welcome and encouraged. The project follows clear contribution guidelines and enforces consistent code formatting using `yapf` and `pre-commit` hooks. A detailed contributing guide, including setup instructions for development and formatting, is available in the [repository’s `CONTRIBUTING.md`](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/blob/main/CONTRIBUTING.md). Users and developers are invited to participate by opening issues, submitting pull requests, or joining discussions via GitHub.
+Contributions are welcome. The project follows clear guidelines and uses `yapf` and `pre-commit` for formatting. A full guide is available in the [repository’s `CONTRIBUTING.md`](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/blob/main/CONTRIBUTING.md). Users and developers are invited to participate by opening issues, submitting pull requests, or joining discussions via GitHub.
 
 # Acknowledgements
 
@@ -103,7 +103,7 @@ We also acknowledge the SCIPOL scipol.in2p3.fr funded by the European Research C
 
 #### Particle-Mesh Example (PM Forces)
 
-In the following example, the code computes gravitational forces using a Particle-Mesh (PM) scheme within a JAX-based environment. The code can run on multiple GPUs and nodes using `jaxDecomp` and `JAX` while remaining fully differentiable.
+The following example computes gravitational forces using a Particle-Mesh (PM) scheme in a JAX-based setup, running on multiple GPUs with `jaxDecomp`. while remaining fully differentiable.
 
 This method is particularly relevant for particle-mesh simulations, as demonstrated in the PMWD paper. The PMWD framework is designed to run on a single GPU, but it is limited to grid sizes of up to 512 due to its inability to scale beyond a single device.
 
