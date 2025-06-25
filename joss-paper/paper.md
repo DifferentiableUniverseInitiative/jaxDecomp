@@ -49,21 +49,11 @@ In scientific applications such as cosmological particle mesh (PM) simulations, 
 
 # Implementation
 
-
 ## Distributed FFT Algorithm
 
-`jaxDecomp` performs 3D FFTs by applying 1D FFTs along the Z, Y, and X axes, interleaved with global transpositions to make each axis locally accessible in turn. This ensures that all FFTs operate on local data while enabling efficient scaling across devices.
+`jaxDecomp` performs 3D FFTs by applying 1D FFTs along the Z, Y, and X axes, with global transpositions between steps to ensure each axis is locally accessible. This structure enables local computation while distributing the workload across multiple devices.
 
-This sequence is illustrated in the following figure, showing both the forward and backward passes of the distributed 3D FFT:
-
-![Visualization of the 3D FFT algorithm in `jaxDecomp`, including forward and backward passes via axis-aligned transpositions and local 1D FFTs.](assets/fft.svg)
-
-### Data Transposition
-
-To enable local FFTs along each axis, `jaxDecomp` performs global transpositions between FFT stages. These transpositions combine local reshaping on each GPU with coordinated communication across the processor grid.
-
-The following table outlines the transposition steps involved in `jaxDecomp`, which rearranges the data to facilitate the distributed FFT process:
-
+The table below summarizes the FFT-transpose sequence:
 
 | Steps            | Operation Description                                    |
 |------------------|----------------------------------------------------------|
@@ -73,52 +63,15 @@ The following table outlines the transposition steps involved in `jaxDecomp`, wh
 | Transpose Y to X | Transpose to $Y \times Z \times X$. Partition the X-axis |
 | FFT along X      | Batched 1D FFT along the X-axis.                         |
 
+`jaxDecomp` uses pencil and slab decomposition schemes to distribute 3D data across GPUs. Each FFT step is followed by a transposition that reshapes and rebalances the array to align the next axis for local computation. More technical details, including decomposition strategies and axis layouts, are available in the [documentation](https://jaxdecomp.readthedocs.io/en/latest/02-decomposition.html).
 
-### Domain Decomposition
-
-Domain decomposition is a method used in parallel computing to break down large computational domains into smaller subdomains, facilitating efficient data distribution across multiple GPUs. In the context of 3D FFTs, domain decomposition and transpositions work together to manage the data, with transpositions gathering one axis while distributing another for the FFT.
-
-In `jaxDecomp`, the Z-axis always starts as undistributed, and the decomposition dimensions are defined by the $P_x$ and $P_y$ parameters.
-
-#### Pencil Decomposition
-
-In pencil decomposition, the 3D FFT is computed via three sequential 1D FFTs, each separated by a transposition that redistributes the data to align the next undistributed axis. The 1D FFT is performed on the fastest (inner-most) axis, which is undistributed at that stage of the algorithm (e.g., X for the X-pencil, Y for the Y-pencil, etc.).
-
-| Step             | Origin     | Target      |
-|----------------------|-----------------------------------------------|------------------------------------------|
-| Transpose Z to Y | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$| $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ |
-| Transpose Y to X | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$| $\frac{Y}{P_x} \times \frac{Z}{P_y} \times X$ |
-| Transpose X to Y | $\frac{Y}{P_x} \times \frac{Z}{P_y} \times X$| $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ |
-| Transpose Y to Z | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$| $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ |
-
-I refer the reader to the [jaxDecomp documentation](https://jaxdecomp.readthedocs.io/en/latest/02-decomposition.html) for more details on the domain decomposition process and how it is implemented in `jaxDecomp`.
 
 ## Distributed Halo Exchange
 
-The halo exchange is a crucial step in distributed programming. It allows the transfer of data on the edges of each slice to the adjacent slice, ensuring data consistency across the boundaries of distributed domains.
-
-Many applications in high-performance computing (HPC) use domain decomposition to distribute the workload among different processing elements. These applications, such as cosmological simulations, stencil computations, and PDE solvers, require the halo regions to be updated with data from neighboring regions. This process, often referred to as a halo update, is implemented using MPI (Message Passing Interface) on large machines.
-
-`cuDecomp` allows flexible selection of communication backends—`NCCL`, `MPI`, or `NVSHMEM`—based on hardware and cluster setup. `NCCL` is ideal for NVIDIA GPUs with NVLink, `MPI` suits traditional clusters, and `NVSHMEM` enables one-sided GPU communication for stencil-heavy workloads.
-
-
-### Halo Exchange Process
-
-For each axis, `jaxDecomp` performs a bidirectional halo exchange, where a slice of width equal to the halo extent is exchanged with adjacent subdomains. This ensures that each subdomain has access to the necessary boundary data from its neighbors.
-
-The following table shows the index ranges involved in each send and receive operation:
-
-| Direction            | Sent Range                | Received Range        |
-|----------------------|---------------------------|-----------------------|
-| To next neighbor     | $[S - 2h : S - h]$       | $[S - h : S]$         |
-| To previous neighbor | $[h : 2h]$                | $[0 : h]$             |
-
-Where :
-
- - $h$ is the **halo extent**
- - $S$ is the local size of the array along the axis
+`jaxDecomp` includes efficient halo exchange operations required in stencil computations and PDE solvers. It supports multiple backends—`NCCL`, `MPI`, and `NVSHMEM`—to adapt to different cluster architectures and communication patterns. Details and visuals of the halo exchange logic are available in the [documentation](https://jaxdecomp.readthedocs.io/en/latest/04-halo_exchange.html).
 
 ![Visualization of the distributed halo exchange process in `jaxDecomp`](assets/halo-exchange.svg)
+
 
 # Benchmarks
 
