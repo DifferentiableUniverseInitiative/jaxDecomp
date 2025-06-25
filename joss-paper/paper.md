@@ -91,59 +91,7 @@ In pencil decomposition, the 3D FFT is computed via three sequential 1D FFTs, ea
 | Transpose X to Y | $\frac{Y}{P_x} \times \frac{Z}{P_y} \times X$| $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$ |
 | Transpose Y to Z | $\frac{Z}{P_y} \times \frac{X}{P_x} \times Y$| $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ |
 
-#### Slab Decomposition
-
-For 1D decomposition (slabs), we need to perform one 1D FFT and one 2D FFT. 2D FFTs present additional challenges because both the fastest and second-fastest axes must remain undistributed.
-
-For example, consider a $(P_y, P_z)$ decomposition with $P_z = 1$:
-
-| Step            | Decomposition                     | FFT Feasibility                 |
-|-----------------|-----------------------------------|---------------------------------|
-| Initial         | $X \times \frac{Y}{P_y} \times Z$  | only 1D FFT on Z        |
-| Transpose Z to Y| $\frac{Z}{P_y} \times X \times Y$  | 2D FFT on YX            |
-
-This is the case for the YZ slab, where the transformation sequence enables the application of a 2D FFT on the YX plane:
-
-2D FFT($YX$) $\rightarrow$ TransposeYtoX $\rightarrow$ 1D FFT($X$)
-
-For the other decomposition, with $P_y = 1$ and $P_x = n$ where $n$ is the number of GPUs :
-
-| Step            | Decomposition                    | FFT Feasibility                    |
-|-----------------|----------------------------------|------------------------------------|
-| Initial         | $\frac{X}{P_x} \times Y \times Z$| 1D FFT on Z or 2D FFT on YX |
-| Transpose Z to Y| $Z \times \frac{X}{P_x} \times Y$| 1D FFT on Y                 |
-
-Since `cuDecomp` does not support a direct transposition from a Z pencil to an X pencil, we achieve this by applying a coordinate transformation that effectively reinterprets the axes from XYZ to YZX—enabling slab decomposition in a single transposition step.
-
-
-#### Slab Decomposition with Coordinate Transformation
-
-| Step            | Decomposition                     | Transformed Coordinates                   | Coordinate Step  | FFT Feasibility              |
-|-----------------|-----------------------------------|-----------------------------------|------------------|------------------------------|
-| Initial         | $\frac{Z}{P_x} \times X \times Y$ | $\frac{X}{P_x} \times Y \times Z$ | –                | 2D FFT on ZY                 |
-| Transpose Y to Z| $X \times \frac{Y}{P_x} \times Z$ | $Y \times \frac{Z}{P_x} \times X$ | Transpose Z to X | 1D (I)FFT on the last axis X |
-| Transpose Z to Y| $\frac{Z}{P_x} \times X \times Y$ | $\frac{X}{P_x} \times Y \times Z$ | Transpose X to Z | 2D IFFT on ZY                |
-
-This approach ensures that slab decomposition can be achieved in a single transposition step, enhancing computational efficiency.
-
-
-2D FFT($ZY$) $\rightarrow$ TransposeZtoX $\rightarrow$ 1D FFT($X$)
-
-### Non-Contiguous Global Transpose
-
-`jaxDecomp` also supports non-contiguous transpositions, where the transposition is performed globally across devices, without requiring intermediate local reshuffling on each GPU. In this case, the $P_x$ and $P_y$ dimensions remain associated with their original axes throughout the process, maintaining the same axis order (`X`, `Y`, `Z`). This method is particularly useful in workflows that benefit from preserving the global logical layout of the array, such as halo exchanges.
-
-The following table illustrates the steps for a non-contiguous global transpose, where the $P_x$ and $P_y$ dimensions stay aligned with the `X`, `Y`, and `Z` axes, without any permutation:
-
-| Step       | Origin                                       | Target                                         |
-|--------------------------|-----------------------|-----------------------|
-| Transpose Z to Y     | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$ | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$   |
-| Transpose Y to X     | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$ | $X \times \frac{Y}{P_x} \times \frac{Z}{P_y}$   |
-| Transpose X to Y     | $X \times \frac{Y}{P_x} \times \frac{Z}{P_y}$ | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$   |
-| Transpose Y to Z     | $\frac{X}{P_x} \times Y \times \frac{Z}{P_y}$ | $\frac{X}{P_x} \times \frac{Y}{P_y} \times Z$   |
-
-Our benchmarks did not show any significant performance difference between the contiguous and non-contiguous transpositions. As a result, non-contiguous transposes can simplify implementation without compromising performance.
-
+I refer the reader to the [jaxDecomp documentation](https://jaxdecomp.readthedocs.io/en/latest/02-decomposition.html) for more details on the domain decomposition process and how it is implemented in `jaxDecomp`.
 
 ## Distributed Halo Exchange
 
@@ -209,78 +157,7 @@ We also acknowledge the SCIPOL scipol.in2p3.fr funded by the European Research C
 
 ### Appendix
 
-Detailed examples demonstrating the usage of `jaxDecomp` are provided in the appendix:
-
-- **Appendix A**: Performing a distributed 3D FFT with `jaxDecomp`
-- **Appendix B**: Particle-Mesh (PM) simulation example using distributed FFTs
-
-
-
-## Appendix A: API description
-
-In this description, we show how to perform a distributed 3D FFT using `jaxDecomp` and `JAX`. The code snippet below demonstrates the initialization of the distributed mesh, the creation of the initial distributed tensor, and the execution of a distributed 3D FFT using `jaxDecomp`.
-
-```python
-import jax
-
-jax.distributed.initialize()
-import jaxdecomp
-
-P = jax.sharding.PartitionSpec
-
-rank = jax.process_index()
-size = jax.process_count()
-# Setup
-master_key = jax.random.PRNGKey(42)
-key = jax.random.split(master_key, size)[rank]
-pdims = (2, 2)
-mesh_shape = [2048, 2048, 2048]
-halo_size = (128, 128)
-
-# Create computing mesh
-mesh = jax.make_mesh(pdims, ('y', 'z'))
-sharding = jax.sharding.NamedSharding(mesh, P('z', 'y'))
-
-### Initialize distributed tensors
-local_mesh_shape = [mesh_shape[0] // pdims[1], mesh_shape[1] // pdims[0], mesh_shape[2]]
-# Construct a global distributed array from per-device local arrays.
-# Each local array is initialized on a single device with shape = local_mesh_shape.
-# The global shape is specified by mesh_shape, and data is sharded using the provided sharding spec.
-z = jax.make_array_from_single_device_arrays(shape=mesh_shape, sharding=sharding, arrays=[jax.random.normal(key, local_mesh_shape)])
-
-
-@jax.jit
-def do_fft(z):
-    k_array = jaxdecomp.fft.pfft3d(z)
-    # element wise operation is distributed automatically by jax
-    k_array = k_array * 2
-    r_array = jaxdecomp.fft.pifft3d(k_array).real
-    return r_array
-
-
-def do_halo_exchange(z):
-    z = jaxdecomp.halo_exchange(z, halo_extents=halo_size, halo_periods=(True, True))
-    return z
-
-
-def do_transpose(x_pencil):
-    y_pencil = jaxdecomp.transposeXtoY(x_pencil)
-    z_pencil = jaxdecomp.transposeYtoZ(y_pencil)
-    y_pencil = jaxdecomp.transposeZtoY(z_pencil)
-    x_pencil = jaxdecomp.transposeYtoX(y_pencil)
-    return x_pencil
-
-
-# Perform a distributed 3D FFT, scale in Fourier space, and inverse FFT
-z = do_fft(z)
-# Perform halo exchange to update boundary values with neighbors
-z = do_halo_exchange(z)
-# Apply a round-trip of distributed transpositions (X → Y → Z → Y → X)
-z = do_transpose(z)
-
-```
-
-# Appendix B: Particle-Mesh Example (PM Forces)
+#### Particle-Mesh Example (PM Forces)
 
 In the following example, the code computes gravitational forces using a Particle-Mesh (PM) scheme within a JAX-based environment. The code can run on multiple GPUs and nodes using `jaxDecomp` and `JAX` while remaining fully differentiable.
 
@@ -306,5 +183,6 @@ A more detailed example of an LPT simulation can be found in the [jaxdecomp_lpt 
 
 ![Visualization of an LPT density field at z=0 for a 2048³ grid generated using `jaxDecomp`.](assets/LPT_density_field_z0_2048.png){ width=65% }
 
+I refer the reader to the full API description in the [jaxDecomp documentation](https://jaxdecomp.readthedocs.io/en/latest/01-basic_usage.html).
 
 # References
