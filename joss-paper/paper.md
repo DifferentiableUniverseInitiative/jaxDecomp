@@ -49,18 +49,18 @@ In scientific applications such as cosmological particle mesh (PM) simulations, 
 
 # Implementation
 
+
 ## Distributed FFT Algorithm
 
-The distributed FFT in `jaxDecomp` is performed by applying a series of 1D FFTs along each of the three axes of a 3D array: first along the Z-axis, then the Y-axis, and finally the X-axis. Local 1D FFTs are performed along the axis that is currently undistributed, while global transpositions are used to realign the data so that each axis becomes undistributed in turn. This sequence ensures that each FFT operates locally, with global transpositions enabling the redistribution of data between steps.
+`jaxDecomp` performs 3D FFTs by applying 1D FFTs along the Z, Y, and X axes, interleaved with global transpositions to make each axis locally accessible in turn. This ensures that all FFTs operate on local data while enabling efficient scaling across devices.
 
 This sequence is illustrated in the following figure, showing both the forward and backward passes of the distributed 3D FFT:
 
 ![Visualization of the 3D FFT algorithm in `jaxDecomp`, including forward and backward passes via axis-aligned transpositions and local 1D FFTs.](assets/fft.svg)
 
-
 ### Data Transposition
 
-To effectively implement the distributed FFT, the data must be transposed between each FFT operation, ensuring the correct alignment of the distributed and undistributed axes. These transpositions involve both local cyclic adjustments on each GPU and global communications across the processor grid.
+To enable local FFTs along each axis, `jaxDecomp` performs global transpositions between FFT stages. These transpositions combine local reshaping on each GPU with coordinated communication across the processor grid.
 
 The following table outlines the transposition steps involved in `jaxDecomp`, which rearranges the data to facilitate the distributed FFT process:
 
@@ -99,7 +99,7 @@ The halo exchange is a crucial step in distributed programming. It allows the tr
 
 Many applications in high-performance computing (HPC) use domain decomposition to distribute the workload among different processing elements. These applications, such as cosmological simulations, stencil computations, and PDE solvers, require the halo regions to be updated with data from neighboring regions. This process, often referred to as a halo update, is implemented using MPI (Message Passing Interface) on large machines.
 
-Using `cuDecomp`, we can flexibly switch the communication backend between `NCCL`, `MPI`, or `NVSHMEM`, depending on the target hardware and cluster configuration. Some HPC systems are highly optimized for `NCCL`—particularly those with NVIDIA GPUs and fast NVLink interconnects—while others are designed around traditional `MPI`-based infrastructure. `NVSHMEM`, on the other hand, enables one-sided communication and memory sharing between GPUs, which can reduce synchronization overhead and improve performance in certain stencil or halo-exchange-heavy workloads.
+`cuDecomp` allows flexible selection of communication backends—`NCCL`, `MPI`, or `NVSHMEM`—based on hardware and cluster setup. `NCCL` is ideal for NVIDIA GPUs with NVLink, `MPI` suits traditional clusters, and `NVSHMEM` enables one-sided GPU communication for stencil-heavy workloads.
 
 
 ### Halo Exchange Process
@@ -119,15 +119,6 @@ Where :
  - $S$ is the local size of the array along the axis
 
 ![Visualization of the distributed halo exchange process in `jaxDecomp`](assets/halo-exchange.svg)
-
-### Efficient State Management
-
-jaxDecomp effectively manages the metadata and resources required for `cuDecomp` operations through a caching mechanism that stores transposition and halo exchange metadata, as well as cuFFT plans. All data is created lazily during JAX's just-in-time (JIT) compilation and stored for subsequent use, ensuring resources are allocated only when necessary and reducing overhead.
-
-The cached data is properly destroyed at the end of the session, ensuring that no resources are wasted or leaked.
-
-Additionally, `jaxDecomp` opportunistically creates inverse FFT (IFFT) plans when the FFT is JIT compiled. This leads to improved performance, as the IFFT plans are readily available for use, resulting in a 5x speedup in the IFFT JIT compilation process.
-
 
 # Benchmarks
 
