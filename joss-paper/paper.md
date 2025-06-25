@@ -79,9 +79,11 @@ The table below summarizes the FFT-transpose sequence:
 Benchmarks were run on the Jean Zay supercomputer using NVIDIA A100 GPUs to evaluate strong and weak scaling of large 3D FFTs across nodes.
 
 We benchmarked both backends in `jaxDecomp`; `cuDecomp` was slightly faster than native JAX, especially on large, multi-node workloads.
-![*Strong scaling results on the Jean Zay supercomputer using A100 GPUs.*](assets/strong_scaling.png){ width=100% }
 
-![*Weak scaling results showing that `jaxDecomp` maintains high efficiency as both problem size and GPU count increase.*](assets/weak_scaling.png){ width=100% }
+
+![Strong scaling results on the Jean Zay supercomputer using A100 GPUs.](assets/strong_scaling.png){ width=100% }
+
+![Weak scaling results showing that `jaxDecomp` maintains high efficiency as both problem size and GPU count increase.](assets/weak_scaling.png){ width=100% }
 
 
 # Stability and releases
