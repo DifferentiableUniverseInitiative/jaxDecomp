@@ -70,7 +70,7 @@ def _un_normalize_fft(s: tuple[int, ...], fft_type: FftType) -> Array:
     if fft_type in FORWARD_FFTs:
         return jnp.array(1)
     else:
-        return jnp.array(prod(s))
+        return jnp.array(prod(s) * 1.0)
 
 
 def fftn(a: Array, fft_type: FftType, adjoint: bool) -> Array:

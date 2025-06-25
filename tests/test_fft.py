@@ -59,11 +59,6 @@ class TestFFTs:
         print(f'orignal shard {global_array.sharding.spec}')
         print(f'sharding of karray {karray.sharding.spec}')
         print(f'sharding of rec_array {rec_array.sharding.spec}')
-
-        # assert compare_sharding(karray.sharding, dist_jax_karray.sharding)
-        # assert compare_sharding(rec_array.sharding, dist_jax_rec_array.sharding)
-        # assert compare_sharding(global_array.sharding, dist_jax_rec_array.sharding)
-
         # Check the forward FFT
         gathered_array = all_gather(global_array)
         gathered_karray = all_gather(karray)
@@ -272,6 +267,23 @@ class TestFFTFreq:
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_jax_fft(self, pdims, global_shape, local_transpose):
         self.run_test(pdims, global_shape, local_transpose, backend='jax')
+
+
+@pytest.mark.skip(reason='Huge FFT test might not be suitable for all environments')
+@pytest.mark.parametrize('pdims', decomp)
+def test_huge_fft(pdims):
+    with jax.experimental.disable_x64():
+        global_shape = (2048,) * 3  # Large cube to test integer overflow
+        global_array, mesh = create_spmd_array(global_shape, pdims)
+        # Perform distributed FFT
+        karray = jaxdecomp.fft.pfft3d(global_array, backend='jax')
+        # Perform inverse FFT
+        rec_array = jaxdecomp.fft.pifft3d(karray, backend='jax')
+        print('WORKED')
+        # Check the reconstruction
+        assert_allclose(global_array.real, rec_array.real, rtol=1e-5, atol=1e-5)
+        assert_allclose(global_array.imag, rec_array.imag, rtol=1e-5, atol=1e-5)
+        print('Reconstruction check OK!')
 
 
 @pytest.mark.parametrize('pdims', decomp)
