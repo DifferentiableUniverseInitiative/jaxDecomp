@@ -269,7 +269,7 @@ class TestFFTFreq:
         self.run_test(pdims, global_shape, local_transpose, backend='jax')
 
 
-@pytest.mark.skip(reason='Huge FFT test might not be suitable for all environments')
+@pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
 @pytest.mark.parametrize('pdims', decomp)
 def test_huge_fft(pdims):
     with jax.experimental.disable_x64():
