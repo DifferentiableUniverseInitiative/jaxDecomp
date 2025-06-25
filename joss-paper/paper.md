@@ -33,11 +33,12 @@ bibliography: paper.bib
 # Summary
 
 
-`JAX` \[@JAX] has become a popular framework for machine learning and scientific computing, offering high performance, composability, and distributed computing. However, its use as a full-fledged high-performance computing (HPC) framework has remained limited due to partial native support of key distributed operations. Libraries like `MPI4JAX` \[@mpi4jax] enable large-scale parallelism but face limitations, notably buffer size constraints and incompatibility with native JAX distribution, making it hard to use with the JAX ecosystem.
+`JAX` \[@JAX] has become a popular framework for machine learning and scientific computing, offering high performance, composability, and distributed computing. However, its use as a full HPC framework has been limited by partial native support for key distributed operations. Libraries like `MPI4JAX` \[@mpi4jax] enable large-scale parallelism but face limitations, notably buffer size constraints and incompatibility with native JAX distribution, making it hard to use with the JAX ecosystem.
 
 The introduction of JAX’s unified array API and tools like `pjit` and `custom_partitioning` has made SPMD-style programming more accessible. However, many HPC workflows require specialized operations such as optimized distributed Fast Fourier Transforms (FFTs) or halo exchange operations.
 
-To fill this gap, we present `jaxDecomp`, a fully differentiable JAX library for distributed 3D FFTs and halo exchanges. It wraps NVIDIA’s `cuDecomp` library \[@cuDecomp], exposing its functionality as JAX primitives while maintaining compatibility with JAX transformations like `jit` and `grad`. Beyond basic distributed FFTs, `jaxDecomp` provides halo exchange operations and automatic optimization of communication backends (NCCL, MPI, NVSHMEM) based on the target hardware. Benchmarks show competitive performance with JAX's native implementation while offering these additional HPC-specific features.
+To fill this gap, we present `jaxDecomp`, a fully differentiable JAX library for distributed 3D FFTs and halo exchanges. It wraps NVIDIA’s `cuDecomp` library \[@cuDecomp], exposing its functionality as JAX primitives while maintaining compatibility with JAX transformations like `jit` and `grad`. Beyond basic distributed FFTs, `jaxDecomp` provides halo exchange operations and automatic optimization of communication backends (NCCL, MPI, NVSHMEM) based on the target hardware. Benchmarks show competitive performance with native JAX while adding HPC-specific features.
+
 
 
 # Statement of Need
@@ -77,7 +78,7 @@ The table below summarizes the FFT-transpose sequence:
 
 Benchmarks were run on the Jean Zay supercomputer using NVIDIA A100 GPUs to evaluate strong and weak scaling of large 3D FFTs across nodes.
 
-We benchmarked both backends available in `jaxDecomp`: the `cuDecomp`-based implementation and a pure JAX-based backend. The benchmarks indicate that `cuDecomp` is slightly faster than native JAX, particularly for large, multi-node workloads.
+We benchmarked both backends in `jaxDecomp`; `cuDecomp` was slightly faster than native JAX, especially on large, multi-node workloads.
 ![*Strong scaling results on the Jean Zay supercomputer using A100 GPUs.*](assets/strong_scaling.png){ width=100% }
 
 ![*Weak scaling results showing that `jaxDecomp` maintains high efficiency as both problem size and GPU count increase.*](assets/weak_scaling.png){ width=100% }
@@ -85,7 +86,7 @@ We benchmarked both backends available in `jaxDecomp`: the `cuDecomp`-based impl
 
 # Stability and releases
 
-A lot of effort has been put into packaging and testing. We aim to have a 100% code coverage with tests covering all core functionalities: FFT, halo exchange, and transposition. The code has been tested on the Jean Zay supercomputer, with simulations distributed on 64 GPUs. The package is available on PyPI and can be installed via `pip install jaxDecomp`.
+We aim for 100% test coverage across all core functionalities: FFT, halo exchange, and transposition. The code has been tested on the Jean Zay supercomputer, with simulations distributed on 64 GPUs. The package is available on PyPI and can be installed via `pip install jaxDecomp`.
 
 
 ## Contributing and Community
@@ -103,9 +104,8 @@ We also acknowledge the SCIPOL scipol.in2p3.fr funded by the European Research C
 
 #### Particle-Mesh Example (PM Forces)
 
-The following example computes gravitational forces using a Particle-Mesh (PM) scheme in a JAX-based setup, running on multiple GPUs with `jaxDecomp`. while remaining fully differentiable.
+The following example computes gravitational forces using a Particle-Mesh (PM) scheme in a JAX-based setup, running on multiple GPUs with `jaxDecomp`.while remaining fully differentiable.
 
-This method is particularly relevant for particle-mesh simulations, as demonstrated in the PMWD paper. The PMWD framework is designed to run on a single GPU, but it is limited to grid sizes of up to 512 due to its inability to scale beyond a single device.
 
 ```python
 import jax.numpy as jnp
