@@ -1,5 +1,5 @@
 ---
-title: 'jaxDecomp : JAX Library for 3D Domain Decomposition and Parallel FFTs'
+title: 'jaxDecomp: JAX Library for 3D Domain Decomposition and Parallel FFTs'
 tags:
   - Jax
   - CUDA
@@ -33,11 +33,11 @@ bibliography: paper.bib
 # Summary
 
 
-`JAX` \[@JAX] has become a popular framework for machine learning and scientific computing, offering high performance, composability, and distributed computing. However, its use as a full HPC framework has been limited by partial native support for key distributed operations. Libraries like `MPI4JAX` \[@mpi4jax] enable large-scale parallelism but face limitations, notably buffer size constraints and incompatibility with native JAX distribution, making it hard to use with the JAX ecosystem.
+`JAX` [@JAX] has become a popular framework for machine learning and scientific computing, offering high performance, composability, and distributed computing. However, its use as a full HPC framework has been limited by partial native support for key distributed operations. Libraries like `MPI4JAX` [@mpi4jax] enable large-scale parallelism but face limitations, notably buffer size constraints and incompatibility with native JAX distribution, making it hard to use with the JAX ecosystem.
 
 The introduction of JAX’s unified array API and tools like `pjit` and `custom_partitioning` has made SPMD-style programming more accessible. However, many HPC workflows require specialized operations such as optimized distributed Fast Fourier Transforms (FFTs) or halo exchange operations.
 
-To fill this gap, we present `jaxDecomp`, a fully differentiable JAX library for distributed 3D FFTs and halo exchanges. It wraps NVIDIA’s `cuDecomp` library \[@cuDecomp], exposing its functionality as JAX primitives while maintaining compatibility with JAX transformations like `jit` and `grad`. Beyond basic distributed FFTs, `jaxDecomp` provides halo exchange operations and automatic optimization of communication backends (NCCL, MPI, NVSHMEM) based on the target hardware. Benchmarks show competitive performance with native JAX while adding HPC-specific features.
+To fill this gap, we present `jaxDecomp`, a fully differentiable JAX library for distributed 3D FFTs and halo exchanges. It wraps NVIDIA’s `cuDecomp` library [@cuDecomp], exposing its functionality as JAX primitives while maintaining compatibility with JAX transformations like `jit` and `grad`. Beyond basic distributed FFTs, `jaxDecomp` provides halo exchange operations and automatic optimization of communication backends (NCCL, MPI, NVSHMEM) based on the target hardware. Benchmarks show competitive performance with native JAX while adding HPC-specific features.
 
 
 
@@ -45,7 +45,7 @@ To fill this gap, we present `jaxDecomp`, a fully differentiable JAX library for
 
 For numerical simulations on HPC systems, a distributed, easy-to-use, and differentiable FFT is essential for achieving peak performance and scalability. While JAX now provides native distributed FFT support, this was introduced only very recently and lacks the specialized HPC features required by many applications. There is a pressing need for a solution that provides not only distributed FFTs but also halo exchanges, optimized communication backends, and seamless integration with existing cluster infrastructure.
 
-In scientific applications such as cosmological particle mesh (PM) simulations, specialized frameworks like `FlowPM` \[@FlowPM] built on `mesh-TensorFlow` \[@TF-MESH] or JAX-based codes like `pmwd` \[@pmwd] often struggle to scale beyond single-node memory limits or rely on manual distribution strategies. These challenges highlight the need for a scalable, high-performance approach to distributed FFTs that remains differentiable for advanced algorithms (like Hamiltonian Monte Carlo \[@HMC] or the No-U-Turn Sampler (NUTS) \[@NUTS]).
+In scientific applications such as cosmological particle mesh (PM) simulations, specialized frameworks like `FlowPM` [@FlowPM] built on `mesh-TensorFlow` [@TF-MESH] or JAX-based codes like `pmwd` [@pmwd] often struggle to scale beyond single-node memory limits or rely on manual distribution strategies. These challenges highlight the need for a scalable, high-performance approach to distributed FFTs that remains differentiable for advanced algorithms (like Hamiltonian Monte Carlo [@HMC] or the No-U-Turn Sampler (NUTS) [@NUTS]).
 
 
 # Implementation
