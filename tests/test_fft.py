@@ -7,6 +7,7 @@ from conftest import (
 
 initialize_distributed()
 import jax  # noqa: E402
+
 size = jax.device_count()
 
 jax.config.update('jax_enable_x64', True)
@@ -35,7 +36,7 @@ local_transpose = [True, False]
 
 
 class TestFFTs:
-    def run_test(self, pdims, global_shape, local_transpose, backend , use_shardy):
+    def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy):
         print('*' * 80)
         print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} use shardy {use_shardy}')
         if pdims[0] == 1:
@@ -48,7 +49,6 @@ class TestFFTs:
 
         jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
-
 
         global_array, mesh = create_spmd_array(global_shape, pdims)
 
@@ -315,6 +315,7 @@ def test_vmap(pdims, use_shardy):
 
     assert batched_out.shape == (3, 8, 8, 8)
     assert batched_out[0].sharding.is_equivalent_to(fft_sharding, ndim=3)
+
 
 @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions

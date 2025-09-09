@@ -410,6 +410,7 @@ def infer_sharding_from_operands(
 
     return NamedSharding(input_sharding.mesh, P(*transposed_specs))
 
+
 @spmd_fft_primitive.def_sharding_rule
 def fft_sharding_rule_producer(
     fft_type: FftType,
@@ -418,14 +419,13 @@ def fft_sharding_rule_producer(
     arg_infos,
     result_infos,
 ) -> str:
-
     del result_infos
 
-    spec = ("i" , "j", "k") # einsum spec for shardy
-    transposed_specs = get_output_specs(fft_type, spec, mesh=mesh, backend='jax')
+    spec = ('i', 'j', 'k')  # einsum spec for shardy
+    transposed_specs: tuple[str] = get_output_specs(fft_type, spec, mesh=mesh, backend='jax')  # type: ignore
     einsum_in = ' '.join(spec)
     einsum_out = ' '.join(transposed_specs)
-    
+
     operand = arg_infos[0]
     if operand.rank == 3:
         pass

@@ -263,7 +263,7 @@ class HaloPrimitive(BasePrimitive):
     ) -> str:
         """
         Produces sharding rule for halo exchange operation for Shardy partitioner.
-        
+
         Parameters
         ----------
         halo_extents : HaloExtentType
@@ -274,9 +274,9 @@ class HaloPrimitive(BasePrimitive):
             Mesh configuration for the distributed halo exchange.
         arg_infos : Tuple[ShapeDtypeStruct]
             Information about input arguments.
-        result_infos : Tuple[ShapedArray]  
+        result_infos : Tuple[ShapedArray]
             Information about result.
-            
+
         Returns
         -------
         str
@@ -284,9 +284,9 @@ class HaloPrimitive(BasePrimitive):
         """
         del result_infos, halo_extents, halo_periods, mesh
 
-        spec = ("i", "j", "k")  # einsum spec for shardy
+        spec = ('i', 'j', 'k')  # einsum spec for shardy
         einsum_spec = ' '.join(spec)
-        
+
         operand = arg_infos[0]
         if operand.rank == 3:
             pass

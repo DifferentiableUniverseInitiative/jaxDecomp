@@ -304,7 +304,7 @@ def halo_sharding_rule_producer(
 ) -> str:
     """
     Produces sharding rule for halo exchange operation for Shardy partitioner.
-    
+
     Parameters
     ----------
     halo_extents : HaloExtentType
@@ -315,9 +315,9 @@ def halo_sharding_rule_producer(
         Mesh configuration for the distributed halo exchange.
     arg_infos : Tuple
         Information about input arguments.
-    result_infos : Tuple  
+    result_infos : Tuple
         Information about result.
-        
+
     Returns
     -------
     str
@@ -325,9 +325,9 @@ def halo_sharding_rule_producer(
     """
     del result_infos, halo_extents, halo_periods, mesh
 
-    spec = ("i", "j", "k")  # einsum spec for shardy
+    spec = ('i', 'j', 'k')  # einsum spec for shardy
     einsum_spec = ' '.join(spec)
-    
+
     operand = arg_infos[0]
     if operand.rank == 3:
         pass

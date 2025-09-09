@@ -319,11 +319,10 @@ class FFTPrimitive(BasePrimitive):
         arg_infos: tuple[ShapeDtypeStruct],
         result_infos: tuple[ShapedArray],
     ) -> NamedSharding:
-        
         del adjoint, result_infos
 
-        spec = ("i" , "j", "k") # einsum spec for shardy
-        transposed_specs = get_output_specs(fft_type, spec, mesh, 'cudecomp')
+        spec = ('i', 'j', 'k')  # einsum spec for shardy
+        transposed_specs: tuple(str) = get_output_specs(fft_type, spec, mesh, 'cudecomp')  # type: ignore
         einsum_in = ' '.join(spec)
         einsum_out = ' '.join(transposed_specs)
         return f'{einsum_in}->{einsum_out}'

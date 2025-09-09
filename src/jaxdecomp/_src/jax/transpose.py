@@ -196,7 +196,7 @@ def transpose_sharding_rule_producer(
 ) -> str:
     """
     Produces sharding rule for transpose operation for Shardy partitioner.
-    
+
     Parameters
     ----------
     kind : str
@@ -205,9 +205,9 @@ def transpose_sharding_rule_producer(
         Mesh configuration for the distributed transpose.
     arg_infos : Tuple
         Information about input arguments.
-    result_infos : Tuple  
+    result_infos : Tuple
         Information about result.
-        
+
     Returns
     -------
     str
@@ -215,11 +215,11 @@ def transpose_sharding_rule_producer(
     """
     del result_infos, mesh
 
-    spec = ("i", "j", "k")  # einsum spec for shardy
+    spec = ('i', 'j', 'k')  # einsum spec for shardy
     transposed_specs = get_output_specs(spec, kind)
     einsum_in = ' '.join(spec)
     einsum_out = ' '.join(transposed_specs)
-    
+
     operand = arg_infos[0]
     if operand.rank == 3:
         pass

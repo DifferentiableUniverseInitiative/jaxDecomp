@@ -48,7 +48,7 @@ class TestTransposes:
         """
         print('*' * 80)
         print(f'Testing with pdims {pdims} and global shape {global_shape} with local transpose {local_transpose} and use_shardy {use_shardy}')
-        
+
         jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
         global_array, mesh = create_spmd_array(global_shape, pdims)

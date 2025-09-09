@@ -365,7 +365,7 @@ class TransposePrimitive(BasePrimitive):
     ) -> str:
         """
         Produces sharding rule for transpose operation for Shardy partitioner.
-        
+
         Parameters
         ----------
         kind : str
@@ -374,9 +374,9 @@ class TransposePrimitive(BasePrimitive):
             Mesh configuration for the distributed transpose.
         arg_infos : Tuple[ShapeDtypeStruct]
             Information about input arguments.
-        result_infos : Tuple[ShapedArray]  
+        result_infos : Tuple[ShapedArray]
             Information about result.
-            
+
         Returns
         -------
         str
@@ -384,8 +384,8 @@ class TransposePrimitive(BasePrimitive):
         """
         del result_infos, mesh
 
-        spec = ("i", "j", "k")  # einsum spec for shardy
-        
+        spec = ('i', 'j', 'k')  # einsum spec for shardy
+
         if jaxdecomp.config.transpose_axis_contiguous:
             transposed_specs = (spec[1], spec[0], spec[2])
         else:
@@ -404,7 +404,7 @@ class TransposePrimitive(BasePrimitive):
         # Filter out None values and create einsum strings
         einsum_in = ' '.join([s for s in spec if s is not None])
         einsum_out = ' '.join([s for s in transposed_specs if s is not None])
-        
+
         operand = arg_infos[0]
         if operand.rank == 3:
             pass

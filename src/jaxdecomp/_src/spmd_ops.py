@@ -69,7 +69,7 @@ class BasePrimitive(metaclass=ABCMeta):
         Infers sharding from the operands for custom partitioning.
         """
         return NotImplemented
-    
+
     @staticmethod
     def sharding_rule_producer(*args, **kwargs) -> Any:
         """
@@ -201,10 +201,10 @@ class custom_spmd_rule:
 
         paritioned_fn = custom_partitioning(self.fun, static_argnums=self.static_argnums)
         paritioned_fn.def_partition(
-                infer_sharding_from_operands=infer_sharding_rule,
-                partition=partition_rule,
-                sharding_rule=sharding_rule_producer,
-            )
+            infer_sharding_from_operands=infer_sharding_rule,
+            partition=partition_rule,
+            sharding_rule=sharding_rule_producer,
+        )
         # ============== PRIMITIVE ==============
         #       Declare custom SPMD and batching rule
         # ======================================
