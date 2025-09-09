@@ -44,10 +44,10 @@ rec_array = jaxdecomp.fft.pifft3d(a)
 exchanged = jaxdecomp.halo_exchange(a, halo_extents=(16, 16), halo_periods=(True, True))
 ```
 
-All these functions are **JIT**-compatible and support **automatic differentiation** (with [some caveats](docs/06-caveats.md)).
+All these functions are **JIT**-compatible and support **automatic differentiation** (with [some caveats](https://jaxdecomp.readthedocs.io/en/latest/06-caveats.html)).
 
 See also:
-- [Basic Usage](docs/01-basic_usage.md)
+- [Basic Usage](https://jaxdecomp.readthedocs.io/en/latest/01-basic_usage.html)
 - [Distributed LPT Example](examples/lpt_nbody_demo.py)
 
 > **Important**
@@ -200,4 +200,4 @@ sharding = PositionalSharding(automesh)
 
 **License**: This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
 
-For more details, see the [examples](examples/) directory and the [documentation](docs/). Contributions and issues are welcome!
+For more details, see the [examples](examples/) directory and the [documentation](https://jaxdecomp.readthedocs.io/en/latest). Contributions and issues are welcome!
