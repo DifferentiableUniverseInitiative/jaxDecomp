@@ -27,6 +27,7 @@ from jaxdecomp import (
     transposeYtoZ,
     transposeZtoY,
 )
+from jaxdecomp._src.spmd_ops import ALLOW_SHARDY_PARTITIONER
 
 jax.config.update('jax_enable_x64', True)
 
@@ -51,6 +52,10 @@ class TestTransposes:
 
         jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
         global_array, mesh = create_spmd_array(global_shape, pdims)
 
         jd_tranposed_xy = transposeXtoY(global_array, backend=backend)
@@ -164,6 +169,9 @@ class TestTransposesGrad:
 
         jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
         global_array, mesh = create_spmd_array(global_shape, pdims)
 

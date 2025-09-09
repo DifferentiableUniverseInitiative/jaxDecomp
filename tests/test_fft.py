@@ -20,6 +20,7 @@ from jax.experimental.multihost_utils import process_allgather
 
 import jaxdecomp
 from jaxdecomp._src import PENCILS, SLAB_XY, SLAB_YZ
+from jaxdecomp._src.spmd_ops import ALLOW_SHARDY_PARTITIONER
 
 all_gather = partial(process_allgather, tiled=True)
 
@@ -37,6 +38,9 @@ local_transpose = [True, False]
 
 class TestFFTs:
     def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy):
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
         print('*' * 80)
         print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} use shardy {use_shardy}')
         if pdims[0] == 1:
@@ -111,6 +115,9 @@ class TestFFTs:
 
 class TestFFTsGrad:
     def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy):
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
         if pdims[0] == 1:
             penciltype = SLAB_XY
         elif pdims[1] == 1:
@@ -217,6 +224,9 @@ class TestFFTsGrad:
 
 class TestFFTFreq:
     def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy):
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
         print('*' * 80)
         print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} use shardy {use_shardy}')
 
@@ -283,6 +293,9 @@ class TestFFTFreq:
 @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)
 def test_huge_fft(pdims, use_shardy):
+    if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+        pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
     with jax.experimental.disable_x64():
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
         global_shape = (2048,) * 3  # Large cube to test integer overflow
@@ -301,6 +314,9 @@ def test_huge_fft(pdims, use_shardy):
 @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)
 def test_vmap(pdims, use_shardy):
+    if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+        pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
     jax.config.update('jax_use_shardy_partitioner', use_shardy)
     global_shape = (8, 8, 8)  # small shape because the shape in jacrev is (8 ,) * 6
     global_array, mesh = create_spmd_array(global_shape, pdims)
@@ -320,6 +336,9 @@ def test_vmap(pdims, use_shardy):
 @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
 def test_fwd_rev_grad(pdims, use_shardy):
+    if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+        pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
     jax.config.update('jax_use_shardy_partitioner', use_shardy)
     global_shape = (8, 8, 8)  # small shape because the shape in jacrev is (8 ,) * 6
     global_array, mesh = create_spmd_array(global_shape, pdims)

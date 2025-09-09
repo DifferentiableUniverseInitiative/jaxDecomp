@@ -7,8 +7,12 @@ import jax.extend as jex
 from jax._src import custom_api_util, dispatch
 from jax.experimental.custom_partitioning import custom_partitioning
 from jax.interpreters import ad, batching, mlir, xla
+from packaging.version import Version as _Version
 
-# Imports
+if _Version(jax.__version__) >= _Version('0.7.0'):
+    ALLOW_SHARDY_PARTITIONER = True
+else:
+    ALLOW_SHARDY_PARTITIONER = False
 
 
 class BasePrimitive(metaclass=ABCMeta):
@@ -127,7 +131,7 @@ def register_primitive(cls: type[BasePrimitive]) -> None:
 
         infer_sharding = None
         sharding_rule = None
-        if jax.config.jax_use_shardy_partitioner:
+        if jax.config.jax_use_shardy_partitioner and ALLOW_SHARDY_PARTITIONER:
             sharding_rule = cls.sharding_rule_producer
         else:
             infer_sharding = cls.infer_sharding_from_operands
@@ -177,9 +181,9 @@ class custom_spmd_rule:
 
     def def_partition(self, partition):
         self.partition = partition
-        if self.infer_sharding_from_operands is not None and not jax.config.jax_use_shardy_partitioner:
-            self.def_spmd_rule(partition, self.infer_sharding_from_operands, self.sharding_rule_producer)
         if self.sharding_rule_producer is not None and jax.config.jax_use_shardy_partitioner:
+            self.def_spmd_rule(partition, self.infer_sharding_from_operands, self.sharding_rule_producer)
+        if self.infer_sharding_from_operands is not None and not jax.config.jax_use_shardy_partitioner:
             self.def_spmd_rule(partition, self.infer_sharding_from_operands, self.sharding_rule_producer)
 
     def def_infer_sharding(self, infer_sharding_from_operands):
@@ -194,13 +198,17 @@ class custom_spmd_rule:
 
     def def_spmd_rule(self, partition_rule, infer_sharding_rule, sharding_rule_producer):
         assert partition_rule is not None, 'Partition rule is required'
+        print(f'ALLOW_SHARDY_PARTITIONER = {ALLOW_SHARDY_PARTITIONER} and jax_use_shardy_partitioner = {jax.config.jax_use_shardy_partitioner}')
+        if jax.config.jax_use_shardy_partitioner:
+            assert ALLOW_SHARDY_PARTITIONER, 'Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0'
+
         if jax.config.jax_use_shardy_partitioner:
             assert sharding_rule_producer is not None, 'sharding_rule_producer is required when jax_use_shardy_partitioner is True'
         else:
             assert infer_sharding_rule is not None, 'infer_sharding_rule is required when jax_use_shardy_partitioner is False'
 
-        paritioned_fn = custom_partitioning(self.fun, static_argnums=self.static_argnums)
-        paritioned_fn.def_partition(
+        partitioned_fn = custom_partitioning(self.fun, static_argnums=self.static_argnums)
+        partitioned_fn.def_partition(
             infer_sharding_from_operands=infer_sharding_rule,
             partition=partition_rule,
             sharding_rule=sharding_rule_producer,
@@ -211,7 +219,7 @@ class custom_spmd_rule:
         # Step 2: Register the Partitioned lowering and the batching rule
         mlir.register_lowering(
             self.primitive,
-            mlir.lower_fun(paritioned_fn, multiple_results=self.multiple_results),
+            mlir.lower_fun(partitioned_fn, multiple_results=self.multiple_results),
         )
 
     def def_jvp_rule(self, jvp_rule):

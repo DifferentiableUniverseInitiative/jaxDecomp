@@ -22,6 +22,7 @@ from jax.experimental.shard_map import shard_map
 from jax.sharding import PartitionSpec as P
 
 import jaxdecomp
+from jaxdecomp._src.spmd_ops import ALLOW_SHARDY_PARTITIONER
 
 pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
@@ -62,6 +63,9 @@ def test_halo_against_cudecomp(pdims, use_shardy):
     print(f'Testing with pdims {pdims} and use_shardy {use_shardy}')
 
     jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+    if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+        pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
     global_shape = (16, 16, 16)
     global_array, mesh = create_spmd_array(global_shape, pdims)
@@ -108,6 +112,9 @@ class TestHaloExchange:
         print(f'Testing with pdims {pdims} and use_shardy {use_shardy}')
 
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
         jnp.set_printoptions(linewidth=200)
 
@@ -269,6 +276,9 @@ class TestHaloExchangeGrad:
         print(f'Testing with pdims {pdims} and use_shardy {use_shardy}')
 
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
         jnp.set_printoptions(linewidth=200)
 
