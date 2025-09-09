@@ -69,6 +69,13 @@ class BasePrimitive(metaclass=ABCMeta):
         Infers sharding from the operands for custom partitioning.
         """
         return NotImplemented
+    
+    @staticmethod
+    def sharding_rule_producer(*args, **kwargs) -> Any:
+        """
+        Produces sharding rule for custom partitioning.
+        """
+        return NotImplemented
 
     @staticmethod
     @abstractmethod
@@ -117,9 +124,18 @@ def register_primitive(cls: type[BasePrimitive]) -> None:
         outer_p.def_abstract_eval(cls.outer_abstract)
         batching.primitive_batchers[outer_p] = cls.batching
         outer_p_lower = custom_partitioning(cls.impl, static_argnums=cls.impl_static_args)
+
+        infer_sharding = None
+        sharding_rule = None
+        if jax.config.jax_use_shardy_partitioner:
+            sharding_rule = cls.sharding_rule_producer
+        else:
+            infer_sharding = cls.infer_sharding_from_operands
+
         outer_p_lower.def_partition(
-            infer_sharding_from_operands=cls.infer_sharding_from_operands,
+            infer_sharding_from_operands=infer_sharding,
             partition=cls.partition,
+            sharding_rule=sharding_rule,
         )
         mlir.register_lowering(
             outer_p,
@@ -154,29 +170,41 @@ class custom_spmd_rule:
         # Functions to be registered
         self.partition = None
         self.infer_sharding_from_operands = None
+        self.sharding_rule_producer = None
         self.jvp_rule = None
         self.transpose_rule = None
         self.batching_rule = None
 
     def def_partition(self, partition):
         self.partition = partition
-        if self.infer_sharding_from_operands is not None:
-            self.def_spmd_rule(partition, self.infer_sharding_from_operands)
+        if self.infer_sharding_from_operands is not None and not jax.config.jax_use_shardy_partitioner:
+            self.def_spmd_rule(partition, self.infer_sharding_from_operands, self.sharding_rule_producer)
+        if self.sharding_rule_producer is not None and jax.config.jax_use_shardy_partitioner:
+            self.def_spmd_rule(partition, self.infer_sharding_from_operands, self.sharding_rule_producer)
 
     def def_infer_sharding(self, infer_sharding_from_operands):
         self.infer_sharding_from_operands = infer_sharding_from_operands
         if self.partition is not None:
-            self.def_spmd_rule(self.partition, infer_sharding_from_operands)
+            self.def_spmd_rule(self.partition, infer_sharding_from_operands, self.sharding_rule_producer)
 
-    def def_spmd_rule(self, partition_rule, infer_sharding_rule):
+    def def_sharding_rule(self, sharding_rule_producer):
+        self.sharding_rule_producer = sharding_rule_producer
+        if self.partition is not None:
+            self.def_spmd_rule(self.partition, self.infer_sharding_from_operands, sharding_rule_producer)
+
+    def def_spmd_rule(self, partition_rule, infer_sharding_rule, sharding_rule_producer):
         assert partition_rule is not None, 'Partition rule is required'
-        assert infer_sharding_rule is not None, 'Infer sharding rule is required'
+        if jax.config.jax_use_shardy_partitioner:
+            assert sharding_rule_producer is not None, 'sharding_rule_producer is required when jax_use_shardy_partitioner is True'
+        else:
+            assert infer_sharding_rule is not None, 'infer_sharding_rule is required when jax_use_shardy_partitioner is False'
 
         paritioned_fn = custom_partitioning(self.fun, static_argnums=self.static_argnums)
         paritioned_fn.def_partition(
-            infer_sharding_from_operands=infer_sharding_rule,
-            partition=partition_rule,
-        )
+                infer_sharding_from_operands=infer_sharding_rule,
+                partition=partition_rule,
+                sharding_rule=sharding_rule_producer,
+            )
         # ============== PRIMITIVE ==============
         #       Declare custom SPMD and batching rule
         # ======================================

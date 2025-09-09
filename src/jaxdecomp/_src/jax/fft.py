@@ -410,6 +410,33 @@ def infer_sharding_from_operands(
 
     return NamedSharding(input_sharding.mesh, P(*transposed_specs))
 
+@spmd_fft_primitive.def_sharding_rule
+def fft_sharding_rule_producer(
+    fft_type: FftType,
+    adjoint: bool,
+    mesh: Mesh,
+    arg_infos,
+    result_infos,
+) -> str:
+
+    del result_infos
+
+    spec = ("i" , "j", "k") # einsum spec for shardy
+    transposed_specs = get_output_specs(fft_type, spec, mesh=mesh, backend='jax')
+    einsum_in = ' '.join(spec)
+    einsum_out = ' '.join(transposed_specs)
+    
+    operand = arg_infos[0]
+    if operand.rank == 3:
+        pass
+    elif operand.rank == 4:
+        einsum_in = 'b ' + einsum_in
+        einsum_out = 'b ' + einsum_out
+    else:
+        raise ValueError(f'Unsupported input shape {operand.shape}')
+
+    return f'{einsum_in}->{einsum_out}'
+
 
 @spmd_fft_primitive.def_partition
 def partition(

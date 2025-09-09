@@ -237,9 +237,9 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = 'JAX
     if jaxdecomp.config.transpose_axis_contiguous:
         match pencil_type:
             case _jaxdecomp.SLAB_XY:
-                transposed_specs = (spec[1], spec[0], None)
+                transposed_specs = (spec[1], spec[0], spec[2])
             case _jaxdecomp.SLAB_YZ:
-                transposed_specs = (None, spec[1], spec[0])
+                transposed_specs = (spec[2], spec[1], spec[0])
             case _jaxdecomp.PENCILS:
                 transposed_specs = spec
             case _:
@@ -247,6 +247,9 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = 'JAX
     else:
 
         def is_distributed(x):
+            if type(x) is str:
+                # Cannot check if the axis is distributed at compile time if using shardy
+                return False
             return x is not None and x != 1
 
         match fft_type:
@@ -259,13 +262,13 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = 'JAX
                 match pencil_type:
                     case _jaxdecomp.SLAB_XY:
                         if backend == 'cudecomp':
-                            transposed_specs = (None, spec[0], None)
+                            transposed_specs = (spec[1], spec[0], spec[2])
                         else:
-                            transposed_specs = (None, None, spec[0])
+                            transposed_specs = (spec[2], spec[1], spec[0])
                     case _jaxdecomp.SLAB_YZ:
-                        transposed_specs = (None, None, spec[1])
+                        transposed_specs = (spec[0], spec[2], spec[1])
                     case _jaxdecomp.PENCILS:
-                        transposed_specs = (None, spec[0], spec[1])
+                        transposed_specs = (spec[2], spec[0], spec[1])
                     case _:
                         raise TypeError('Unknown pencil type')
 
@@ -280,9 +283,9 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = 'JAX
                         #       "or create it with a NamedSharding with a PartitionSpec of (None, jax.device_count(), None)"
                         #   )
                         if backend == 'cudecomp':
-                            transposed_specs = (spec[1], None, None)
+                            transposed_specs = (spec[1], spec[0], spec[2])
                         else:
-                            transposed_specs = (spec[2], None, None)
+                            transposed_specs = (spec[2], spec[1], spec[0])
                     case _jaxdecomp.SLAB_YZ:
                         if is_distributed(spec[0]) or is_distributed(spec[1]):
                             raise ValueError(
@@ -291,7 +294,7 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = 'JAX
                                 'Make sure that you use IFFT on the output of a distributed FFT'
                                 'or create it with a NamedSharding with a PartitionSpec of (None, None, jax.device_count())'
                             )
-                        transposed_specs = (None, spec[2], None)
+                        transposed_specs = (spec[0], spec[2], spec[1])
                     case _jaxdecomp.PENCILS:
                         if is_distributed(spec[0]):
                             raise ValueError(
@@ -302,7 +305,7 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = 'JAX
                                 'Make sure that you use IFFT on the output of a distributed FFT'
                                 'or create it with a NamedSharding with a PartitionSpec of (None, 2 , 2) or any other 2D mesh'
                             )
-                        transposed_specs = (spec[1], spec[2], None)
+                        transposed_specs = (spec[1], spec[2], spec[0])
                     case _:
                         raise TypeError('Unknown pencil type')
 

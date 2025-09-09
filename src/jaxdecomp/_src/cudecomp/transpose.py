@@ -357,6 +357,66 @@ class TransposePrimitive(BasePrimitive):
         return NamedSharding(input_sharding.mesh, P(*transposed_pdims))
 
     @staticmethod
+    def sharding_rule_producer(
+        kind: str,
+        mesh: Mesh,
+        arg_infos: tuple[ShapeDtypeStruct],
+        result_infos: tuple[ShapedArray],
+    ) -> str:
+        """
+        Produces sharding rule for transpose operation for Shardy partitioner.
+        
+        Parameters
+        ----------
+        kind : str
+            Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+        mesh : Mesh
+            Mesh configuration for the distributed transpose.
+        arg_infos : Tuple[ShapeDtypeStruct]
+            Information about input arguments.
+        result_infos : Tuple[ShapedArray]  
+            Information about result.
+            
+        Returns
+        -------
+        str
+            Einsum string describing the transpose operation.
+        """
+        del result_infos, mesh
+
+        spec = ("i", "j", "k")  # einsum spec for shardy
+        
+        if jaxdecomp.config.transpose_axis_contiguous:
+            transposed_specs = (spec[1], spec[0], spec[2])
+        else:
+            match kind:
+                case 'x_y':
+                    transposed_specs = (spec[0], spec[2], spec[1])
+                case 'y_z':
+                    transposed_specs = (spec[1], spec[0], spec[2])
+                case 'z_y':
+                    transposed_specs = (spec[1], spec[0], spec[2])
+                case 'y_x':
+                    transposed_specs = (spec[0], spec[2], spec[1])
+                case _:
+                    raise ValueError('Invalid kind')
+
+        # Filter out None values and create einsum strings
+        einsum_in = ' '.join([s for s in spec if s is not None])
+        einsum_out = ' '.join([s for s in transposed_specs if s is not None])
+        
+        operand = arg_infos[0]
+        if operand.rank == 3:
+            pass
+        elif operand.rank == 4:
+            einsum_in = 'b ' + einsum_in
+            einsum_out = 'b ' + einsum_out
+        else:
+            raise ValueError(f'Unsupported input shape rank {operand.rank}')
+
+        return f'{einsum_in}->{einsum_out}'
+
+    @staticmethod
     def partition(
         kind: str,
         mesh: Mesh,

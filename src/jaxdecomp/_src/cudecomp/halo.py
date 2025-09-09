@@ -254,6 +254,51 @@ class HaloPrimitive(BasePrimitive):
         return NamedSharding(input_mesh, P(*halo_exchange_sharding.spec))
 
     @staticmethod
+    def sharding_rule_producer(
+        halo_extents: HaloExtentType,
+        halo_periods: Periodicity,
+        mesh: Mesh,
+        arg_infos: tuple[ShapeDtypeStruct],
+        result_infos: tuple[ShapedArray],
+    ) -> str:
+        """
+        Produces sharding rule for halo exchange operation for Shardy partitioner.
+        
+        Parameters
+        ----------
+        halo_extents : HaloExtentType
+            Extents of the halo in X and Y directions.
+        halo_periods : Periodicity
+            Periodicity of the halo in X and Y directions.
+        mesh : Mesh
+            Mesh configuration for the distributed halo exchange.
+        arg_infos : Tuple[ShapeDtypeStruct]
+            Information about input arguments.
+        result_infos : Tuple[ShapedArray]  
+            Information about result.
+            
+        Returns
+        -------
+        str
+            Einsum string describing the halo exchange operation (identity).
+        """
+        del result_infos, halo_extents, halo_periods, mesh
+
+        spec = ("i", "j", "k")  # einsum spec for shardy
+        einsum_spec = ' '.join(spec)
+        
+        operand = arg_infos[0]
+        if operand.rank == 3:
+            pass
+        elif operand.rank == 4:
+            einsum_spec = 'b ' + einsum_spec
+        else:
+            raise ValueError(f'Unsupported input shape rank {operand.rank}')
+
+        # Halo exchange preserves sharding (input = output)
+        return f'{einsum_spec}->{einsum_spec}'
+
+    @staticmethod
     def partition(
         halo_extents: HaloExtentType,
         halo_periods: Periodicity,

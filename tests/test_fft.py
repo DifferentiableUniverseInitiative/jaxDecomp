@@ -7,7 +7,6 @@ from conftest import (
 
 initialize_distributed()
 import jax  # noqa: E402
-
 size = jax.device_count()
 
 jax.config.update('jax_enable_x64', True)
@@ -36,9 +35,9 @@ local_transpose = [True, False]
 
 
 class TestFFTs:
-    def run_test(self, pdims, global_shape, local_transpose, backend):
+    def run_test(self, pdims, global_shape, local_transpose, backend , use_shardy):
         print('*' * 80)
-        print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} ')
+        print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} use shardy {use_shardy}')
         if pdims[0] == 1:
             penciltype = SLAB_XY
         elif pdims[1] == 1:
@@ -48,6 +47,8 @@ class TestFFTs:
         print(f'Decomposition type {penciltype}')
 
         jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
+        jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
 
         global_array, mesh = create_spmd_array(global_shape, pdims)
 
@@ -93,21 +94,23 @@ class TestFFTs:
     @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_cudecomp_fft(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp')
+    def test_cudecomp_fft(self, pdims, global_shape, local_transpose, use_shardy):
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDeComp', use_shardy=use_shardy)
 
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_jax_fft(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend='jax')
+    def test_jax_fft(self, pdims, global_shape, local_transpose, use_shardy):
+        self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy)
 
 
 class TestFFTsGrad:
-    def run_test(self, pdims, global_shape, local_transpose, backend):
+    def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy):
         if pdims[0] == 1:
             penciltype = SLAB_XY
         elif pdims[1] == 1:
@@ -132,8 +135,10 @@ class TestFFTsGrad:
                             global shape {global_shape}
                             local transpose {local_transpose}
                             backend {backend}
+                            use shardy {use_shardy}
                 """)
         jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
+        jax.config.update('jax_use_shardy_partitioner', use_shardy)
         global_array, mesh = create_spmd_array(global_shape, pdims)
 
         print('-' * 40)
@@ -197,23 +202,26 @@ class TestFFTsGrad:
     @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_cudecomp_grad(self, pdims, global_shape, local_transpose):
+    def test_cudecomp_grad(self, pdims, global_shape, local_transpose, use_shardy):
         self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp')
 
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_jax_grad(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend='jax')
+    def test_jax_grad(self, pdims, global_shape, local_transpose, use_shardy):
+        self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy)
 
 
 class TestFFTFreq:
-    def run_test(self, pdims, global_shape, local_transpose, backend):
+    def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy):
         print('*' * 80)
-        print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose}')
+        print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} use shardy {use_shardy}')
 
         jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
+        jax.config.update('jax_use_shardy_partitioner', use_shardy)
         if not local_transpose:
             pytest.skip(reason='Not implemented yet')
 
@@ -256,23 +264,27 @@ class TestFFTFreq:
     @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_cudecomp_fft(self, pdims, global_shape, local_transpose):
+    def test_cudecomp_fft(self, pdims, global_shape, local_transpose, use_shardy):
         self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp')
 
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_jax_fft(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend='jax')
+    def test_jax_fft(self, pdims, global_shape, local_transpose, use_shardy):
+        self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy)
 
 
 @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
+@pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)
-def test_huge_fft(pdims):
+def test_huge_fft(pdims, use_shardy):
     with jax.experimental.disable_x64():
+        jax.config.update('jax_use_shardy_partitioner', use_shardy)
         global_shape = (2048,) * 3  # Large cube to test integer overflow
         global_array, mesh = create_spmd_array(global_shape, pdims)
         # Perform distributed FFT
@@ -286,8 +298,10 @@ def test_huge_fft(pdims):
         print('Reconstruction check OK!')
 
 
+@pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)
-def test_vmap(pdims):
+def test_vmap(pdims, use_shardy):
+    jax.config.update('jax_use_shardy_partitioner', use_shardy)
     global_shape = (8, 8, 8)  # small shape because the shape in jacrev is (8 ,) * 6
     global_array, mesh = create_spmd_array(global_shape, pdims)
 
@@ -302,9 +316,10 @@ def test_vmap(pdims):
     assert batched_out.shape == (3, 8, 8, 8)
     assert batched_out[0].sharding.is_equivalent_to(fft_sharding, ndim=3)
 
-
+@pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
-def test_fwd_rev_grad(pdims):
+def test_fwd_rev_grad(pdims, use_shardy):
+    jax.config.update('jax_use_shardy_partitioner', use_shardy)
     global_shape = (8, 8, 8)  # small shape because the shape in jacrev is (8 ,) * 6
     global_array, mesh = create_spmd_array(global_shape, pdims)
 
