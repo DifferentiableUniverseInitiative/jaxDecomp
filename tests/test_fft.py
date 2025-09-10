@@ -278,7 +278,7 @@ class TestFFTFreq:
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_cudecomp_fft(self, pdims, global_shape, local_transpose, use_shardy):
-        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp' , use_shardy=use_shardy)
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp', use_shardy=use_shardy)
 
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
