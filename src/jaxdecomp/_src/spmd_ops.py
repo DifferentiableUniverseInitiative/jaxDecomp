@@ -148,18 +148,10 @@ def register_primitive(cls: type[BasePrimitive]) -> None:
         outer_p.def_abstract_eval(cls.outer_abstract)
         batching.primitive_batchers[outer_p] = cls.batching
         outer_p_lower = custom_partitioning(cls.impl, static_argnums=cls.impl_static_args)
-
-        infer_sharding = None
-        sharding_rule = None
-        if jax.config.jax_use_shardy_partitioner and ALLOW_SHARDY_PARTITIONER:
-            sharding_rule = cls.sharding_rule_producer
-        else:
-            infer_sharding = cls.infer_sharding_from_operands
-
         outer_p_lower.def_partition(
-            infer_sharding_from_operands=infer_sharding,
+            infer_sharding_from_operands=cls.infer_sharding_from_operands,
             partition=cls.partition,
-            sharding_rule=sharding_rule,
+            sharding_rule=cls.sharding_rule_producer,
         )
         mlir.register_lowering(
             outer_p,
