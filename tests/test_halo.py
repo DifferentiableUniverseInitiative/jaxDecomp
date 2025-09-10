@@ -22,6 +22,7 @@ from jax.experimental.shard_map import shard_map
 from jax.sharding import PartitionSpec as P
 
 import jaxdecomp
+from jaxdecomp._src.spmd_ops import ALLOW_SHARDY_PARTITIONER
 
 pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
@@ -52,13 +53,19 @@ all_gather = partial(process_allgather, tiled=True)
 
 
 @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
+@pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
 @pytest.mark.parametrize('pdims', pdims)
 # Test with Slab and Pencil decompositions
-def test_halo_against_cudecomp(pdims):
+def test_halo_against_cudecomp(pdims, use_shardy):
     jnp.set_printoptions(linewidth=200)
 
     print('*' * 80)
-    print(f'Testing with pdims {pdims}')
+    print(f'Testing with pdims {pdims} and use_shardy {use_shardy}')
+
+    jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+    if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+        pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
     global_shape = (16, 16, 16)
     global_array, mesh = create_spmd_array(global_shape, pdims)
@@ -92,17 +99,22 @@ def test_halo_against_cudecomp(pdims):
     g_array = all_gather(updated_array)
     g_jax_exchanged = all_gather(jax_exchanged)
     g_cudecomp_exchanged = all_gather(cudecomp_exchanged)
-    print(f'Original \n{g_array[:,:,0]}')
-    print(f'exchanged cudecomp \n{g_jax_exchanged[:,:,0]}')
-    print(f'exchanged jax \n{g_cudecomp_exchanged[:,:,0]}')
+    print(f'Original \n{g_array[:, :, 0]}')
+    print(f'exchanged cudecomp \n{g_jax_exchanged[:, :, 0]}')
+    print(f'exchanged jax \n{g_cudecomp_exchanged[:, :, 0]}')
 
     assert_array_equal(g_jax_exchanged, g_cudecomp_exchanged)
 
 
 class TestHaloExchange:
-    def run_test(self, global_shape, pdims, backend):
+    def run_test(self, global_shape, pdims, backend, use_shardy):
         print('*' * 80)
-        print(f'Testing with pdims {pdims}')
+        print(f'Testing with pdims {pdims} and use_shardy {use_shardy}')
+
+        jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
         jnp.set_printoptions(linewidth=200)
 
@@ -194,10 +206,10 @@ class TestHaloExchange:
             lower_right_corner = gathered_exchanged_slices[next_z][next_y]
 
             print(f'z {z_slice} y {y_slice}')
-            print(f'original slice \n{original_slice[:,:,0]}')
-            print(f'up slice \n{up_slice[:,:,0]}')
-            print(f'current slice \n{current_slice[:,:,0]}')
-            print(f'down slice \n{down_slice[:,:,0]}')
+            print(f'original slice \n{original_slice[:, :, 0]}')
+            print(f'up slice \n{up_slice[:, :, 0]}')
+            print(f'current slice \n{current_slice[:, :, 0]}')
+            print(f'down slice \n{down_slice[:, :, 0]}')
             print('--' * 40)
 
             # if up down padding check the up down slices
@@ -243,22 +255,30 @@ class TestHaloExchange:
                 )
 
     @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
     @pytest.mark.parametrize('pdims', pdims)
-    def test_cudecomp_halo(self, pdims):
-        self.run_test((32, 32, 32), pdims, 'CUDECOMP')
+    def test_cudecomp_halo(self, pdims, use_shardy):
+        self.run_test((32, 32, 32), pdims, 'CUDECOMP', use_shardy)
 
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
     @pytest.mark.parametrize('pdims', pdims)
     def test_jax_halo(
         self,
         pdims,
+        use_shardy,
     ):
-        self.run_test((16, 16, 16), pdims, 'JAX')
+        self.run_test((16, 16, 16), pdims, 'JAX', use_shardy)
 
 
 class TestHaloExchangeGrad:
-    def run_test(self, global_shape, pdims, backend):
+    def run_test(self, global_shape, pdims, backend, use_shardy):
         print('*' * 80)
-        print(f'Testing with pdims {pdims}')
+        print(f'Testing with pdims {pdims} and use_shardy {use_shardy}')
+
+        jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
         jnp.set_printoptions(linewidth=200)
 
@@ -323,9 +343,11 @@ class TestHaloExchangeGrad:
         assert_array_equal(model(global_array, obs), jnp.zeros_like(global_array))
         assert_array_equal(model(global_array * 2, obs), jnp.full_like(global_array, 3))
 
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
     @pytest.mark.parametrize('pdims', pdims)
     def test_jax_halo(
         self,
         pdims,
+        use_shardy,
     ):
-        self.run_test((16, 16, 16), pdims, 'JAX')
+        self.run_test((16, 16, 16), pdims, 'JAX', use_shardy)

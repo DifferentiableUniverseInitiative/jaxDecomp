@@ -411,6 +411,59 @@ def infer_sharding_from_operands(
     return NamedSharding(input_sharding.mesh, P(*transposed_specs))
 
 
+@spmd_fft_primitive.def_sharding_rule
+def fft_sharding_rule_producer(
+    fft_type: FftType,
+    adjoint: bool,
+    mesh: Mesh,
+    arg_infos,
+    result_infos,
+) -> str:
+    """
+    Produces sharding rule for FFT operation for Shardy partitioner.
+
+    Parameters
+    ----------
+    fft_type : FftType
+        Type of FFT operation to perform.
+    adjoint : bool
+        Whether this is an adjoint (inverse) FFT operation.
+    mesh : Mesh
+        Mesh configuration for the distributed FFT.
+    arg_infos : Tuple
+        Information about input arguments.
+    result_infos : Tuple
+        Information about result.
+
+    Returns
+    -------
+    str
+        Einsum string describing the FFT operation.
+
+    Raises
+    ------
+    ValueError
+        If input shape rank is not 3 or 4.
+    """
+    del result_infos
+
+    spec = ('i', 'j', 'k')  # einsum spec for shardy
+    transposed_specs: tuple[str] = get_output_specs(fft_type, spec, mesh=mesh, backend='jax')  # type: ignore
+    einsum_in = ' '.join(spec)
+    einsum_out = ' '.join(transposed_specs)
+
+    operand = arg_infos[0]
+    if operand.rank == 3:
+        pass
+    elif operand.rank == 4:
+        einsum_in = 'b ' + einsum_in
+        einsum_out = 'b ' + einsum_out
+    else:
+        raise ValueError(f'Unsupported input shape {operand.shape}')
+
+    return f'{einsum_in}->{einsum_out}'
+
+
 @spmd_fft_primitive.def_partition
 def partition(
     fft_type: FftType,

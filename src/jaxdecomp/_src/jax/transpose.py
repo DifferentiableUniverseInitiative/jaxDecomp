@@ -120,17 +120,17 @@ spmd_transpose_primitive = custom_spmd_rule(spmd_transpose, static_argnums=(1,),
 def get_output_specs(spec, kind):
     spec = spec + (None,) * (3 - len(spec))
     if jaxdecomp.config.transpose_axis_contiguous:
-        transposed_specs = (spec[1], spec[0], None)
+        transposed_specs = (spec[1], spec[0], spec[2])
     else:
         match kind:
             case 'x_y':
-                transposed_specs = (spec[0], None, spec[1])
+                transposed_specs = (spec[0], spec[2], spec[1])
             case 'y_z':
-                transposed_specs = (None, spec[0], spec[2])
+                transposed_specs = (spec[1], spec[0], spec[2])
             case 'z_y':
-                transposed_specs = (spec[1], None, spec[2])
+                transposed_specs = (spec[1], spec[0], spec[2])
             case 'y_x':
-                transposed_specs = (spec[0], spec[2], None)
+                transposed_specs = (spec[0], spec[2], spec[1])
             case _:
                 raise ValueError('Invalid kind')
 
@@ -185,6 +185,51 @@ def infer_sharding_from_operands(
         raise ValueError(f'Unsupported input shape {operand.shape}')
 
     return NamedSharding(input_sharding.mesh, P(*transposed_specs))
+
+
+@spmd_transpose_primitive.def_sharding_rule
+def transpose_sharding_rule_producer(
+    kind: str,
+    mesh: Mesh,
+    arg_infos,
+    result_infos,
+) -> str:
+    """
+    Produces sharding rule for transpose operation for Shardy partitioner.
+
+    Parameters
+    ----------
+    kind : str
+        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x', 'x_z', 'z_x').
+    mesh : Mesh
+        Mesh configuration for the distributed transpose.
+    arg_infos : Tuple
+        Information about input arguments.
+    result_infos : Tuple
+        Information about result.
+
+    Returns
+    -------
+    str
+        Einsum string describing the transpose operation.
+    """
+    del result_infos, mesh
+
+    spec = ('i', 'j', 'k')  # einsum spec for shardy
+    transposed_specs = get_output_specs(spec, kind)
+    einsum_in = ' '.join(spec)
+    einsum_out = ' '.join(transposed_specs)
+
+    operand = arg_infos[0]
+    if operand.rank == 3:
+        pass
+    elif operand.rank == 4:
+        einsum_in = 'b ' + einsum_in
+        einsum_out = 'b ' + einsum_out
+    else:
+        raise ValueError(f'Unsupported input shape rank {operand.rank}')
+
+    return f'{einsum_in}->{einsum_out}'
 
 
 @spmd_transpose_primitive.def_partition

@@ -27,6 +27,7 @@ from jaxdecomp import (
     transposeYtoZ,
     transposeZtoY,
 )
+from jaxdecomp._src.spmd_ops import ALLOW_SHARDY_PARTITIONER
 
 jax.config.update('jax_enable_x64', True)
 
@@ -42,13 +43,19 @@ local_transpose = [False, True]
 
 
 class TestTransposes:
-    def run_test(self, pdims, global_shape, local_transpose, backend):
+    def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy):
         """Goes from an array of shape [z,y,x] # What we call an x pencil
         to [x,z,y] # what we call a y pencil
         """
         print('*' * 80)
-        print(f'Testing with pdims {pdims} and global shape {global_shape} with local transpose {local_transpose}')
+        print(f'Testing with pdims {pdims} and global shape {global_shape} with local transpose {local_transpose} and use_shardy {use_shardy}')
+
         jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
+        jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
         global_array, mesh = create_spmd_array(global_shape, pdims)
 
         jd_tranposed_xy = transposeXtoY(global_array, backend=backend)
@@ -137,28 +144,34 @@ class TestTransposes:
     @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_cudecomp_transpose(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp')
+    def test_cudecomp_transpose(self, pdims, global_shape, local_transpose, use_shardy):
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp', use_shardy=use_shardy)
 
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_jax_transpose(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend='jax')
+    def test_jax_transpose(self, pdims, global_shape, local_transpose, use_shardy):
+        self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy)
 
 
 class TestTransposesGrad:
-    def run_test(self, pdims, global_shape, local_transpose, backend):
+    def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy):
         """Goes from an array of shape [z,y,x] # What we call an x pencil
         to [x,z,y] # what we call a y pencil
         """
         print('*' * 80)
-        print(f'Testing with pdims {pdims} and global shape {global_shape} with local transpose {local_transpose}')
+        print(f'Testing with pdims {pdims} and global shape {global_shape} with local transpose {local_transpose} and use_shardy {use_shardy}')
 
         jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
+        jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
         global_array, mesh = create_spmd_array(global_shape, pdims)
 
@@ -198,12 +211,14 @@ class TestTransposesGrad:
     @pytest.mark.parametrize('pdims', decomp)
     @pytest.mark.parametrize('global_shape', global_shapes)
     @pytest.mark.parametrize('local_transpose', local_transpose)
-    def test_cudecomp_transpose_grad(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp')
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    def test_cudecomp_transpose_grad(self, pdims, global_shape, local_transpose, use_shardy):
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp', use_shardy=use_shardy)
 
     # Cartesian product test
     @pytest.mark.parametrize('pdims', decomp)
     @pytest.mark.parametrize('global_shape', global_shapes)
     @pytest.mark.parametrize('local_transpose', local_transpose)
-    def test_jax_transpose_grad(self, pdims, global_shape, local_transpose):
-        self.run_test(pdims, global_shape, local_transpose, backend='jax')
+    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    def test_jax_transpose_grad(self, pdims, global_shape, local_transpose, use_shardy):
+        self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy)

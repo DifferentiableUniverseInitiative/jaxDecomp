@@ -312,6 +312,43 @@ class FFTPrimitive(BasePrimitive):
         return NamedSharding(input_mesh, P(*transposed_specs))
 
     @staticmethod
+    def sharding_rule_producer(
+        fft_type: FftType,
+        adjoint: bool,
+        mesh: Mesh,
+        arg_infos: tuple[ShapeDtypeStruct],
+        result_infos: tuple[ShapedArray],
+    ) -> str:
+        """
+        Produces sharding rule for FFT operation for Shardy partitioner.
+
+        Parameters
+        ----------
+        fft_type : FftType
+            Type of FFT operation to perform.
+        adjoint : bool
+            Whether this is an adjoint (inverse) FFT operation.
+        mesh : Mesh
+            Mesh configuration for the distributed FFT.
+        arg_infos : tuple[ShapeDtypeStruct]
+            Information about input arguments.
+        result_infos : tuple[ShapedArray]
+            Information about result.
+
+        Returns
+        -------
+        str
+            Einsum string describing the FFT operation.
+        """
+        del adjoint, result_infos
+
+        spec = ('i', 'j', 'k')  # einsum spec for shardy
+        transposed_specs: tuple[str, ...] = get_output_specs(fft_type, spec, mesh, 'cudecomp')  # type: ignore
+        einsum_in = ' '.join(spec)
+        einsum_out = ' '.join(transposed_specs)
+        return f'{einsum_in}->{einsum_out}'
+
+    @staticmethod
     def partition(
         fft_type: FftType,
         adjoint: bool,
