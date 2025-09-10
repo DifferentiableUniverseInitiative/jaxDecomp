@@ -290,7 +290,7 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = 'JAX
                         if is_distributed(spec[0]) or is_distributed(spec[1]):
                             raise ValueError(
                                 'Distributed IFFT with a YZ slab (only X axis distributed) is not compatible with the current sharding'
-                                f'got {spec} expected {(None , None, jax.device_count())}'
+                                f'got {spec} expected {(None, None, jax.device_count())}'
                                 'Make sure that you use IFFT on the output of a distributed FFT'
                                 'or create it with a NamedSharding with a PartitionSpec of (None, None, jax.device_count())'
                             )
@@ -300,7 +300,7 @@ def get_output_specs(fft_type: FftType, spec: P, mesh: Mesh, backend: str = 'JAX
                             raise ValueError(
                                 'Distributed IFFT with a PENCILS decomposition (Both Y and Z distributed)'
                                 ' is not compatible with the current sharding'
-                                f'got {spec} expected {(None , jax.device_count() //2, jax.device_count() // (jax.device_count() //2) )} '
+                                f'got {spec} expected {(None, jax.device_count() // 2, jax.device_count() // (jax.device_count() // 2))} '
                                 'or any other 2D mesh'
                                 'Make sure that you use IFFT on the output of a distributed FFT'
                                 'or create it with a NamedSharding with a PartitionSpec of (None, 2 , 2) or any other 2D mesh'

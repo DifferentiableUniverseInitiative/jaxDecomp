@@ -319,6 +319,27 @@ class FFTPrimitive(BasePrimitive):
         arg_infos: tuple[ShapeDtypeStruct],
         result_infos: tuple[ShapedArray],
     ) -> NamedSharding:
+        """
+        Produces sharding rule for FFT operation for Shardy partitioner.
+
+        Parameters
+        ----------
+        fft_type : FftType
+            Type of FFT operation to perform.
+        adjoint : bool
+            Whether this is an adjoint (inverse) FFT operation.
+        mesh : Mesh
+            Mesh configuration for the distributed FFT.
+        arg_infos : tuple[ShapeDtypeStruct]
+            Information about input arguments.
+        result_infos : tuple[ShapedArray]
+            Information about result.
+
+        Returns
+        -------
+        str
+            Einsum string describing the FFT operation.
+        """
         del adjoint, result_infos
 
         spec = ('i', 'j', 'k')  # einsum spec for shardy

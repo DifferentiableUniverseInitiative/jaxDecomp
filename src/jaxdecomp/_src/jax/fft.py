@@ -419,6 +419,32 @@ def fft_sharding_rule_producer(
     arg_infos,
     result_infos,
 ) -> str:
+    """
+    Produces sharding rule for FFT operation for Shardy partitioner.
+
+    Parameters
+    ----------
+    fft_type : FftType
+        Type of FFT operation to perform.
+    adjoint : bool
+        Whether this is an adjoint (inverse) FFT operation.
+    mesh : Mesh
+        Mesh configuration for the distributed FFT.
+    arg_infos : Tuple
+        Information about input arguments.
+    result_infos : Tuple
+        Information about result.
+
+    Returns
+    -------
+    str
+        Einsum string describing the FFT operation.
+
+    Raises
+    ------
+    ValueError
+        If input shape rank is not 3 or 4.
+    """
     del result_infos
 
     spec = ('i', 'j', 'k')  # einsum spec for shardy

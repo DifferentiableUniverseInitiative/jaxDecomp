@@ -99,9 +99,9 @@ def test_halo_against_cudecomp(pdims, use_shardy):
     g_array = all_gather(updated_array)
     g_jax_exchanged = all_gather(jax_exchanged)
     g_cudecomp_exchanged = all_gather(cudecomp_exchanged)
-    print(f'Original \n{g_array[:,:,0]}')
-    print(f'exchanged cudecomp \n{g_jax_exchanged[:,:,0]}')
-    print(f'exchanged jax \n{g_cudecomp_exchanged[:,:,0]}')
+    print(f'Original \n{g_array[:, :, 0]}')
+    print(f'exchanged cudecomp \n{g_jax_exchanged[:, :, 0]}')
+    print(f'exchanged jax \n{g_cudecomp_exchanged[:, :, 0]}')
 
     assert_array_equal(g_jax_exchanged, g_cudecomp_exchanged)
 
@@ -206,10 +206,10 @@ class TestHaloExchange:
             lower_right_corner = gathered_exchanged_slices[next_z][next_y]
 
             print(f'z {z_slice} y {y_slice}')
-            print(f'original slice \n{original_slice[:,:,0]}')
-            print(f'up slice \n{up_slice[:,:,0]}')
-            print(f'current slice \n{current_slice[:,:,0]}')
-            print(f'down slice \n{down_slice[:,:,0]}')
+            print(f'original slice \n{original_slice[:, :, 0]}')
+            print(f'up slice \n{up_slice[:, :, 0]}')
+            print(f'current slice \n{current_slice[:, :, 0]}')
+            print(f'down slice \n{down_slice[:, :, 0]}')
             print('--' * 40)
 
             # if up down padding check the up down slices

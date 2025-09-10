@@ -77,7 +77,27 @@ class BasePrimitive(metaclass=ABCMeta):
     @staticmethod
     def sharding_rule_producer(*args, **kwargs) -> Any:
         """
-        Produces sharding rule for custom partitioning.
+        Produces sharding rule for custom partitioning with Shardy partitioner.
+
+        This method should be implemented by subclasses to define how operations
+        should be partitioned across devices when using JAX's Shardy partitioner.
+
+        Parameters
+        ----------
+        *args
+            Variable positional arguments specific to the operation.
+        **kwargs
+            Variable keyword arguments specific to the operation.
+
+        Returns
+        -------
+        Any
+            Sharding rule specification (typically an einsum string).
+
+        Notes
+        -----
+        Base implementation returns NotImplemented and should be overridden
+        by concrete primitive implementations.
         """
         return NotImplemented
 
@@ -198,7 +218,6 @@ class custom_spmd_rule:
 
     def def_spmd_rule(self, partition_rule, infer_sharding_rule, sharding_rule_producer):
         assert partition_rule is not None, 'Partition rule is required'
-        print(f'ALLOW_SHARDY_PARTITIONER = {ALLOW_SHARDY_PARTITIONER} and jax_use_shardy_partitioner = {jax.config.jax_use_shardy_partitioner}')
         if jax.config.jax_use_shardy_partitioner:
             assert ALLOW_SHARDY_PARTITIONER, 'Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0'
 
