@@ -318,7 +318,7 @@ class FFTPrimitive(BasePrimitive):
         mesh: Mesh,
         arg_infos: tuple[ShapeDtypeStruct],
         result_infos: tuple[ShapedArray],
-    ) -> NamedSharding:
+    ) -> str:
         """
         Produces sharding rule for FFT operation for Shardy partitioner.
 
