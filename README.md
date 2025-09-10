@@ -12,6 +12,11 @@
 
 JAX reimplementation and bindings for NVIDIA's [cuDecomp](https://nvidia.github.io/cuDecomp/index.html) library [(Romero et al. 2022)](https://dl.acm.org/doi/abs/10.1145/3539781.3539797), enabling **multi-node parallel FFTs and halo exchanges** directly in low-level NCCL/CUDA-Aware MPI from your JAX code.
 
+> **Important**
+> Starting from version **0.2.8**, jaxDecomp supports JAX's Shardy partitioner, which can be activated via `jax.config.update('jax_use_shardy_partitioner', True)`. This partitioner is enabled by default in JAX 0.7.x and later versions.
+> Shardy support is an **internal implementation change** and users should not expect any behavioral differences outside of what the JAX sharding mechanism provides, as explained in the [JAX Shardy migration documentation](https://docs.jax.dev/en/latest/shardy_jax_migration.html).
+
+
 ---
 
 ## Usage
