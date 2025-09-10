@@ -212,7 +212,7 @@ class TestFFTsGrad:
     @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_cudecomp_grad(self, pdims, global_shape, local_transpose, use_shardy):
-        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp')
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp', use_shardy=use_shardy)
 
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
