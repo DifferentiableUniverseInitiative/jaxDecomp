@@ -65,11 +65,11 @@ See also:
 
 On HPC clusters (e.g., Jean Zay, Perlmutter), you typically launch your script with:
 ```bash
-srun python demo.py
+srun python your_script.py
 ```
 or
 ```bash
-mpirun -n 8 python demo.py
+mpirun -n 8 python your_script.py
 ```
 
 See the Slurm [README](slurms/README.md) and [template script](slurms/template.slurm) for more details.
