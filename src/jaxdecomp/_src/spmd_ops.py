@@ -9,9 +9,10 @@ from jax.experimental.custom_partitioning import custom_partitioning
 from jax.interpreters import ad, batching, mlir, xla
 from packaging.version import Version as _Version
 
-if _Version(jax.__version__) >= _Version('0.7.0'):
+if _Version(jax.__version__) > _Version('0.7.0'):
     ALLOW_SHARDY_PARTITIONER = True
 else:
+    jax.config.update('jax_use_shardy_partitioner', False)
     ALLOW_SHARDY_PARTITIONER = False
 
 
