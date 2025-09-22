@@ -120,11 +120,20 @@ This setup uses the pure-JAX backend—**no** MPI required.
 
 ### 2. JAX + cuDecomp Backend (Advanced)
 
-If you need to use `MPI` instead of `NCCL` for `GPU` or gloo for CPU, you can build from GitHub with cuDecomp enabled. This requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) or a similar environment providing a CUDA-aware MPI toolchain.
+If you need to use `MPI` instead of `NCCL` for `GPU`, you can build from GitHub with cuDecomp enabled. This requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk). Ensure `nvc`, `nvc++`, and `nvcc` are in your `PATH`, `CUDA`, `MPI`, and `NCCL` shared libraries are on `LD_LIBRARY_PATH`, and set `CC=nvc` and `CXX=nvc++` before building.
 
 ```bash
 pip install -U pip
 pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -Ccmake.define.JD_CUDECOMP_BACKEND=ON
+```
+
+Alternatively, clone the repository locally and install from your checkout:
+
+```bash
+git clone https://github.com/DifferentiableUniverseInitiative/jaxDecomp.git --recursive
+cd jaxDecomp
+pip install -U pip
+pip install . -Ccmake.define.JD_CUDECOMP_BACKEND=ON
 ```
 
 - If CMake cannot find NVHPC, set:
