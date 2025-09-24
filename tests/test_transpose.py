@@ -39,7 +39,14 @@ pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
 decomp = [(size, 1), (1, size), pencil_1, pencil_2]
 global_shapes = [(8, 16, 32), (8, 8, 8), (29 * size, 19 * size, 17 * size)]
 # Cubes, non-cubes and primes
-local_transpose = [False, True]
+local_transpose = [
+    pytest.param(False, id='no_local_transpose'),
+    pytest.param(True, id='local_transpose'),
+]
+use_shardy = [
+    pytest.param(False, id='no_shardy'),
+    pytest.param(True, id='shardy'),
+]
 
 
 class TestTransposes:
@@ -144,7 +151,7 @@ class TestTransposes:
     @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_cudecomp_transpose(self, pdims, global_shape, local_transpose, use_shardy):
@@ -152,7 +159,7 @@ class TestTransposes:
 
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_jax_transpose(self, pdims, global_shape, local_transpose, use_shardy):
@@ -211,7 +218,7 @@ class TestTransposesGrad:
     @pytest.mark.parametrize('pdims', decomp)
     @pytest.mark.parametrize('global_shape', global_shapes)
     @pytest.mark.parametrize('local_transpose', local_transpose)
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     def test_cudecomp_transpose_grad(self, pdims, global_shape, local_transpose, use_shardy):
         self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp', use_shardy=use_shardy)
 
@@ -219,6 +226,6 @@ class TestTransposesGrad:
     @pytest.mark.parametrize('pdims', decomp)
     @pytest.mark.parametrize('global_shape', global_shapes)
     @pytest.mark.parametrize('local_transpose', local_transpose)
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     def test_jax_transpose_grad(self, pdims, global_shape, local_transpose, use_shardy):
         self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy)

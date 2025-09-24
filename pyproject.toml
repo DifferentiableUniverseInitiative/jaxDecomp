@@ -29,7 +29,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0.0"]
+test = [
+    'pytest>=8.0.0',
+    'pytest-cov',
+    'pytest-mock',
+    'chex',
+]
 
 [tool.scikit-build]
 minimum-version = "0.8"
@@ -43,6 +48,12 @@ CMAKE_LIBRARY_OUTPUT_DIRECTORY = ""
 [tool.cibuildwheel]
 test-extras = "test"
 test-command = "pytest {project}/tests"
+
+[tool.pytest.ini_options]
+addopts = '-rfEX --cov=jaxdecomp --doctest-modules'
+testpaths = [
+    'tests',
+]
 
 [tool.ruff]
 line-length = 150
@@ -77,3 +88,7 @@ ignore = [
 
 [tool.ruff.format]
 quote-style = 'single'
+
+[[tool.mypy.overrides]]
+module = []
+ignore_missing_imports = true

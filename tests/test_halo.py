@@ -27,6 +27,10 @@ from jaxdecomp._src.spmd_ops import ALLOW_SHARDY_PARTITIONER
 pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
 pdims = [(1, size), (size, 1), pencil_1, pencil_2]
+use_shardy = [
+    pytest.param(False, id='no_shardy'),
+    pytest.param(True, id='shardy'),
+]
 
 
 def split_into_grid(array, pdims):
@@ -53,7 +57,7 @@ all_gather = partial(process_allgather, tiled=True)
 
 
 @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
-@pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+@pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
 @pytest.mark.parametrize('pdims', pdims)
 # Test with Slab and Pencil decompositions
 def test_halo_against_cudecomp(pdims, use_shardy):
@@ -255,12 +259,12 @@ class TestHaloExchange:
                 )
 
     @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', pdims)
     def test_cudecomp_halo(self, pdims, use_shardy):
         self.run_test((32, 32, 32), pdims, 'CUDECOMP', use_shardy)
 
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', pdims)
     def test_jax_halo(
         self,
@@ -343,7 +347,7 @@ class TestHaloExchangeGrad:
         assert_array_equal(model(global_array, obs), jnp.zeros_like(global_array))
         assert_array_equal(model(global_array * 2, obs), jnp.full_like(global_array, 3))
 
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', pdims)
     def test_jax_halo(
         self,

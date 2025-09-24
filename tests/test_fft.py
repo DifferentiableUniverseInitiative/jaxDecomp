@@ -33,7 +33,14 @@ global_shapes = [
     (8, 8, 8),
     (29 * size, 19 * size, 17 * size),
 ]  # Cubes, non-cubes and primes
-local_transpose = [True, False]
+local_transpose = [
+    pytest.param(True, id='local_transpose'),
+    pytest.param(False, id='no_local_transpose'),
+]
+use_shardy = [
+    pytest.param(False, id='no_shardy'),
+    pytest.param(True, id='shardy'),
+]
 
 
 class TestFFTs:
@@ -98,7 +105,7 @@ class TestFFTs:
     @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_cudecomp_fft(self, pdims, global_shape, local_transpose, use_shardy):
@@ -106,7 +113,7 @@ class TestFFTs:
 
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_jax_fft(self, pdims, global_shape, local_transpose, use_shardy):
@@ -209,14 +216,14 @@ class TestFFTsGrad:
     @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_cudecomp_grad(self, pdims, global_shape, local_transpose, use_shardy):
         self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp', use_shardy=use_shardy)
 
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_jax_grad(self, pdims, global_shape, local_transpose, use_shardy):
         self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy)
@@ -274,7 +281,7 @@ class TestFFTFreq:
     @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_cudecomp_fft(self, pdims, global_shape, local_transpose, use_shardy):
@@ -282,7 +289,7 @@ class TestFFTFreq:
 
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
-    @pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+    @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_jax_fft(self, pdims, global_shape, local_transpose, use_shardy):
@@ -290,7 +297,7 @@ class TestFFTFreq:
 
 
 @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
-@pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+@pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)
 def test_huge_fft(pdims, use_shardy):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
@@ -311,7 +318,7 @@ def test_huge_fft(pdims, use_shardy):
         print('Reconstruction check OK!')
 
 
-@pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+@pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)
 def test_vmap(pdims, use_shardy):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
@@ -333,7 +340,7 @@ def test_vmap(pdims, use_shardy):
     assert batched_out[0].sharding.is_equivalent_to(fft_sharding, ndim=3)
 
 
-@pytest.mark.parametrize('use_shardy', [False, True])  # Test with and without shardy
+@pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
 def test_fwd_rev_grad(pdims, use_shardy):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
