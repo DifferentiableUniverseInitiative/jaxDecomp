@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: 'If you use this software, please cite it as below.'
+type: software
+title: 'jaxDecomp: JAX Library for 3D Domain Decomposition and Parallel FFTs'
+authors:
+  - family-names: "Kabalan"
+    given-names: "Wassim"
+    orcid: "https://orcid.org/0009-0001-6501-4564"
+  - family-names: "Lanusse"
+    given-names: "Francois"
+    orcid: "https://orcid.org/0000-0001-7956-0542"
+repository-code: 'https://github.com/DifferentiableUniverseInitiative/jaxDecomp'
+url: 'https://jaxdecomp.readthedocs.io'
+abstract: >-
+  JAX reimplementation and bindings for NVIDIA's cuDecomp library,
+  enabling multi-node parallel FFTs and halo exchanges directly in
+  low-level NCCL/CUDA-Aware MPI from JAX code. jaxDecomp provides
+  both a pure JAX backend for easy deployment and an optional
+  cuDecomp backend for advanced MPI/NCCL communication patterns.
+  All functions are JIT-compatible and support automatic differentiation.
+keywords:
+  - JAX
+  - domain decomposition
+  - parallel FFT
+  - distributed computing
+  - MPI
+  - NCCL
+  - GPU computing
+  - cuDecomp
+  - halo exchange
+  - HPC
+license: MIT
+version: 0.2.8
+date-released: '2025-01-01'
