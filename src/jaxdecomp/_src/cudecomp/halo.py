@@ -11,7 +11,7 @@ from jax.core import ShapedArray
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
-from jaxlib.hlo_helpers import custom_call
+from jax._src.interpreters.mlir import custom_call
 
 import jaxdecomp
 from jaxdecomp._src.pencil_utils import get_pdims_from_mesh

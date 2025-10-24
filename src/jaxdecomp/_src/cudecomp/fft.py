@@ -13,7 +13,7 @@ from jax.extend.core import Primitive
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
-from jaxlib.hlo_helpers import custom_call
+from jax._src.interpreters.mlir import custom_call
 from jaxtyping import Array
 
 import jaxdecomp

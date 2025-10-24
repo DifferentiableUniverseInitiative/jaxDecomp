@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import pytest
 from jax import lax
 from jax.experimental.multihost_utils import process_allgather
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 from jax.sharding import PartitionSpec as P
 
 import jaxdecomp

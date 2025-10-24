@@ -42,7 +42,7 @@ def halo_exchange(
     >>> from jax.sharding import PartitionSpec as P
     >>> from jax.experimental import mesh_utils
     >>> from jax.sharding import Mesh, NamedSharding
-    >>> from jax.experimental.shard_map import shard_map
+    >>> from jax import shard_map
 
     # Initialize distributed mesh and array
     >>> jax.distributed.initialize()
