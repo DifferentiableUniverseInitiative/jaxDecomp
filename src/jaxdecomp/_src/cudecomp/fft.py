@@ -6,6 +6,7 @@ import jaxlib.mlir.ir as ir
 import numpy as np
 from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
+from jax._src.interpreters.mlir import custom_call
 from jax._src.lib.mlir.dialects import hlo
 from jax._src.numpy.util import promote_dtypes_complex
 from jax.core import ShapedArray
@@ -13,7 +14,6 @@ from jax.extend.core import Primitive
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
-from jax._src.interpreters.mlir import custom_call
 from jaxtyping import Array
 
 import jaxdecomp

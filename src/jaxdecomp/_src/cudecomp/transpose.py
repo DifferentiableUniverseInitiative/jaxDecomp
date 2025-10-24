@@ -6,13 +6,13 @@ import jaxlib.mlir.ir as ir
 import numpy as np
 from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
+from jax._src.interpreters.mlir import custom_call
 from jax._src.lib.mlir.dialects import hlo
 from jax._src.typing import Array, ArrayLike
 from jax.core import ShapedArray
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
-from jax._src.interpreters.mlir import custom_call
 
 import jaxdecomp
 from jaxdecomp._src.pencil_utils import get_pdims_from_mesh, get_pdims_from_sharding
