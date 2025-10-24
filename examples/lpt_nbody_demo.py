@@ -14,9 +14,9 @@ jax.config.update('jax_enable_x64', False)
 import jax.numpy as jnp
 import jax_cosmo as jc
 import numpy as np
+from jax import shard_map
 from jax._src import mesh as mesh_lib
 from jax.experimental import mesh_utils
-from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh
 from jax.sharding import PartitionSpec as P
 from scatter import scatter

@@ -28,7 +28,7 @@ Below is a full example script illustrating:
 ```python
 import jax
 from jax.experimental import mesh_utils, multihost_utils
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
 from jax import numpy as jnp
 import jaxdecomp
