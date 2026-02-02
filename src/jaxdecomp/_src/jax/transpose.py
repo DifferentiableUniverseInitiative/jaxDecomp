@@ -261,8 +261,7 @@ def partition(
 
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     output_sharding: NamedSharding = result_infos.sharding  # type: ignore
-    input_mesh: Mesh = arg_infos[0].sharding.mesh  # type: ignore
-    x_axis_name, y_axis_name = get_axis_names_from_mesh(input_mesh)
+    x_axis_name, y_axis_name = get_axis_names_from_mesh(mesh)
 
     impl = partial(per_shard_impl, kind=kind, x_axis_name=x_axis_name, y_axis_name=y_axis_name)
 
