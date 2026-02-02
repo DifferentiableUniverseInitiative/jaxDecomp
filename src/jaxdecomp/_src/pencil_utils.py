@@ -94,23 +94,6 @@ def get_axis_names_from_mesh(mesh: Mesh) -> tuple[str, str]:
     return mesh.axis_names + (None,) * (2 - len(mesh.axis_names))
 
 
-def get_axis_names_from_spec(mesh) -> tuple[AxisName, AxisName]:
-    """Returns the (x_axis, y_axis) names from a PartitionSpec.
-
-    This is the preferred way to determine axis names for 1D and 2D meshes,
-    as it correctly handles 1D meshes where the single mesh axis may map
-    to any array dimension.
-
-    Args:
-        spec: The PartitionSpec.
-
-    Returns:
-        A tuple of (x_axis_name, y_axis_name).
-    """
-    spec = spec + (None,) * (3 - len(spec))
-    return (spec[0], spec[1])
-
-
 def get_pdims_from_axis_names(x_axis_name: AxisName, y_axis_name: AxisName) -> PdimsType:
     x_size = 1 if x_axis_name is None else lax.psum(1, x_axis_name)
     y_size = 1 if y_axis_name is None else lax.psum(1, y_axis_name)
@@ -147,10 +130,10 @@ def validate_spec_matches_mesh(spec, mesh: Mesh):
         else:
             if i < len(mesh_names) and mesh.shape[mesh_names[i]] > 1:
                 raise ValueError(
-                    f"Spec {spec} does not match mesh axis names {mesh_names}. "
+                    f'Spec {spec} does not match mesh axis names {mesh_names}. '
                     f"At position {i}: spec has None but mesh axis '{mesh_names[i]}' "
-                    f"has size {mesh.shape[mesh_names[i]]} (> 1). "
-                    "An unsharded dimension cannot correspond to a distributed mesh axis."
+                    f'has size {mesh.shape[mesh_names[i]]} (> 1). '
+                    'An unsharded dimension cannot correspond to a distributed mesh axis.'
                 )
 
 

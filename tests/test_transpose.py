@@ -64,7 +64,7 @@ class TestTransposes:
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-        if axis_type == "explicit":
+        if axis_type == 'explicit':
             pytest.skip(reason='Explicit axis type not yet supported for Transpose tests')
 
         mesh = create_mesh(pdims, axis_type=axis_type)
@@ -185,7 +185,7 @@ class TestTransposesGrad:
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-        if axis_type == "explicit":
+        if axis_type == 'explicit':
             pytest.skip(reason='Explicit axis type not yet supported for Transpose tests')
 
         mesh = create_mesh(pdims, axis_type=axis_type)

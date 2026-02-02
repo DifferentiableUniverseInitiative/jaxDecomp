@@ -30,9 +30,10 @@ pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
 
 decomp = [
     pytest.param((size, 1), id='SLAB_XY'),
-     pytest.param((1, size), id='SLAB_YZ'), 
-     pytest.param(pencil_1, id='pencil_1'), 
-     pytest.param(pencil_2, id='pencil_2')]
+    pytest.param((1, size), id='SLAB_YZ'),
+    pytest.param(pencil_1, id='pencil_1'),
+    pytest.param(pencil_2, id='pencil_2'),
+]
 global_shapes = [
     pytest.param((8, 16, 32), id='8x16x32'),
     pytest.param((8, 8, 8), id='8x8x8'),
@@ -53,7 +54,7 @@ class TestFFTs:
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-        if axis_type == "explicit" : 
+        if axis_type == 'explicit':
             pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
 
         print('*' * 80)
@@ -69,7 +70,7 @@ class TestFFTs:
         jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
 
-        mesh = create_mesh(pdims , axis_type=axis_type)
+        mesh = create_mesh(pdims, axis_type=axis_type)
         global_array = create_spmd_array(global_shape, mesh)
 
         # Perform distributed FFT
@@ -118,7 +119,7 @@ class TestFFTs:
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_cudecomp_fft(self, pdims, global_shape, local_transpose, use_shardy, axis_type):
-        self.run_test(pdims, global_shape, local_transpose, backend='cuDeComp', use_shardy=use_shardy ,axis_type=axis_type)
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDeComp', use_shardy=use_shardy, axis_type=axis_type)
 
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
@@ -134,7 +135,7 @@ class TestFFTsGrad:
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-        if axis_type == "explicit":
+        if axis_type == 'explicit':
             pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
 
         if pdims[0] == 1:
@@ -247,7 +248,7 @@ class TestFFTFreq:
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-        if axis_type == "explicit":
+        if axis_type == 'explicit':
             pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
 
         print('*' * 80)
@@ -320,7 +321,7 @@ def test_huge_fft(pdims, use_shardy, axis_type):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
         pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-    if axis_type == "explicit":
+    if axis_type == 'explicit':
         pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
 
     with jax.experimental.disable_x64():
@@ -345,7 +346,7 @@ def test_vmap(pdims, use_shardy, axis_type):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
         pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-    if axis_type == "explicit":
+    if axis_type == 'explicit':
         pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
 
     jax.config.update('jax_use_shardy_partitioner', use_shardy)
@@ -371,7 +372,7 @@ def test_fwd_rev_grad(pdims, use_shardy, axis_type):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
         pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-    if axis_type == "explicit":
+    if axis_type == 'explicit':
         pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
 
     jax.config.update('jax_use_shardy_partitioner', use_shardy)

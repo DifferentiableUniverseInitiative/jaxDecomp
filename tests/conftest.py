@@ -44,6 +44,7 @@ def setup_and_teardown_session():
     yield
 
     import jax
+
     import jaxdecomp
 
     # Code to run at the end of the session
@@ -99,8 +100,7 @@ def process_slices(slices_tuple):
 def create_mesh(pdims, axis_type, transposed_devices=False):
     import jax
     from jax.experimental import mesh_utils
-    from jax.sharding import Mesh, AxisType
-
+    from jax.sharding import AxisType
 
     size = jax.device_count()
     assert len(pdims) == 2
@@ -116,27 +116,6 @@ def create_mesh(pdims, axis_type, transposed_devices=False):
     else:
         axis_types = (AxisType.Auto,) * len(pdims)
     return jax.make_mesh(devices.shape, ('z', 'y'), devices=devices.flatten(), axis_types=axis_types)
-
-
-
-def device_arange(mesh):
-    import jax
-    from jax import numpy as jnp
-    from jax.sharding import NamedSharding
-    from jax.sharding import PartitionSpec as P
-
-    sharding = NamedSharding(mesh, P('z', 'y'))
-
-    def generate_aranged(x):
-        x_start = replace_none_or_zero(x[0].start)
-        y_start = replace_none_or_zero(x[1].start)
-        a = jnp.array([[x_start + y_start * pdims[0]]])
-        print(f'index is {x} and value is {a}')
-        return a
-
-    aranged = jax.make_array_from_callback(mesh.devices.shape, sharding, data_callback=generate_aranged)
-
-    return aranged
 
 
 def create_ones_spmd_array(global_shape, mesh):

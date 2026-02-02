@@ -71,7 +71,7 @@ def test_halo_against_cudecomp(pdims, use_shardy, axis_type):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
         pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-    if axis_type == "explicit":
+    if axis_type == 'explicit':
         pytest.skip(reason='Explicit axis type not yet supported for Halo tests')
 
     global_shape = (16, 16, 16)
@@ -124,7 +124,7 @@ class TestHaloExchange:
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-        if axis_type == "explicit":
+        if axis_type == 'explicit':
             pytest.skip(reason='Explicit axis type not yet supported for Halo tests')
 
         jnp.set_printoptions(linewidth=200)
@@ -293,7 +293,7 @@ class TestHaloExchangeGrad:
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-        if axis_type == "explicit":
+        if axis_type == 'explicit':
             pytest.skip(reason='Explicit axis type not yet supported for Halo tests')
 
         jnp.set_printoptions(linewidth=200)
