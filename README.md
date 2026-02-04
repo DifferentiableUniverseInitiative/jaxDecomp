@@ -29,12 +29,12 @@ os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
 import jax
-from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
+from jax.sharding import Mesh, PartitionSpec as P, NamedSharding, AxisType
 import jaxdecomp
 
 # Create a 2x4 mesh of devices on CPU
 pdims = (2, 4)
-mesh = jax.make_mesh(pdims, axis_names=('x', 'y'))
+mesh = jax.make_mesh(pdims, axis_names=('x', 'y') , axis_types=(AxisType.Auto, AxisType.Auto))
 sharding = NamedSharding(mesh, P('x', 'y'))
 
 # Create a random 3D array and enforce sharding
