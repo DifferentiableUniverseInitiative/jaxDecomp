@@ -72,8 +72,6 @@ class TestFFTs:
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
 
         mesh = create_mesh(pdims, axis_type=axis_type)
-        print(f'mesh is {mesh}')
-        jax.set_mesh(mesh)
         global_array = create_spmd_array(global_shape, mesh)
 
         # Perform distributed FFT
