@@ -56,7 +56,7 @@ decompPencilInfo_t getPencilInfo(decompGridDescConfig_t grid_config, int32_t axi
   cudecompGridDesc_t grid_desc;
   CHECK_CUDECOMP_EXIT(cudecompGridDescCreate(handle, &grid_desc, &config, nullptr));
   cudecompPencilInfo_t pencil_info;
-  CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, grid_desc, &pencil_info, axis, nullptr));
+  CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, grid_desc, &pencil_info, axis, nullptr, nullptr));
   decompPencilInfo_t result;
   decompPencilInfoSet(&result, &pencil_info);
 
