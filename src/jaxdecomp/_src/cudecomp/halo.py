@@ -14,7 +14,8 @@ from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
 
 import jaxdecomp
-from jaxdecomp._src.pencil_utils import get_pdims_from_mesh
+from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
+from jaxdecomp._src.pencil_utils import get_pdims_from_mesh, validate_spec_matches_mesh
 from jaxdecomp._src.spmd_ops import (
     BasePrimitive,
     register_primitive,
@@ -223,7 +224,7 @@ class HaloPrimitive(BasePrimitive):
     def infer_sharding_from_operands(
         halo_extents: HaloExtentType,
         halo_periods: Periodicity,
-        mesh: NamedSharding,
+        mesh: Mesh,
         arg_infos: tuple[ShapeDtypeStruct],
         result_infos: tuple[ShapedArray],
     ) -> NamedSharding:
@@ -236,7 +237,7 @@ class HaloPrimitive(BasePrimitive):
             Extents of the halo in x, y, and z dimensions.
         halo_periods : Periodicity
             Periodicity of the halo in x, y, and z dimensions.
-        mesh : NamedSharding
+        mesh : Mesh
             Mesh object for sharding.
         arg_infos : Tuple[ShapeDtypeStruct]
             Shapes and dtypes of input operands.
@@ -250,6 +251,12 @@ class HaloPrimitive(BasePrimitive):
         """
         del halo_extents, halo_periods, result_infos, mesh
         halo_exchange_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
+        if halo_exchange_sharding is None:
+            error_during_jacfwd('Halo Exchange')
+
+        if all([spec is None for spec in halo_exchange_sharding.spec]):
+            error_during_jacrev('Halo Exchange')
+
         input_mesh: Mesh = halo_exchange_sharding.mesh  # type: ignore
         return NamedSharding(input_mesh, P(*halo_exchange_sharding.spec))
 
@@ -284,16 +291,14 @@ class HaloPrimitive(BasePrimitive):
         """
         del result_infos, halo_extents, halo_periods, mesh
 
+        operand = arg_infos[0]
+        if operand.rank != 3:
+            raise NotImplementedError(
+                f'cuDecomp backend only supports 3D arrays, got rank {operand.rank}. ' 'Please use the JAX backend for batching/vmap support.'
+            )
+
         spec = ('i', 'j', 'k')  # einsum spec for shardy
         einsum_spec = ' '.join(spec)
-
-        operand = arg_infos[0]
-        if operand.rank == 3:
-            pass
-        elif operand.rank == 4:
-            einsum_spec = 'b ' + einsum_spec
-        else:
-            raise ValueError(f'Unsupported input shape rank {operand.rank}')
 
         # Halo exchange preserves sharding (input = output)
         return f'{einsum_spec}->{einsum_spec}'
@@ -331,6 +336,8 @@ class HaloPrimitive(BasePrimitive):
         halo_exchange_sharding = arg_shapes[0].sharding
         global_shape = arg_shapes[0].shape
         pdims = get_pdims_from_mesh(mesh)
+
+        validate_spec_matches_mesh(halo_exchange_sharding.spec, mesh)
 
         shape_without_halo = (
             global_shape[0] - 2 * pdims[1] * halo_extents[0],

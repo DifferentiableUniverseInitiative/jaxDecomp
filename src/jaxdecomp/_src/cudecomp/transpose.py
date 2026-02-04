@@ -15,6 +15,7 @@ from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
 
 import jaxdecomp
+from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
 from jaxdecomp._src.pencil_utils import get_pdims_from_mesh, get_pdims_from_sharding
 from jaxdecomp._src.spmd_ops import (
     BasePrimitive,
@@ -323,6 +324,18 @@ class TransposePrimitive(BasePrimitive):
         del mesh, result_infos
 
         input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
+        if input_sharding is None:
+            error_during_jacfwd(f'Transpose {kind}')
+
+        if all([spec is None for spec in input_sharding.spec]):
+            error_during_jacrev(f'Transpose {kind}')
+
+        operand = arg_infos[0]
+        if operand.ndim != 3:
+            raise NotImplementedError(
+                f'cuDecomp backend only supports 3D arrays, got {operand.ndim}D. ' 'Please use the JAX backend for batching/vmap support.'
+            )
+
         if jaxdecomp.config.transpose_axis_contiguous:
             transposed_pdims = (input_sharding.spec[1], input_sharding.spec[0], None)
         else:
@@ -384,6 +397,12 @@ class TransposePrimitive(BasePrimitive):
         """
         del result_infos, mesh
 
+        operand = arg_infos[0]
+        if operand.rank != 3:
+            raise NotImplementedError(
+                f'cuDecomp backend only supports 3D arrays, got rank {operand.rank}. ' 'Please use the JAX backend for batching/vmap support.'
+            )
+
         spec = ('i', 'j', 'k')  # einsum spec for shardy
 
         if jaxdecomp.config.transpose_axis_contiguous:
@@ -404,15 +423,6 @@ class TransposePrimitive(BasePrimitive):
         # Filter out None values and create einsum strings
         einsum_in = ' '.join([s for s in spec if s is not None])
         einsum_out = ' '.join([s for s in transposed_specs if s is not None])
-
-        operand = arg_infos[0]
-        if operand.rank == 3:
-            pass
-        elif operand.rank == 4:
-            einsum_in = 'b ' + einsum_in
-            einsum_out = 'b ' + einsum_out
-        else:
-            raise ValueError(f'Unsupported input shape rank {operand.rank}')
 
         return f'{einsum_in}->{einsum_out}'
 
