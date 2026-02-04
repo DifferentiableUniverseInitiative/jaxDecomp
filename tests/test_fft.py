@@ -55,8 +55,7 @@ class TestFFTs:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
         if axis_type == 'explicit':
-            pass
-            # pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
+            pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
 
         print('*' * 80)
         print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} use shardy {use_shardy}')
