@@ -1,5 +1,6 @@
 from conftest import (
     assert_allclose,
+    create_mesh,
     create_spmd_array,
     initialize_distributed,
     is_on_cluster,
@@ -27,11 +28,16 @@ all_gather = partial(process_allgather, tiled=True)
 pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
 
-decomp = [(size, 1), (1, size), pencil_1, pencil_2]
+decomp = [
+    pytest.param((size, 1), id='SLAB_XY'),
+    pytest.param((1, size), id='SLAB_YZ'),
+    pytest.param(pencil_1, id='pencil_1'),
+    pytest.param(pencil_2, id='pencil_2'),
+]
 global_shapes = [
-    (8, 16, 32),
-    (8, 8, 8),
-    (29 * size, 19 * size, 17 * size),
+    pytest.param((8, 16, 32), id='8x16x32'),
+    pytest.param((8, 8, 8), id='8x8x8'),
+    pytest.param((29 * size, 19 * size, 17 * size), id='prime_sizes'),
 ]  # Cubes, non-cubes and primes
 local_transpose = [
     pytest.param(True, id='local_transpose'),
@@ -44,9 +50,13 @@ use_shardy = [
 
 
 class TestFFTs:
-    def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy):
+    def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy, axis_type):
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
+        if axis_type == 'explicit':
+            pass
+            # pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
 
         print('*' * 80)
         print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} use shardy {use_shardy}')
@@ -61,7 +71,10 @@ class TestFFTs:
         jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
 
-        global_array, mesh = create_spmd_array(global_shape, pdims)
+        mesh = create_mesh(pdims, axis_type=axis_type)
+        print(f'mesh is {mesh}')
+        jax.set_mesh(mesh)
+        global_array = create_spmd_array(global_shape, mesh)
 
         # Perform distributed FFT
         karray = jaxdecomp.fft.pfft3d(global_array, backend=backend)
@@ -108,22 +121,25 @@ class TestFFTs:
     @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_cudecomp_fft(self, pdims, global_shape, local_transpose, use_shardy):
-        self.run_test(pdims, global_shape, local_transpose, backend='cuDeComp', use_shardy=use_shardy)
+    def test_cudecomp_fft(self, pdims, global_shape, local_transpose, use_shardy, axis_type):
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDeComp', use_shardy=use_shardy, axis_type=axis_type)
 
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
     @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_jax_fft(self, pdims, global_shape, local_transpose, use_shardy):
-        self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy)
+    def test_jax_fft(self, pdims, global_shape, local_transpose, use_shardy, axis_type):
+        self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy, axis_type=axis_type)
 
 
 class TestFFTsGrad:
-    def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy):
+    def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy, axis_type):
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
+        if axis_type == 'explicit':
+            pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
 
         if pdims[0] == 1:
             penciltype = SLAB_XY
@@ -153,7 +169,8 @@ class TestFFTsGrad:
                 """)
         jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
-        global_array, mesh = create_spmd_array(global_shape, pdims)
+        mesh = create_mesh(pdims, axis_type=axis_type)
+        global_array = create_spmd_array(global_shape, mesh)
 
         print('-' * 40)
         print('Testing fwd grad')
@@ -218,21 +235,24 @@ class TestFFTsGrad:
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_cudecomp_grad(self, pdims, global_shape, local_transpose, use_shardy):
-        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp', use_shardy=use_shardy)
+    def test_cudecomp_grad(self, pdims, global_shape, local_transpose, use_shardy, axis_type):
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp', use_shardy=use_shardy, axis_type=axis_type)
 
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_jax_grad(self, pdims, global_shape, local_transpose, use_shardy):
-        self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy)
+    def test_jax_grad(self, pdims, global_shape, local_transpose, use_shardy, axis_type):
+        self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy, axis_type=axis_type)
 
 
 class TestFFTFreq:
-    def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy):
+    def run_test(self, pdims, global_shape, local_transpose, backend, use_shardy, axis_type):
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
+        if axis_type == 'explicit':
+            pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
 
         print('*' * 80)
         print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} use shardy {use_shardy}')
@@ -242,7 +262,8 @@ class TestFFTFreq:
         if not local_transpose:
             pytest.skip(reason='Not implemented yet')
 
-        global_array, mesh = create_spmd_array(global_shape, pdims)
+        mesh = create_mesh(pdims, transposed_devices=True, axis_type=axis_type)
+        global_array = create_spmd_array(global_shape, mesh)
 
         # Perform distributed gradient kernel
         karray = jaxdecomp.fft.pfft3d(global_array, backend=backend)
@@ -284,29 +305,33 @@ class TestFFTFreq:
     @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_cudecomp_fft(self, pdims, global_shape, local_transpose, use_shardy):
-        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp', use_shardy=use_shardy)
+    def test_cudecomp_fft(self, pdims, global_shape, local_transpose, use_shardy, axis_type):
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp', use_shardy=use_shardy, axis_type=axis_type)
 
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
     @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
-    def test_jax_fft(self, pdims, global_shape, local_transpose, use_shardy):
-        self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy)
+    def test_jax_fft(self, pdims, global_shape, local_transpose, use_shardy, axis_type):
+        self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy, axis_type=axis_type)
 
 
 @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
 @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)
-def test_huge_fft(pdims, use_shardy):
+def test_huge_fft(pdims, use_shardy, axis_type):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
         pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
+    if axis_type == 'explicit':
+        pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
 
     with jax.experimental.disable_x64():
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
         global_shape = (2048,) * 3  # Large cube to test integer overflow
-        global_array, mesh = create_spmd_array(global_shape, pdims)
+        mesh = create_mesh(pdims, axis_type=axis_type)
+        global_array = create_spmd_array(global_shape, mesh)
         # Perform distributed FFT
         karray = jaxdecomp.fft.pfft3d(global_array, backend='jax')
         # Perform inverse FFT
@@ -320,13 +345,17 @@ def test_huge_fft(pdims, use_shardy):
 
 @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)
-def test_vmap(pdims, use_shardy):
+def test_vmap(pdims, use_shardy, axis_type):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
         pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
+    if axis_type == 'explicit':
+        pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
+
     jax.config.update('jax_use_shardy_partitioner', use_shardy)
     global_shape = (8, 8, 8)  # small shape because the shape in jacrev is (8 ,) * 6
-    global_array, mesh = create_spmd_array(global_shape, pdims)
+    mesh = create_mesh(pdims, axis_type=axis_type)
+    global_array = create_spmd_array(global_shape, mesh)
 
     fft_sharding = jaxdecomp.get_fft_output_sharding(global_array.sharding)
 
@@ -342,13 +371,17 @@ def test_vmap(pdims, use_shardy):
 
 @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
 @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
-def test_fwd_rev_grad(pdims, use_shardy):
+def test_fwd_rev_grad(pdims, use_shardy, axis_type):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
         pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
+    if axis_type == 'explicit':
+        pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
+
     jax.config.update('jax_use_shardy_partitioner', use_shardy)
     global_shape = (8, 8, 8)  # small shape because the shape in jacrev is (8 ,) * 6
-    global_array, mesh = create_spmd_array(global_shape, pdims)
+    mesh = create_mesh(pdims, axis_type=axis_type)
+    global_array = create_spmd_array(global_shape, mesh)
 
     # Fix with explicit sharding annotation
     in_sharding = global_array.sharding

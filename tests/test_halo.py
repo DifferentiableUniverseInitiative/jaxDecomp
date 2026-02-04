@@ -1,5 +1,6 @@
 from conftest import (
     assert_array_equal,
+    create_mesh,
     create_ones_spmd_array,
     create_spmd_array,
     initialize_distributed,
@@ -59,7 +60,7 @@ all_gather = partial(process_allgather, tiled=True)
 @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
 @pytest.mark.parametrize('pdims', pdims)
 # Test with Slab and Pencil decompositions
-def test_halo_against_cudecomp(pdims, use_shardy):
+def test_halo_against_cudecomp(pdims, use_shardy, axis_type):
     jnp.set_printoptions(linewidth=200)
 
     print('*' * 80)
@@ -70,8 +71,12 @@ def test_halo_against_cudecomp(pdims, use_shardy):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
         pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
+    if axis_type == 'explicit':
+        pytest.skip(reason='Explicit axis type not yet supported for Halo tests')
+
     global_shape = (16, 16, 16)
-    global_array, mesh = create_spmd_array(global_shape, pdims)
+    mesh = create_mesh(pdims, axis_type=axis_type)
+    global_array = create_spmd_array(global_shape, mesh)
 
     # @partial(shard_map, mesh=mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
     # def sharded_add_multiply(arr, devices):
@@ -79,8 +84,8 @@ def test_halo_against_cudecomp(pdims, use_shardy):
 
     halo_size = 2
 
-    halo_x = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
-    halo_y = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
+    halo_x = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
+    halo_y = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
     halo_extents = (halo_x[0], halo_y[0])
     periodic = (True, True)
     padding = (halo_x, halo_y, (0, 0))
@@ -110,7 +115,7 @@ def test_halo_against_cudecomp(pdims, use_shardy):
 
 
 class TestHaloExchange:
-    def run_test(self, global_shape, pdims, backend, use_shardy):
+    def run_test(self, global_shape, pdims, backend, use_shardy, axis_type):
         print('*' * 80)
         print(f'Testing with pdims {pdims} and use_shardy {use_shardy}')
 
@@ -119,13 +124,17 @@ class TestHaloExchange:
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
+        if axis_type == 'explicit':
+            pytest.skip(reason='Explicit axis type not yet supported for Halo tests')
+
         jnp.set_printoptions(linewidth=200)
 
-        global_array, mesh = create_ones_spmd_array(global_shape, pdims)
+        mesh = create_mesh(pdims, axis_type=axis_type)
+        global_array = create_ones_spmd_array(global_shape, mesh)
         halo_size = 2
 
-        halo_x = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
-        halo_y = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
+        halo_x = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
+        halo_y = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
         halo_extents = (halo_x[0], halo_y[0])
         periodic = (True, True)
         padding = (halo_x, halo_y, (0, 0))
@@ -260,8 +269,8 @@ class TestHaloExchange:
     @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
     @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', pdims)
-    def test_cudecomp_halo(self, pdims, use_shardy):
-        self.run_test((32, 32, 32), pdims, 'CUDECOMP', use_shardy)
+    def test_cudecomp_halo(self, pdims, use_shardy, axis_type):
+        self.run_test((32, 32, 32), pdims, 'CUDECOMP', use_shardy, axis_type)
 
     @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', pdims)
@@ -269,12 +278,13 @@ class TestHaloExchange:
         self,
         pdims,
         use_shardy,
+        axis_type,
     ):
-        self.run_test((16, 16, 16), pdims, 'JAX', use_shardy)
+        self.run_test((16, 16, 16), pdims, 'JAX', use_shardy, axis_type)
 
 
 class TestHaloExchangeGrad:
-    def run_test(self, global_shape, pdims, backend, use_shardy):
+    def run_test(self, global_shape, pdims, backend, use_shardy, axis_type):
         print('*' * 80)
         print(f'Testing with pdims {pdims} and use_shardy {use_shardy}')
 
@@ -283,13 +293,17 @@ class TestHaloExchangeGrad:
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
+        if axis_type == 'explicit':
+            pytest.skip(reason='Explicit axis type not yet supported for Halo tests')
+
         jnp.set_printoptions(linewidth=200)
 
-        global_array, mesh = create_ones_spmd_array(global_shape, pdims)
+        mesh = create_mesh(pdims, axis_type=axis_type)
+        global_array = create_ones_spmd_array(global_shape, mesh)
         halo_size = 2
 
-        halo_x = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
-        halo_y = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
+        halo_x = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
+        halo_y = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
         halo_extents = (halo_x[0], halo_y[0])
         periodic = (True, True)
         padding = (halo_x, halo_y, (0, 0))
@@ -352,5 +366,6 @@ class TestHaloExchangeGrad:
         self,
         pdims,
         use_shardy,
+        axis_type,
     ):
-        self.run_test((16, 16, 16), pdims, 'JAX', use_shardy)
+        self.run_test((16, 16, 16), pdims, 'JAX', use_shardy, axis_type)
