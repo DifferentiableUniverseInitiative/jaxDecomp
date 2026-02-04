@@ -3,7 +3,6 @@ JaxDecomp Documentation
 
 A high-performance, differentiable distributed FFT library for JAX.
 
----
 
 User Guide
 ==========
