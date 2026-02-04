@@ -17,13 +17,15 @@ from jaxdecomplib import _jaxdecomp
 from jaxtyping import Array
 
 import jaxdecomp
-from jaxdecomp._src.fft_utils import FftType, fftn
+from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
+from jaxdecomp._src.fft_utils import FftType, FORWARD_FFTs, fftn
 from jaxdecomp._src.pencil_utils import (
     get_lowering_args,
     get_output_specs,
     get_pdims_from_sharding,
     get_pencil_type,
     get_transpose_order,
+    validate_spec_matches_mesh,
 )
 from jaxdecomp._src.spmd_ops import (
     BasePrimitive,
@@ -306,6 +308,18 @@ class FFTPrimitive(BasePrimitive):
         del adjoint, mesh, result_infos
 
         input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
+        if input_sharding is None:
+            error_during_jacfwd('pfft')
+
+        if all([spec is None for spec in input_sharding.spec]):
+            error_during_jacrev('pfft')
+
+        operand = arg_infos[0]
+        if operand.ndim != 3:
+            raise NotImplementedError(
+                f'cuDecomp backend only supports 3D arrays, got {operand.ndim}D. ' 'Please use the JAX backend for batching/vmap support.'
+            )
+
         spec = input_sharding.spec
         input_mesh: Mesh = input_sharding.mesh  # type: ignore
         pencil_type = get_pencil_type(input_mesh)
@@ -342,6 +356,12 @@ class FFTPrimitive(BasePrimitive):
             Einsum string describing the FFT operation.
         """
         del adjoint, result_infos
+
+        operand = arg_infos[0]
+        if operand.rank != 3:
+            raise NotImplementedError(
+                f'cuDecomp backend only supports 3D arrays, got rank {operand.rank}. ' 'Please use the JAX backend for batching/vmap support.'
+            )
 
         pencil_type = get_pencil_type(mesh)
         spec = ('i', 'j', 'k')  # einsum spec for shardy
@@ -384,6 +404,9 @@ class FFTPrimitive(BasePrimitive):
         input_mesh: Mesh = input_sharding.mesh  # type: ignore
         global_shape = arg_shapes[0].shape
         pdims = get_pdims_from_sharding(output_sharding)
+
+        if fft_type in FORWARD_FFTs:
+            validate_spec_matches_mesh(input_sharding.spec, input_mesh)
 
         impl = partial(
             FFTPrimitive.per_shard_impl,
