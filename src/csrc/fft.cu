@@ -20,11 +20,11 @@ HRESULT FourierExecutor<real_t>::Initialize(cudecompHandle_t handle, size_t& wor
 
   CHECK_CUDECOMP_EXIT(cudecompGridDescCreate(handle, &m_GridConfig, &m_GridDescConfig, nullptr));
   // Get x-pencil information (complex)
-  CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, m_GridConfig, &m_XPencilInfo, 0, nullptr));
+  CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, m_GridConfig, &m_XPencilInfo, 0, nullptr, nullptr));
   // Get y-pencil information (complex)
-  CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, m_GridConfig, &m_YPencilInfo, 1, nullptr));
+  CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, m_GridConfig, &m_YPencilInfo, 1, nullptr, nullptr));
   // Get z-pencil information (complex)
-  CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, m_GridConfig, &m_ZPencilInfo, 2, nullptr));
+  CHECK_CUDECOMP_EXIT(cudecompGetPencilInfo(handle, m_GridConfig, &m_ZPencilInfo, 2, nullptr, nullptr));
   // Get workspace size
   int64_t num_elements_work_c;
   CHECK_CUDECOMP_EXIT(cudecompGetTransposeWorkspaceSize(handle, m_GridConfig, &num_elements_work_c));
@@ -303,7 +303,8 @@ HRESULT FourierExecutor<real_t>::forwardXY(cudecompHandle_t handle, fftDescripto
     CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_yz, input, output, DIRECTION));
     // Tranpose Y to X but it actually X to Z
     CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, m_GridConfig, output, output, work_d,
-                                              get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+                                              get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                              stream));
     CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_x, stream));
     CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_x, work_d));
     // FFT on the second slab
@@ -318,10 +319,12 @@ HRESULT FourierExecutor<real_t>::forwardXY(cudecompHandle_t handle, fftDescripto
     CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_xy, input, output, DIRECTION));
     // Tranpose X to Y
     CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, m_GridConfig, output, output, work_d,
-                                              get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+                                              get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                              stream));
     // Tranpose Y to z
     CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, m_GridConfig, output, output, work_d,
-                                              get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+                                              get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                              stream));
     // FFT on the second slab
     CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_z, output, output, DIRECTION));
   }
@@ -342,7 +345,8 @@ HRESULT FourierExecutor<real_t>::backwardXY(cudecompHandle_t handle, fftDescript
     CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_x, input, output, DIRECTION));
     // Tranpose X to Y but it actually Z to X
     CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, m_GridConfig, output, output, work_d,
-                                              get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+                                              get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                              stream));
     CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_yz, stream));
     CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_yz, work_d));
     CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_yz, output, output, DIRECTION));
@@ -356,10 +360,12 @@ HRESULT FourierExecutor<real_t>::backwardXY(cudecompHandle_t handle, fftDescript
     CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_z, output, output, DIRECTION));
     // Tranpose X to Y
     CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, m_GridConfig, output, output, work_d,
-                                              get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+                                              get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                              stream));
     // Tranpose Y to z
     CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, m_GridConfig, output, output, work_d,
-                                              get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+                                              get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                              stream));
     // FFT on the second slab
     CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_xy, input, output, DIRECTION));
   }
@@ -379,7 +385,8 @@ HRESULT FourierExecutor<real_t>::forwardYZ(cudecompHandle_t handle, fftDescripto
   CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_x, input, output, DIRECTION));
   // Tranpose X to Y
   CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, m_GridConfig, input, output, work_d,
-                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                            stream));
   // FFT on the second slab
   if (desc.contiguous) {
     CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_yz, stream));
@@ -403,7 +410,8 @@ HRESULT FourierExecutor<real_t>::forwardYZ(cudecompHandle_t handle, fftDescripto
   // Extra Y to Z transpose to give back a Z pencil to the user
 
   // CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, m_GridConfig, output, output, work_d,
-  //                                           get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+  //                                           get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+  //                                           stream));
 
   return S_OK;
 }
@@ -416,7 +424,8 @@ HRESULT FourierExecutor<real_t>::backwardYZ(cudecompHandle_t handle, fftDescript
 
   // Input is Z pencil tranposed it back to Y pencil
   // CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, m_GridConfig, input, output, work_d,
-  //                                         get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+  //                                         get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+  //                                         stream));
 
   // FFT on the first slab
   if (desc.contiguous) {
@@ -438,7 +447,8 @@ HRESULT FourierExecutor<real_t>::backwardYZ(cudecompHandle_t handle, fftDescript
   }
   // Tranpose Y to X
   CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, m_GridConfig, input, output, work_d,
-                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                            stream));
   // IFFT the first axis (x)
   CHECK_CUFFT_EXIT(cufftSetStream(m_Plan_c2c_x, stream));
   CHECK_CUFFT_EXIT(cufftSetWorkArea(m_Plan_c2c_x, work_d));
@@ -465,7 +475,8 @@ HRESULT FourierExecutor<real_t>::forwardPencil(cudecompHandle_t handle, fftDescr
   // Tranpose X to Y
   // before
   CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, m_GridConfig, output, output, work_d,
-                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                            stream));
   if (desc.contiguous) {
     // FFT on the second pencil
     CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_y, output, output, DIRECTION));
@@ -478,7 +489,8 @@ HRESULT FourierExecutor<real_t>::forwardPencil(cudecompHandle_t handle, fftDescr
   }
   // Tranpose Y to Z
   CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, m_GridConfig, output, output, work_d,
-                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                            stream));
   // FFT on the third pencil
   CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_z, output, output, DIRECTION));
   return S_OK;
@@ -501,7 +513,8 @@ HRESULT FourierExecutor<real_t>::backwardPencil(cudecompHandle_t handle, fftDesc
   CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_z, input, output, DIRECTION));
   // Tranpose Z to Y
   CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, m_GridConfig, output, output, work_d,
-                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                            stream));
   // FFT on the second pencil
   if (desc.contiguous) {
     CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_y, output, output, DIRECTION));
@@ -513,7 +526,8 @@ HRESULT FourierExecutor<real_t>::backwardPencil(cudecompHandle_t handle, fftDesc
   }
   // Tranpose Y to X
   CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, m_GridConfig, output, output, work_d,
-                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, stream));
+                                            get_cudecomp_datatype(complex_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                            stream));
   // FFT on the third pencil
   CHECK_CUFFT_EXIT(cufftXtExec(m_Plan_c2c_x, output, output, DIRECTION));
 

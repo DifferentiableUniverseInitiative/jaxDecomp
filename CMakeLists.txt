@@ -93,5 +93,6 @@ else()
   target_compile_definitions(_jaxdecomp PRIVATE JD_JAX_BACKEND)
 endif()
 
-set_target_properties(_jaxdecomp PROPERTIES INSTALL_RPATH "$ORIGIN/lib")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+set_target_properties(_jaxdecomp PROPERTIES INSTALL_RPATH "$ORIGIN/../lib;${NVHPC_MATH_LIBRARY_DIR}")
 install(TARGETS _jaxdecomp LIBRARY DESTINATION jaxdecomplib PUBLIC_HEADER DESTINATION jaxdecomplib)

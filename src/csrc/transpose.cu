@@ -43,19 +43,23 @@ HRESULT Transpose<real_t>::transpose(cudecompHandle_t handle, transposeDescripto
   switch (desc.transpose_type) {
   case TransposeType::TRANSPOSE_XY:
     CHECK_CUDECOMP_EXIT(cudecompTransposeXToY(handle, m_GridConfig, data_d, data_d, work_d,
-                                              get_cudecomp_datatype(real_t(0)), nullptr, nullptr, stream));
+                                              get_cudecomp_datatype(real_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                              stream));
     break;
   case TransposeType::TRANSPOSE_YZ:
     CHECK_CUDECOMP_EXIT(cudecompTransposeYToZ(handle, m_GridConfig, data_d, data_d, work_d,
-                                              get_cudecomp_datatype(real_t(0)), nullptr, nullptr, stream));
+                                              get_cudecomp_datatype(real_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                              stream));
     break;
   case TransposeType::TRANSPOSE_ZY:
     CHECK_CUDECOMP_EXIT(cudecompTransposeZToY(handle, m_GridConfig, data_d, data_d, work_d,
-                                              get_cudecomp_datatype(real_t(0)), nullptr, nullptr, stream));
+                                              get_cudecomp_datatype(real_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                              stream));
     break;
   case TransposeType::TRANSPOSE_YX:
     CHECK_CUDECOMP_EXIT(cudecompTransposeYToX(handle, m_GridConfig, data_d, data_d, work_d,
-                                              get_cudecomp_datatype(real_t(0)), nullptr, nullptr, stream));
+                                              get_cudecomp_datatype(real_t(0)), nullptr, nullptr, nullptr, nullptr,
+                                              stream));
     break;
   default: hr = E_INVALIDARG; break;
   }
