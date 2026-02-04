@@ -19,6 +19,7 @@ User Guide
    04-halo_exchange
    05-transpositions
    06-caveats
+   07-xla_sharding_configuration
 
 API Reference
 =============

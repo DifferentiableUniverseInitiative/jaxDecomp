@@ -56,6 +56,11 @@ def setup_and_teardown_session():
     # e.g., closing connections, cleaning up resources, etc.
 
 
+@pytest.fixture(params=['auto', 'explicit'])
+def axis_type(request):
+    return request.param
+
+
 def compare_sharding(sharding1, sharding2):
     def get_axis_size(sharding, idx):
         axis_name = sharding.spec[idx]
@@ -92,76 +97,60 @@ def process_slices(slices_tuple):
     return int(start_product + stop_product)
 
 
-def device_arange(pdims):
-    import jax
-    from jax import numpy as jnp
-    from jax.experimental import mesh_utils
-    from jax.sharding import Mesh, NamedSharding
-    from jax.sharding import PartitionSpec as P
-
-    devices = mesh_utils.create_device_mesh(pdims)
-    mesh = Mesh(devices.T, axis_names=('z', 'y'))
-    sharding = NamedSharding(mesh, P('z', 'y'))
-
-    def generate_aranged(x):
-        x_start = replace_none_or_zero(x[0].start)
-        y_start = replace_none_or_zero(x[1].start)
-        a = jnp.array([[x_start + y_start * pdims[0]]])
-        print(f'index is {x} and value is {a}')
-        return a
-
-    aranged = jax.make_array_from_callback(mesh.devices.shape, sharding, data_callback=generate_aranged)
-
-    return aranged
-
-
-def create_ones_spmd_array(global_shape, pdims):
+def create_mesh(pdims, axis_type, transposed_devices=False):
     import jax
     from jax.experimental import mesh_utils
-    from jax.sharding import Mesh, NamedSharding
-    from jax.sharding import PartitionSpec as P
+    from jax.sharding import AxisType
 
     size = jax.device_count()
-    assert len(global_shape) == 3
     assert len(pdims) == 2
     assert prod(pdims) == size, 'The product of pdims must be equal to the number of MPI processes'
-
-    local_shape = (
-        global_shape[0] // pdims[1],
-        global_shape[1] // pdims[0],
-        global_shape[2],
-    )
-
-    # Remap to the global array from the local slice
-    devices = mesh_utils.create_device_mesh(pdims)
-    mesh = Mesh(devices.T, axis_names=('z', 'y'))
-    sharding = NamedSharding(mesh, P('z', 'y'))
-    global_array = jax.make_array_from_callback(global_shape, sharding, data_callback=lambda _: jax.numpy.ones(local_shape))
-
-    return global_array, mesh
-
-
-# Helper function to create a 3D array and remap it to the global array
-def create_spmd_array(global_shape, pdims):
-    import jax
-    from jax.experimental import mesh_utils
-    from jax.sharding import Mesh, NamedSharding
-    from jax.sharding import PartitionSpec as P
-
-    size = jax.device_count()
-    assert len(global_shape) == 3
-    assert len(pdims) == 2
-    assert prod(pdims) == size, 'The product of pdims must be equal to the number of MPI processes'
-
-    local_shape = (
-        global_shape[0] // pdims[1],
-        global_shape[1] // pdims[0],
-        global_shape[2],
-    )
 
     # Remap to the global array from the local slicei
     devices = mesh_utils.create_device_mesh(pdims)
-    mesh = Mesh(devices.T, axis_names=('z', 'y'))
+    if transposed_devices:
+        devices = devices.T
+
+    if axis_type == 'explicit':
+        axis_types = (AxisType.Explicit,) * len(pdims)
+    else:
+        axis_types = (AxisType.Auto,) * len(pdims)
+    return jax.make_mesh(devices.shape, ('z', 'y'), devices=devices.flatten(), axis_types=axis_types)
+
+
+def create_ones_spmd_array(global_shape, mesh):
+    import jax
+    from jax.sharding import NamedSharding
+    from jax.sharding import PartitionSpec as P
+
+    assert len(global_shape) == 3
+
+    local_shape = (
+        global_shape[0] // mesh.shape['z'],
+        global_shape[1] // mesh.shape['y'],
+        global_shape[2],
+    )
+
+    sharding = NamedSharding(mesh, P('z', 'y'))
+    global_array = jax.make_array_from_callback(global_shape, sharding, data_callback=lambda _: jax.numpy.ones(local_shape))
+
+    return global_array
+
+
+# Helper function to create a 3D array and remap it to the global array
+def create_spmd_array(global_shape, mesh):
+    import jax
+    from jax.sharding import NamedSharding
+    from jax.sharding import PartitionSpec as P
+
+    assert len(global_shape) == 3
+
+    local_shape = (
+        global_shape[0] // mesh.shape['z'],
+        global_shape[1] // mesh.shape['y'],
+        global_shape[2],
+    )
+
     sharding = NamedSharding(mesh, P('z', 'y'))
     global_array = jax.make_array_from_callback(
         global_shape,
@@ -169,7 +158,7 @@ def create_spmd_array(global_shape, pdims):
         data_callback=lambda x: jax.random.normal(jax.random.PRNGKey(process_slices(x)), local_shape),
     )
 
-    return global_array, mesh
+    return global_array
 
 
 def assert_allclose(x, y, rtol=1e-5, atol=1e-5):

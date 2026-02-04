@@ -10,7 +10,7 @@ from jaxdecomplib import _jaxdecomp
 from jaxtyping import Array
 
 from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
-from jaxdecomp._src.pencil_utils import get_axis_names_from_mesh, get_pencil_type_from_axis_names
+from jaxdecomp._src.pencil_utils import get_axis_names_from_mesh, get_pencil_type, validate_spec_matches_mesh
 from jaxdecomp._src.spmd_ops import custom_spmd_rule
 from jaxdecomp.typing import HaloExtentType, Periodicity
 
@@ -205,6 +205,7 @@ def per_shard_impl(
     x: Array,
     halo_extents: HaloExtentType,
     halo_periods: Periodicity,
+    pencil_type: str,
     x_axis_name: str,
     y_axis_name: str,
 ) -> Array:
@@ -219,15 +220,18 @@ def per_shard_impl(
         Extents of the halo in X and Y directions.
     halo_periods : Periodicity
         Periodicity in X and Y directions.
-    mesh : Mesh
-        Mesh containing axis information for sharding.
+    pencil_type : str
+        The pencil decomposition type.
+    x_axis_name : str
+        The axis name for the X axis.
+    y_axis_name : str
+        The axis name for the Y axis.
 
     Returns
     -------
     Array
         Array after the halo exchange operation.
     """
-    pencil_type = get_pencil_type_from_axis_names(x_axis_name, y_axis_name)
 
     def _impl(x: Array) -> Array:
         match pencil_type:
@@ -371,13 +375,21 @@ def partition(
     """
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     output_sharding: NamedSharding = result_infos.sharding  # type: ignore
-    input_mesh: Mesh = arg_infos[0].sharding.mesh  # type: ignore
-    x_axis_name, y_axis_name = get_axis_names_from_mesh(input_mesh)
+    pencil_type = get_pencil_type(mesh)
+    spec_for_validation = input_sharding.spec
+    if arg_infos[0].ndim == 4:
+        assert input_sharding.spec[0] is None
+        spec_for_validation = input_sharding.spec[1:]
+
+    validate_spec_matches_mesh(spec_for_validation, mesh)
+
+    x_axis_name, y_axis_name = get_axis_names_from_mesh(mesh)
 
     impl = partial(
         per_shard_impl,
         halo_extents=halo_extents,
         halo_periods=halo_periods,
+        pencil_type=pencil_type,
         x_axis_name=x_axis_name,
         y_axis_name=y_axis_name,
     )

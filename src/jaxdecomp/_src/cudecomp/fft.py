@@ -22,7 +22,7 @@ from jaxdecomp._src.pencil_utils import (
     get_lowering_args,
     get_output_specs,
     get_pdims_from_sharding,
-    get_pencil_type_from_mesh,
+    get_pencil_type,
     get_transpose_order,
 )
 from jaxdecomp._src.spmd_ops import (
@@ -172,7 +172,7 @@ class FFTPrimitive(BasePrimitive):
         forward = fft_type in (FftType.FFT,)
         is_double = np.finfo(dtype).dtype == np.float64
 
-        pencil_type = get_pencil_type_from_mesh(mesh)
+        pencil_type = get_pencil_type(mesh)
         original_pdims, global_shape = get_lowering_args(fft_type, global_shape, mesh)
         local_transpose = jaxdecomp.config.transpose_axis_contiguous
 
@@ -308,7 +308,8 @@ class FFTPrimitive(BasePrimitive):
         input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
         spec = input_sharding.spec
         input_mesh: Mesh = input_sharding.mesh  # type: ignore
-        transposed_specs = get_output_specs(fft_type, spec, input_mesh, 'cudecomp')
+        pencil_type = get_pencil_type(input_mesh)
+        transposed_specs = get_output_specs(fft_type, pencil_type, spec, 'cudecomp')
         return NamedSharding(input_mesh, P(*transposed_specs))
 
     @staticmethod
@@ -342,8 +343,9 @@ class FFTPrimitive(BasePrimitive):
         """
         del adjoint, result_infos
 
+        pencil_type = get_pencil_type(mesh)
         spec = ('i', 'j', 'k')  # einsum spec for shardy
-        transposed_specs: tuple[str, ...] = get_output_specs(fft_type, spec, mesh, 'cudecomp')  # type: ignore
+        transposed_specs: tuple[str, ...] = get_output_specs(fft_type, pencil_type, spec, 'cudecomp')  # type: ignore
         einsum_in = ' '.join(spec)
         einsum_out = ' '.join(transposed_specs)
         return f'{einsum_in}->{einsum_out}'
