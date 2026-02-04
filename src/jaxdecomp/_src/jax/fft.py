@@ -21,7 +21,7 @@ from jaxdecomp._src.fft_utils import (
     fft2,
     fftn,
 )
-from jaxdecomp._src.pencil_utils import get_axis_names_from_mesh, get_output_specs, get_pencil_type_from_axis_names, get_transpose_order
+from jaxdecomp._src.pencil_utils import get_axis_names_from_mesh, get_output_specs, get_pencil_type, get_transpose_order, validate_spec_matches_mesh
 from jaxdecomp._src.spmd_ops import custom_spmd_rule
 
 
@@ -295,7 +295,7 @@ def spmd_fft(x: Array, fft_type: FftType, adjoint: bool) -> Array:
         raise ValueError(f'Unsupported input shape {x.shape}')
 
 
-def per_shard_impl(x: Array, fft_type: FftType, adjoint: bool, x_axis_name: str, y_axis_name: str) -> Array:
+def per_shard_impl(x: Array, fft_type: FftType, adjoint: bool, pencil_type: str, x_axis_name: str, y_axis_name: str) -> Array:
     """
     Per-shard implementation of the FFT operation.
 
@@ -307,8 +307,12 @@ def per_shard_impl(x: Array, fft_type: FftType, adjoint: bool, x_axis_name: str,
         Type of FFT operation to perform.
     adjoint : bool
         Whether to compute the adjoint FFT.
-    mesh : Mesh
-        Mesh configuration for the distributed FFT.
+    pencil_type : str
+        The pencil decomposition type.
+    x_axis_name : str
+        Axis name for the X axis.
+    y_axis_name : str
+        Axis name for the Y axis.
 
     Returns
     -------
@@ -316,7 +320,6 @@ def per_shard_impl(x: Array, fft_type: FftType, adjoint: bool, x_axis_name: str,
         Resulting array after the per-shard FFT operation.
     """
     assert isinstance(fft_type, FftType)  # type: ignore
-    pencil_type = get_pencil_type_from_axis_names(x_axis_name, y_axis_name)
 
     def _impl(x):
         if fft_type in FORWARD_FFTs:
@@ -386,7 +389,7 @@ def infer_sharding_from_operands(
     NamedSharding
         Sharding information for the result.
     """
-    del mesh, result_infos
+    del result_infos
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     if input_sharding is None:
         error_during_jacfwd('pfft')
@@ -395,14 +398,15 @@ def infer_sharding_from_operands(
         error_during_jacrev('pfft')
 
     input_mesh: Mesh = input_sharding.mesh  # type: ignore
+    pencil_type = get_pencil_type(input_mesh)
     operand = arg_infos[0]
     if operand.ndim == 3:
         spec = input_sharding.spec
-        transposed_specs = get_output_specs(fft_type, spec, mesh=input_mesh, backend='jax')
+        transposed_specs = get_output_specs(fft_type, pencil_type, spec, backend='jax')
     elif operand.ndim == 4:
         assert input_sharding.spec[0] is None
         spec = input_sharding.spec[1:]
-        transposed_specs = get_output_specs(fft_type, spec, mesh=input_mesh, backend='jax')
+        transposed_specs = get_output_specs(fft_type, pencil_type, spec, backend='jax')
         assert len(transposed_specs) == 3
         transposed_specs = (None,) + transposed_specs
     else:
@@ -447,8 +451,9 @@ def fft_sharding_rule_producer(
     """
     del result_infos
 
+    pencil_type = get_pencil_type(mesh)
     spec = ('i', 'j', 'k')  # einsum spec for shardy
-    transposed_specs: tuple[str] = get_output_specs(fft_type, spec, mesh=mesh, backend='jax')  # type: ignore
+    transposed_specs: tuple[str] = get_output_specs(fft_type, pencil_type, spec, backend='jax')  # type: ignore
     einsum_in = ' '.join(spec)
     einsum_out = ' '.join(transposed_specs)
 
@@ -495,13 +500,22 @@ def partition(
     """
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     output_sharding: NamedSharding = result_infos.sharding  # type: ignore
-    input_mesh: Mesh = arg_infos[0].sharding.mesh  # type: ignore
-    x_axis_name, y_axis_name = get_axis_names_from_mesh(input_mesh)
+    pencil_type = get_pencil_type(mesh)
+    # For 4D (vmap), strip the batch dimension's None before validation
+    spec_for_validation = input_sharding.spec
+    if arg_infos[0].ndim == 4:
+        assert input_sharding.spec[0] is None
+        spec_for_validation = input_sharding.spec[1:]
+
+    if fft_type in FORWARD_FFTs:
+        validate_spec_matches_mesh(spec_for_validation, mesh)
+    x_axis_name, y_axis_name = get_axis_names_from_mesh(mesh)
 
     impl = partial(
         per_shard_impl,
         fft_type=fft_type,
         adjoint=adjoint,
+        pencil_type=pencil_type,
         x_axis_name=x_axis_name,
         y_axis_name=y_axis_name,
     )
