@@ -1,23 +1,25 @@
 import argparse
 import os
+
 import jax
-import jax.numpy as jnp
-import jaxdecomp
 from jax.experimental import mesh_utils, multihost_utils
 from jax.sharding import Mesh
 from jax.sharding import PartitionSpec as P
 from jax_hpc_profiler import Timer
 
+import jaxdecomp
+
 # Initialize distributed context immediately
 jax.distributed.initialize()
+
 
 def run_benchmark(pdims, global_shape, backend, nb_nodes, precision, iterations, trace, contiguous, output_path):
     pfft_backend = backend
     if backend == 'cudecomp':
         jaxdecomp.config.update('transpose_comm_backend', jaxdecomp.TRANSPOSE_COMM_NCCL)
-    
+
     rank = jax.process_index()
-    
+
     if contiguous:
         jaxdecomp.config.update('transpose_axis_contiguous', contiguous)
 
@@ -25,19 +27,16 @@ def run_benchmark(pdims, global_shape, backend, nb_nodes, precision, iterations,
     # jaxfft.py used devices.T and axis_names=('z', 'y')
     devices = mesh_utils.create_device_mesh(pdims)
     mesh = Mesh(devices.T, axis_names=('z', 'y'))
-    
+
     # Calculate local shape based on decomposition
     # Based on jaxfft.py logic:
     # array shape = [global_shape[0] // pdims[0], global_shape[1] // pdims[1], global_shape[2]]
     local_shape_0 = global_shape[0] // pdims[0]
     local_shape_1 = global_shape[1] // pdims[1]
     local_shape_2 = global_shape[2]
-    
+
     # Initialize local array
-    array = jax.random.normal(
-        shape=[local_shape_0, local_shape_1, local_shape_2], 
-        key=jax.random.PRNGKey(rank)
-    )
+    array = jax.random.normal(shape=[local_shape_0, local_shape_1, local_shape_2], key=jax.random.PRNGKey(rank))
 
     # Remap to global array
     # P('z', 'y') means axis 0 is sharded along mesh axis 'z', axis 1 along 'y'.
@@ -65,7 +64,7 @@ def run_benchmark(pdims, global_shape, backend, nb_nodes, precision, iterations,
     global_array = fft_chrono.chrono_jit(do_fft, global_array)
     global_array = ifft_chrono.chrono_jit(do_ifft, global_array)
     multihost_utils.sync_global_devices('warmup')
-    
+
     # Benchmark loop
     for i in range(iterations):
         global_array = fft_chrono.chrono_fun(do_fft, global_array)
@@ -86,6 +85,7 @@ def run_benchmark(pdims, global_shape, backend, nb_nodes, precision, iterations,
     fft_chrono.report(f'{output_path}/jaxfft.csv', function=f'FFT{cont_str}', **metadata)
     ifft_chrono.report(f'{output_path}/jaxfft.csv', function=f'IFFT{cont_str}', **metadata)
     print('Done')
+
 
 def main():
     parser = argparse.ArgumentParser(description='JAXDecomp Benchmark')
@@ -111,11 +111,7 @@ def main():
     if args.local_shape is not None:
         # Reconstruct global shape from local shape and pdims
         # Assuming decomposition matches pdims[0] for axis 0 and pdims[1] for axis 1
-        global_shape = (
-            args.local_shape[0] * pdims[0],
-            args.local_shape[1] * pdims[1],
-            args.local_shape[2]
-        )
+        global_shape = (args.local_shape[0] * pdims[0], args.local_shape[1] * pdims[1], args.local_shape[2])
     elif args.global_shape is not None:
         global_shape = tuple(args.global_shape)
     else:
@@ -128,24 +124,15 @@ def main():
         jax.config.update('jax_enable_x64', True)
 
     os.makedirs(args.output_path, exist_ok=True)
-    
+
     # Validation
     for dim, pdim in zip(global_shape[:2], pdims):
         if dim % pdim != 0:
             print(f'Global shape {global_shape} is not divisible by pdims {pdims}')
             exit(1)
 
-    run_benchmark(
-        pdims, 
-        global_shape, 
-        args.backend, 
-        args.nb_nodes, 
-        args.precision, 
-        args.iterations, 
-        args.trace, 
-        args.contiguous, 
-        args.output_path
-    )
+    run_benchmark(pdims, global_shape, args.backend, args.nb_nodes, args.precision, args.iterations, args.trace, args.contiguous, args.output_path)
+
 
 if __name__ == '__main__':
     main()

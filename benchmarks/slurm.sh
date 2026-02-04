@@ -35,11 +35,11 @@ run_benchmarks() {
         submit_job() {
             local PX=$1
             local PY=$2
-            
+
             local JOB_NAME="bench_${BACKEND}_N${NODES}_G${GPUS_PER_NODE}_${PX}x${PY}"
-            
+
             echo "Submitting $JOB_NAME (Nodes: $NODES, GPUs/Node: $GPUS_PER_NODE, Grid: ${PX}x${PY})"
-            
+
             sbatch $BASE_SBATCH_ARGS \
                         --nodes=$NODES \
                         --gres=gpu:$GPUS_PER_NODE \
