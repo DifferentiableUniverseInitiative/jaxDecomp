@@ -35,6 +35,9 @@ test = [
     'pytest-mock',
     'chex',
 ]
+benchmark = [
+    'jax-hpc-profiler',
+]
 
 [tool.scikit-build]
 minimum-version = "0.8"

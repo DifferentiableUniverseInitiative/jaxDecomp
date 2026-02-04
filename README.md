@@ -152,8 +152,7 @@ pip install . -Ccmake.define.JD_CUDECOMP_BACKEND=ON
 As of February 2025, loading modules **in this exact order** works:
 
 ```bash
-module load nvidia-compilers/23.9 cuda/12.2.0 cudnn/8.9.7.29-cuda openmpi/4.1.5-cuda nccl/2.18.5-1-cuda cmake
-
+module load nvidia-compilers/25.1 cuda/12.6.3 openmpi/4.1.6-cuda nccl/2.26.2-1-cuda  cmake
 # Install JAX
 pip install --upgrade "jax[cuda]"
 
@@ -163,6 +162,13 @@ pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -C
 ```
 
 **Note**: If using only the pure-JAX backend, you do not need NVHPC.
+
+> **Important for JeanZay users**
+> Make sure to load the correct architucture module before loading the `nvidia-compilers` module.
+> For example for A100 you need to load `module load arch/a100` first.
+> You also need to set the CXXFLAGS to `export CXXFLAGS="-tp=zen2 -noswitcherror"` if you are using the H100 or A100 partition or if you are using AMD CPUs in general.
+> More info in [Jean Zay documentation](http://www.idris.fr/eng/jean-zay/gpu/jean-zay-gpu-exec_partition_slurm-eng.html#a100_partition_gpu_p5).
+
 
 #### NERSC [Perlmutter](https://docs.nersc.gov/systems/perlmutter/architecture/) HPE Cray EX supercomputer
 
@@ -177,7 +183,7 @@ pip install --upgrade "jax[cuda]"
 
 # Install jaxDecomp w/ cuDecomp
 export CMAKE_PREFIX_PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/22.5/cmake
-pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -CCmake.define.JD_CUDECOMP_BACKEND=ON
+pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -Ccmake.define.JD_CUDECOMP_BACKEND=ON
 ```
 
 ---
