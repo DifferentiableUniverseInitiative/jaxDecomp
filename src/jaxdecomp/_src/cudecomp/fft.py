@@ -3,9 +3,11 @@ from typing import Any
 
 import jax
 import jax.ffi
+import jaxlib.mlir.ir as ir
 import numpy as np
 from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
+from jax._src.lib.mlir.dialects import hlo
 from jax._src.numpy.util import promote_dtypes_complex
 from jax.core import ShapedArray
 from jax.extend.core import Primitive
@@ -51,7 +53,7 @@ class FFTPrimitive(BasePrimitive):
         global_shape: GdimsType,
         adjoint: bool,
         mesh: Mesh,
-    ) -> list[ShapedArray]:
+    ) -> ShapedArray:
         """
         Abstract function to compute the shape of FFT output.
 
@@ -72,40 +74,19 @@ class FFTPrimitive(BasePrimitive):
 
         Returns
         -------
-        list[ShapedArray]
-            Workspace aval and output aval.
+        ShapedArray
+            Output aval.
         """
+        del mesh
         if global_shape == x.shape:
-            output_aval = FFTPrimitive.outer_abstract(x, fft_type=fft_type, adjoint=adjoint)
-        else:
-            transpose_shape = get_transpose_order(fft_type)
-            output_shape = (
-                global_shape[transpose_shape[0]] // pdims[0],
-                global_shape[transpose_shape[1]] // pdims[1],
-                global_shape[transpose_shape[2]] // pdims[2],
-            )
-            output_aval = ShapedArray(output_shape, x.dtype)
-
-        is_double = np.finfo(x.dtype).dtype == np.float64
-        pencil_type = get_pencil_type(mesh)
-        forward = fft_type in (FftType.FFT,)
-        local_transpose = jaxdecomp.config.transpose_axis_contiguous
-        original_pdims, lowering_global_shape = get_lowering_args(fft_type, global_shape, mesh)
-
-        workspace_size = _jaxdecomp.get_fft_workspace_size(
-            gdims=list(lowering_global_shape[::-1]),
-            pdims=list(original_pdims),
-            transpose_comm_backend=int(jaxdecomp.config.transpose_comm_backend),
-            halo_comm_backend=int(jaxdecomp.config.halo_comm_backend),
-            forward=forward,
-            double_precision=is_double,
-            adjoint=adjoint,
-            contiguous=local_transpose,
-            decomposition=int(pencil_type),
+            return FFTPrimitive.outer_abstract(x, fft_type=fft_type, adjoint=adjoint)
+        transpose_shape = get_transpose_order(fft_type)
+        output_shape = (
+            global_shape[transpose_shape[0]] // pdims[0],
+            global_shape[transpose_shape[1]] // pdims[1],
+            global_shape[transpose_shape[2]] // pdims[2],
         )
-        workspace_aval = ShapedArray([workspace_size], np.uint8)
-
-        return [workspace_aval, output_aval]
+        return ShapedArray(output_shape, x.dtype)
 
     @staticmethod
     def outer_abstract(x: Array, fft_type: FftType, adjoint: bool) -> ShapedArray:
@@ -178,7 +159,9 @@ class FFTPrimitive(BasePrimitive):
         """
         del pdims
         (x_aval,) = ctx.avals_in
+        (aval_out,) = ctx.avals_out
         dtype = x_aval.dtype
+        a_type = ir.RankedTensorType(a.type)
 
         assert fft_type in (
             FftType.FFT,
@@ -193,23 +176,54 @@ class FFTPrimitive(BasePrimitive):
         original_pdims, global_shape = get_lowering_args(fft_type, global_shape, mesh)
         local_transpose = jaxdecomp.config.transpose_axis_contiguous
 
-        rule = jax.ffi.ffi_lowering(
-            ffi_name,
-            operand_output_aliases={0: 1},
+        workspace_size = _jaxdecomp.get_fft_workspace_size(
+            gdims=list(global_shape[::-1]),
+            pdims=list(original_pdims),
+            transpose_comm_backend=int(jaxdecomp.config.transpose_comm_backend.value),
+            halo_comm_backend=int(jaxdecomp.config.halo_comm_backend.value),
+            forward=forward,
+            double_precision=is_double,
+            adjoint=adjoint,
+            contiguous=local_transpose,
+            decomposition=int(pencil_type),
         )
 
-        return rule(
-            ctx,
+        n = len(a_type.shape)
+        layout = tuple(range(n - 1, -1, -1))
+        workspace = mlir.full_like_aval(ctx, 0, ShapedArray(shape=[workspace_size], dtype=np.byte))
+
+        rule = jax.ffi.ffi_lowering(
+            ffi_name,
+            operand_layouts=[layout, (0,)],
+            result_layouts=[layout],
+            operand_output_aliases={0: 0},
+        )
+
+        workspace_aval = ShapedArray(shape=[workspace_size], dtype=np.byte)
+        ffi_ctx = mlir.LoweringRuleContext(
+            module_context=ctx.module_context,
+            primitive=None,
+            avals_in=[x_aval, workspace_aval],
+            avals_out=[x_aval],
+            tokens_in=ctx.tokens_in,
+            tokens_out=ctx.tokens_out,
+        )
+
+        result = rule(
+            ffi_ctx,
             a,
+            workspace,
             gdims=np.array(global_shape[::-1], dtype=np.int64),
             pdims=np.array(original_pdims, dtype=np.int64),
-            transpose_comm_backend=np.int64(jaxdecomp.config.transpose_comm_backend),
-            halo_comm_backend=np.int64(jaxdecomp.config.halo_comm_backend),
+            transpose_comm_backend=np.int64(jaxdecomp.config.transpose_comm_backend.value),
+            halo_comm_backend=np.int64(jaxdecomp.config.halo_comm_backend.value),
             forward=forward,
             adjoint=adjoint,
             contiguous=local_transpose,
             decomposition=np.int64(pencil_type),
         )
+
+        return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result[0]).results
 
     @staticmethod
     def impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:
@@ -273,7 +287,7 @@ class FFTPrimitive(BasePrimitive):
                 x = x.transpose([1, 2, 0])
         assert FFTPrimitive.inner_primitive is not None
 
-        _, out = FFTPrimitive.inner_primitive.bind(
+        out = FFTPrimitive.inner_primitive.bind(
             x,
             fft_type=fft_type,
             pdims=pdims,
@@ -429,7 +443,6 @@ class FFTPrimitive(BasePrimitive):
 
 
 register_primitive(FFTPrimitive)
-FFTPrimitive.inner_primitive.multiple_results = True
 
 
 @partial(jax.jit, static_argnums=(1, 2))

@@ -3,6 +3,7 @@ from typing import Any
 
 import jax
 import jax.ffi
+import jaxlib.mlir.ir as ir
 import numpy as np
 from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
@@ -40,7 +41,7 @@ class HaloPrimitive(BasePrimitive):
         halo_periods: Periodicity,
         pdims: PdimsType,
         global_shape: GdimsType,
-    ) -> list[ShapedArray]:
+    ) -> ShapedArray:
         """
         Abstract function for determining the shape and dtype after the halo exchange operation.
 
@@ -59,28 +60,11 @@ class HaloPrimitive(BasePrimitive):
 
         Returns
         -------
-        list[ShapedArray]
-            Workspace aval and output aval.
+        ShapedArray
+            Output aval.
         """
-        output_aval = ShapedArray(x.shape, x.dtype)
-
-        is_double = np.finfo(x.dtype).dtype == np.float64
-        lowered_halo_extents = (*halo_extents, 0)
-        lowered_halo_periods = (*halo_periods, True)
-
-        workspace_size = _jaxdecomp.get_halo_workspace_size(
-            gdims=list(global_shape[::-1]),
-            pdims=list(pdims),
-            transpose_comm_backend=int(jaxdecomp.config.transpose_comm_backend),
-            halo_comm_backend=int(jaxdecomp.config.halo_comm_backend),
-            halo_extents=list(lowered_halo_extents[::-1]),
-            halo_periods=list(lowered_halo_periods[::-1]),
-            axis=0,
-            double_precision=is_double,
-        )
-        workspace_aval = ShapedArray([workspace_size], np.uint8)
-
-        return [workspace_aval, output_aval]
+        del halo_extents, halo_periods, pdims, global_shape
+        return ShapedArray(x.shape, x.dtype)
 
     @staticmethod
     def outer_abstract(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> ShapedArray:
@@ -137,24 +121,53 @@ class HaloPrimitive(BasePrimitive):
             Resulting MLIR values after the halo exchange operation.
         """
         (x_aval,) = ctx.avals_in
+        x_type = ir.RankedTensorType(x.type)
+        n = len(x_type.shape)
         is_double = np.finfo(x_aval.dtype).dtype == np.float64
         ffi_name = 'halo_C128' if is_double else 'halo_C64'
 
         lowered_halo_extents = (*halo_extents, 0)
         lowered_halo_periods = (*halo_periods, True)
 
+        workspace_size = _jaxdecomp.get_halo_workspace_size(
+            gdims=list(global_shape[::-1]),
+            pdims=list(pdims),
+            transpose_comm_backend=int(jaxdecomp.config.transpose_comm_backend.value),
+            halo_comm_backend=int(jaxdecomp.config.halo_comm_backend.value),
+            halo_extents=list(lowered_halo_extents[::-1]),
+            halo_periods=list(lowered_halo_periods[::-1]),
+            axis=0,
+            double_precision=is_double,
+        )
+
+        layout = tuple(range(n - 1, -1, -1))
+        workspace = mlir.full_like_aval(ctx, 0, ShapedArray(shape=[workspace_size], dtype=np.byte))
+
         rule = jax.ffi.ffi_lowering(
             ffi_name,
-            operand_output_aliases={0: 1},
+            operand_layouts=[layout, (0,)],
+            result_layouts=[layout],
+            operand_output_aliases={0: 0},
+        )
+
+        workspace_aval = ShapedArray(shape=[workspace_size], dtype=np.byte)
+        ffi_ctx = mlir.LoweringRuleContext(
+            module_context=ctx.module_context,
+            primitive=None,
+            avals_in=[x_aval, workspace_aval],
+            avals_out=[x_aval],
+            tokens_in=ctx.tokens_in,
+            tokens_out=ctx.tokens_out,
         )
 
         return rule(
-            ctx,
+            ffi_ctx,
             x,
+            workspace,
             gdims=np.array(global_shape[::-1], dtype=np.int64),
             pdims=np.array(pdims, dtype=np.int64),
-            transpose_comm_backend=np.int64(jaxdecomp.config.transpose_comm_backend),
-            halo_comm_backend=np.int64(jaxdecomp.config.halo_comm_backend),
+            transpose_comm_backend=np.int64(jaxdecomp.config.transpose_comm_backend.value),
+            halo_comm_backend=np.int64(jaxdecomp.config.halo_comm_backend.value),
             halo_extents=np.array(lowered_halo_extents[::-1], dtype=np.int64),
             halo_periods=np.array([int(p) for p in lowered_halo_periods[::-1]], dtype=np.int64),
             axis=np.int64(0),
@@ -218,7 +231,7 @@ class HaloPrimitive(BasePrimitive):
         Array
             Resulting array after the halo exchange operation.
         """
-        _, output = HaloPrimitive.inner_primitive.bind(
+        output = HaloPrimitive.inner_primitive.bind(
             x,
             halo_extents=halo_extents,
             halo_periods=halo_periods,
@@ -364,7 +377,6 @@ class HaloPrimitive(BasePrimitive):
 
 
 register_primitive(HaloPrimitive)
-HaloPrimitive.inner_primitive.multiple_results = True
 
 
 @partial(jax.jit, static_argnums=(1, 2))

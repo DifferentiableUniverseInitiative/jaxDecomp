@@ -3,9 +3,11 @@ from typing import Any
 
 import jax
 import jax.ffi
+import jaxlib.mlir.ir as ir
 import numpy as np
 from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
+from jax._src.lib.mlir.dialects import hlo
 from jax._src.typing import Array, ArrayLike
 from jax.core import ShapedArray
 from jax.sharding import Mesh, NamedSharding
@@ -53,7 +55,7 @@ class TransposePrimitive(BasePrimitive):
         pdims: TransposablePdimsType,
         out_pdims: TransposablePdimsType,
         global_shape: GdimsType,
-    ) -> list[ShapedArray]:
+    ) -> ShapedArray:
         """
         Abstract method to describe the shape of the output array after transposition.
 
@@ -72,59 +74,31 @@ class TransposePrimitive(BasePrimitive):
 
         Returns
         -------
-        list[ShapedArray]
-            Workspace aval and output aval.
+        ShapedArray
+            Output aval.
         """
         if global_shape == x.shape:
-            output_aval = TransposePrimitive.outer_abstract(x, kind)
+            return TransposePrimitive.outer_abstract(x, kind)
+
+        assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
+
+        if jaxdecomp.config.transpose_axis_contiguous:
+            match kind:
+                case 'x_y' | 'y_z':
+                    transpose_shape = (2, 0, 1)
+                case 'z_y' | 'y_x':
+                    transpose_shape = (1, 2, 0)
+                case _:
+                    raise ValueError('Invalid kind')
         else:
-            assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
+            transpose_shape = (0, 1, 2)
 
-            if jaxdecomp.config.transpose_axis_contiguous:
-                match kind:
-                    case 'x_y' | 'y_z':
-                        transpose_shape = (2, 0, 1)
-                    case 'z_y' | 'y_x':
-                        transpose_shape = (1, 2, 0)
-                    case _:
-                        raise ValueError('Invalid kind')
-            else:
-                transpose_shape = (0, 1, 2)
-
-            shape = (
-                global_shape[transpose_shape[0]] // out_pdims[0],
-                global_shape[transpose_shape[1]] // out_pdims[1],
-                global_shape[transpose_shape[2]] // out_pdims[2],
-            )
-            output_aval = ShapedArray(shape, x.dtype)
-
-        is_double = np.finfo(x.dtype).dtype == np.float64
-
-        match kind:
-            case 'x_y':
-                transpose_type = int(_jaxdecomp.TRANSPOSE_XY)
-            case 'y_z':
-                transpose_type = int(_jaxdecomp.TRANSPOSE_YZ)
-            case 'z_y':
-                transpose_type = int(_jaxdecomp.TRANSPOSE_ZY)
-            case 'y_x':
-                transpose_type = int(_jaxdecomp.TRANSPOSE_YX)
-            case _:
-                raise ValueError('Invalid kind')
-
-        local_transpose = jaxdecomp.config.transpose_axis_contiguous
-        workspace_size = _jaxdecomp.get_transpose_workspace_size(
-            gdims=list(global_shape[::-1]),
-            pdims=list(pdims),
-            transpose_comm_backend=int(jaxdecomp.config.transpose_comm_backend),
-            halo_comm_backend=int(jaxdecomp.config.halo_comm_backend),
-            transpose_type=transpose_type,
-            double_precision=is_double,
-            contiguous=local_transpose,
+        shape = (
+            global_shape[transpose_shape[0]] // out_pdims[0],
+            global_shape[transpose_shape[1]] // out_pdims[1],
+            global_shape[transpose_shape[2]] // out_pdims[2],
         )
-        workspace_aval = ShapedArray([workspace_size], np.uint8)
-
-        return [workspace_aval, output_aval]
+        return ShapedArray(shape, x.dtype)
 
     @staticmethod
     def outer_abstract(x: Array, kind: str) -> ShapedArray:
@@ -200,7 +174,9 @@ class TransposePrimitive(BasePrimitive):
         del out_pdims
         assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
         (aval_in,) = ctx.avals_in
+        (aval_out,) = ctx.avals_out
         dtype = aval_in.dtype
+        x_type = ir.RankedTensorType(x.type)
         is_double = np.finfo(dtype).dtype == np.float64
         ffi_name = 'transpose_C128' if is_double else 'transpose_C64'
 
@@ -228,21 +204,50 @@ class TransposePrimitive(BasePrimitive):
             global_shape[transpose_shape[2]],
         )
 
-        rule = jax.ffi.ffi_lowering(
-            ffi_name,
-            operand_output_aliases={0: 1},
+        workspace_size = _jaxdecomp.get_transpose_workspace_size(
+            gdims=list(global_shape[::-1]),
+            pdims=list(pdims),
+            transpose_comm_backend=int(jaxdecomp.config.transpose_comm_backend.value),
+            halo_comm_backend=int(jaxdecomp.config.halo_comm_backend.value),
+            transpose_type=transpose_type,
+            double_precision=is_double,
+            contiguous=local_transpose,
         )
 
-        return rule(
-            ctx,
+        n = len(x_type.shape)
+        layout = tuple(range(n - 1, -1, -1))
+        workspace = mlir.full_like_aval(ctx, 0, ShapedArray(shape=[workspace_size], dtype=np.byte))
+
+        rule = jax.ffi.ffi_lowering(
+            ffi_name,
+            operand_layouts=[layout, (0,)],
+            result_layouts=[layout],
+            operand_output_aliases={0: 0},
+        )
+
+        workspace_aval = ShapedArray(shape=[workspace_size], dtype=np.byte)
+        ffi_ctx = mlir.LoweringRuleContext(
+            module_context=ctx.module_context,
+            primitive=None,
+            avals_in=[aval_in, workspace_aval],
+            avals_out=[aval_in],
+            tokens_in=ctx.tokens_in,
+            tokens_out=ctx.tokens_out,
+        )
+
+        result = rule(
+            ffi_ctx,
             x,
+            workspace,
             gdims=np.array(global_shape[::-1], dtype=np.int64),
             pdims=np.array(pdims, dtype=np.int64),
-            transpose_comm_backend=np.int64(jaxdecomp.config.transpose_comm_backend),
-            halo_comm_backend=np.int64(jaxdecomp.config.halo_comm_backend),
+            transpose_comm_backend=np.int64(jaxdecomp.config.transpose_comm_backend.value),
+            halo_comm_backend=np.int64(jaxdecomp.config.halo_comm_backend.value),
             transpose_type=np.int64(transpose_type),
             contiguous=local_transpose,
         )
+
+        return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result[0]).results
 
     @staticmethod
     def batching(batched_args: tuple[Array], batched_axis, kind: str):
@@ -308,8 +313,7 @@ class TransposePrimitive(BasePrimitive):
         Array
             Transposed array bound to the inner primitive.
         """
-        _, out = TransposePrimitive.inner_primitive.bind(x, kind=kind, pdims=pdims, out_pdims=out_pdims, global_shape=global_shape)
-        return out
+        return TransposePrimitive.inner_primitive.bind(x, kind=kind, pdims=pdims, out_pdims=out_pdims, global_shape=global_shape)
 
     @staticmethod
     def infer_sharding_from_operands(
@@ -487,7 +491,6 @@ class TransposePrimitive(BasePrimitive):
 
 
 register_primitive(TransposePrimitive)
-TransposePrimitive.inner_primitive.multiple_results = True
 
 
 @partial(jax.jit, static_argnums=(1,))
