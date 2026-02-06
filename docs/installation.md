@@ -41,10 +41,20 @@ pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -C
 If CMake cannot find the NVHPC toolchain, set:
 
 ```bash
-export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:$NVCOMPILERS/$NVARCH/22.9/cmake
+export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:$NVHPC_ROOT/cmake
 ```
 
 Then re-run the installation.
+
+### Troubleshooting
+
+If JAX complains about incompatibility with cuSparse or any other library, the easiest solution is to install JAX locally using the `cuda-local` option:
+
+```bash
+pip install --upgrade "jax[cuda-local]"
+```
+
+Then proceed with installing `jaxDecomp` with cuDecomp support.
 
 > ℹ️ You can read more about cuDecomp setup and tuning at the official [cuDecomp GitHub repo](https://github.com/NVIDIA/cuDecomp).
 

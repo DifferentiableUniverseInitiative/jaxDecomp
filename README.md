@@ -124,7 +124,6 @@ If you need to use `MPI` instead of `NCCL` for `GPU`, you can build from GitHub 
 
 ```bash
 pip install -U pip
-export CXXFLAGS='-noswitcherror'  # recommended for NVHPC
 pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -Ccmake.define.JD_CUDECOMP_BACKEND=ON
 ```
 
@@ -143,6 +142,8 @@ pip install . -Ccmake.define.JD_CUDECOMP_BACKEND=ON
   ```
   and then install again.
 
+If jax complains about incompatiliby with CuSparse or any other library, the easiest way to solve this is by installing jax localy by running pip install jax[cuda-local] and then installing jaxDecomp with cuDecomp support.
+
 ---
 
 ## Machine-Specific Notes
@@ -153,9 +154,9 @@ pip install . -Ccmake.define.JD_CUDECOMP_BACKEND=ON
 As of February 2025, loading modules **in this exact order** works:
 
 ```bash
-module load nvidia-compilers/25.1 cuda/12.6.3 openmpi/4.1.6-cuda nccl/2.26.2-1-cuda  cmake
+module load nvidia-compilers/25.1 cuda/12.6.3 openmpi/4.1.6-cuda nccl/2.26.2-1-cuda cudnn  cmake
 # Install JAX
-pip install --upgrade "jax[cuda]"
+pip install --upgrade "jax[cuda-local]"
 
 # Install jaxDecomp with cuDecomp
 export CMAKE_PREFIX_PATH=$NVHPC_ROOT/cmake # sometimes needed
