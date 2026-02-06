@@ -2,12 +2,10 @@ from functools import partial
 from typing import Any
 
 import jax
-import jaxlib.mlir.ir as ir
+import jax.ffi
 import numpy as np
 from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
-from jax._src.interpreters.mlir import custom_call
-from jax._src.lib.mlir.dialects import hlo
 from jax._src.numpy.util import promote_dtypes_complex
 from jax.core import ShapedArray
 from jax.extend.core import Primitive
@@ -53,7 +51,7 @@ class FFTPrimitive(BasePrimitive):
         global_shape: GdimsType,
         adjoint: bool,
         mesh: Mesh,
-    ) -> ShapedArray:
+    ) -> list[ShapedArray]:
         """
         Abstract function to compute the shape of FFT output.
 
@@ -74,22 +72,40 @@ class FFTPrimitive(BasePrimitive):
 
         Returns
         -------
-        ShapedArray
-            Shape of the output array.
+        list[ShapedArray]
+            Workspace aval and output aval.
         """
-        del mesh
         if global_shape == x.shape:
-            return FFTPrimitive.outer_abstract(x, fft_type=fft_type, adjoint=adjoint)
+            output_aval = FFTPrimitive.outer_abstract(x, fft_type=fft_type, adjoint=adjoint)
+        else:
+            transpose_shape = get_transpose_order(fft_type)
+            output_shape = (
+                global_shape[transpose_shape[0]] // pdims[0],
+                global_shape[transpose_shape[1]] // pdims[1],
+                global_shape[transpose_shape[2]] // pdims[2],
+            )
+            output_aval = ShapedArray(output_shape, x.dtype)
 
-        transpose_shape = get_transpose_order(fft_type)
+        is_double = np.finfo(x.dtype).dtype == np.float64
+        pencil_type = get_pencil_type(mesh)
+        forward = fft_type in (FftType.FFT,)
+        local_transpose = jaxdecomp.config.transpose_axis_contiguous
+        original_pdims, lowering_global_shape = get_lowering_args(fft_type, global_shape, mesh)
 
-        output_shape = (
-            global_shape[transpose_shape[0]] // pdims[0],
-            global_shape[transpose_shape[1]] // pdims[1],
-            global_shape[transpose_shape[2]] // pdims[2],
+        workspace_size = _jaxdecomp.get_fft_workspace_size(
+            gdims=list(lowering_global_shape[::-1]),
+            pdims=list(original_pdims),
+            transpose_comm_backend=int(jaxdecomp.config.transpose_comm_backend),
+            halo_comm_backend=int(jaxdecomp.config.halo_comm_backend),
+            forward=forward,
+            double_precision=is_double,
+            adjoint=adjoint,
+            contiguous=local_transpose,
+            decomposition=int(pencil_type),
         )
+        workspace_aval = ShapedArray([workspace_size], np.uint8)
 
-        return ShapedArray(output_shape, x.dtype)
+        return [workspace_aval, output_aval]
 
     @staticmethod
     def outer_abstract(x: Array, fft_type: FftType, adjoint: bool) -> ShapedArray:
@@ -127,14 +143,14 @@ class FFTPrimitive(BasePrimitive):
     @staticmethod
     def lowering(
         ctx,
-        a: ir.Value,
+        a,
         *,
         fft_type: FftType,
         pdims: TransposablePdimsType,
         global_shape: GdimsType,
         adjoint: bool,
         mesh: Mesh,
-    ) -> ir.OpResultList:
+    ):
         """
         Lowering function for FFT primitive.
 
@@ -142,7 +158,7 @@ class FFTPrimitive(BasePrimitive):
         ----------
         ctx
             Context.
-        a : Array
+        a
             Input array.
         fft_type : FftType
             Type of FFT operation (forward or inverse).
@@ -162,9 +178,7 @@ class FFTPrimitive(BasePrimitive):
         """
         del pdims
         (x_aval,) = ctx.avals_in
-        (aval_out,) = ctx.avals_out
         dtype = x_aval.dtype
-        a_type = ir.RankedTensorType(a.type)
 
         assert fft_type in (
             FftType.FFT,
@@ -173,35 +187,29 @@ class FFTPrimitive(BasePrimitive):
 
         forward = fft_type in (FftType.FFT,)
         is_double = np.finfo(dtype).dtype == np.float64
+        ffi_name = 'pfft_C128' if is_double else 'pfft_C64'
 
         pencil_type = get_pencil_type(mesh)
         original_pdims, global_shape = get_lowering_args(fft_type, global_shape, mesh)
         local_transpose = jaxdecomp.config.transpose_axis_contiguous
 
-        config = _jaxdecomp.GridConfig()
-        config.pdims = original_pdims
-        config.gdims = global_shape[::-1]
-        config.halo_comm_backend = jaxdecomp.config.halo_comm_backend
-        config.transpose_comm_backend = jaxdecomp.config.transpose_comm_backend
-        workspace_size, opaque = _jaxdecomp.build_fft_descriptor(config, forward, is_double, adjoint, local_transpose, pencil_type)
-
-        n = len(a_type.shape)
-        layout = tuple(range(n - 1, -1, -1))
-
-        workspace = mlir.full_like_aval(ctx, 0, ShapedArray(shape=[workspace_size], dtype=np.byte))
-
-        result = custom_call(
-            'pfft3d',
-            result_types=[a_type],
-            operands=[a, workspace],
-            operand_layouts=[layout, (0,)],
-            result_layouts=[layout],
-            has_side_effect=True,
-            operand_output_aliases={0: 0},
-            backend_config=opaque,
+        rule = jax.ffi.ffi_lowering(
+            ffi_name,
+            operand_output_aliases={0: 1},
         )
 
-        return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
+        return rule(
+            ctx,
+            a,
+            gdims=np.array(global_shape[::-1], dtype=np.int64),
+            pdims=np.array(original_pdims, dtype=np.int64),
+            transpose_comm_backend=np.int64(jaxdecomp.config.transpose_comm_backend),
+            halo_comm_backend=np.int64(jaxdecomp.config.halo_comm_backend),
+            forward=forward,
+            adjoint=adjoint,
+            contiguous=local_transpose,
+            decomposition=np.int64(pencil_type),
+        )
 
     @staticmethod
     def impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:
@@ -265,7 +273,7 @@ class FFTPrimitive(BasePrimitive):
                 x = x.transpose([1, 2, 0])
         assert FFTPrimitive.inner_primitive is not None
 
-        out = FFTPrimitive.inner_primitive.bind(
+        _, out = FFTPrimitive.inner_primitive.bind(
             x,
             fft_type=fft_type,
             pdims=pdims,
@@ -421,6 +429,7 @@ class FFTPrimitive(BasePrimitive):
 
 
 register_primitive(FFTPrimitive)
+FFTPrimitive.inner_primitive.multiple_results = True
 
 
 @partial(jax.jit, static_argnums=(1, 2))

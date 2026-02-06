@@ -1,7 +1,11 @@
 #ifndef _JAX_DECOMP_HELPERS_H_
 #define _JAX_DECOMP_HELPERS_H_
 
-#include <pybind11/pybind11.h>
+#include <nanobind/nanobind.h>
+#include <type_traits>
+#include "xla/ffi/api/c_api.h"
+
+namespace nb = nanobind;
 
 namespace jaxdecomp {
 
@@ -20,21 +24,11 @@ bit_cast(const From& src) noexcept {
   return dst;
 }
 
-template <typename T> std::string PackDescriptorAsString(const T& descriptor) {
-  return std::string(bit_cast<const char*>(&descriptor), sizeof(T));
-}
-
-template <typename T> pybind11::bytes PackDescriptor(const T& descriptor) {
-  return pybind11::bytes(PackDescriptorAsString(descriptor));
-}
-
-template <typename T> const T* UnpackDescriptor(const char* opaque, std::size_t opaque_len) {
-  if (opaque_len != sizeof(T)) { throw std::runtime_error("Invalid opaque object size"); }
-  return bit_cast<const T*>(opaque);
-}
-
-template <typename T> pybind11::capsule EncapsulateFunction(T* fn) {
-  return pybind11::capsule(bit_cast<void*>(fn), "xla._CUSTOM_CALL_TARGET");
+// Helper to encapsulate FFI handler for registration with JAX
+// Note: XLA_FFI_DEFINE_HANDLER_SYMBOL creates the correct handler type
+template <typename T>
+nb::capsule EncapsulateFfiHandler(T* fn) {
+    return nb::capsule(reinterpret_cast<void*>(fn));
 }
 
 } // namespace jaxdecomp

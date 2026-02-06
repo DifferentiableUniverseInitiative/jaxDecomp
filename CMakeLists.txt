@@ -1,26 +1,50 @@
 cmake_minimum_required(VERSION 3.19...3.25)
 
+option(JD_CUDECOMP_BACKEND "Use cuDecomp backend" OFF)
 
+if(JD_CUDECOMP_BACKEND)
+  find_program(NVHPC_CXX_BIN "nvc++" REQUIRED)
+  set(CMAKE_CXX_COMPILER ${NVHPC_CXX_BIN})
+  add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=1)
+  add_compile_definitions(__GXX_ABI_VERSION=1013)
+  # set CXXFLAGS for NVHPC compiler
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -noswitcherror")
+endif()
 
 project(jaxdecomp LANGUAGES CXX)
+
+set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 
 # NVCC 12 does not support C++20
 set(CMAKE_CXX_STANDARD  17)
 set(CMAKE_CUDA_STANDARD 17)
 
-option(JD_CUDECOMP_BACKEND "Use cuDecomp backend" OFF)
 # Set default build type to Release
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-set(PYBIND11_FINDPYTHON ON)
-find_package(pybind11 CONFIG REQUIRED)
 
 # Check for CUDA
 include(CheckLanguage)
 check_language(CUDA)
+
+# Add the executable
+find_package(
+  Python 3.8 REQUIRED
+  COMPONENTS Interpreter Development.Module
+  OPTIONAL_COMPONENTS Development.SABIModule)
+execute_process(
+  COMMAND "${Python_EXECUTABLE}" "-c"
+          "from jax import ffi; print(ffi.include_dir())"
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  OUTPUT_VARIABLE XLA_FFI_INCLUDE_DIR)
+message(STATUS "XLA FFI include directory: ${XLA_FFI_INCLUDE_DIR}")
+
+# Detect the installed nanobind package and import it into CMake
+find_package(nanobind CONFIG REQUIRED)
+
 
 if(CMAKE_CUDA_COMPILER AND JD_CUDECOMP_BACKEND)
   enable_language(CUDA)
@@ -57,8 +81,9 @@ if(CMAKE_CUDA_COMPILER AND JD_CUDECOMP_BACKEND)
   message(STATUS "NVHPC NCCL lib dir: ${NVHPC_NCCL_LIBRARY_DIR}")
   message(STATUS "NCCL include dir: ${NCCL_INCLUDE_DIR}")
 
-  # Add _jaxdecomp modulei
-  pybind11_add_module(_jaxdecomp
+  # Add _jaxdecomp module
+  nanobind_add_module(_jaxdecomp
+                        STABLE_ABI
                         src/csrc/halo.cu
                         src/csrc/jaxdecomp.cc
                         src/csrc/grid_descriptor_mgr.cc
@@ -76,6 +101,7 @@ if(CMAKE_CUDA_COMPILER AND JD_CUDECOMP_BACKEND)
     ${MPI_CXX_INCLUDE_DIRS}
     ${NVHPC_MATH_INCLUDE_DIR}
     ${NCCL_INCLUDE_DIR}
+    ${XLA_FFI_INCLUDE_DIR}
   )
 
   target_link_libraries(_jaxdecomp PRIVATE MPI::MPI_CXX)
@@ -88,11 +114,10 @@ if(CMAKE_CUDA_COMPILER AND JD_CUDECOMP_BACKEND)
   set_target_properties(_jaxdecomp PROPERTIES LINKER_LANGUAGE CXX)
   target_compile_definitions(_jaxdecomp PRIVATE JD_CUDECOMP_BACKEND)
 else()
-  pybind11_add_module(_jaxdecomp src/csrc/jaxdecomp.cc)
-  target_include_directories(_jaxdecomp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src/csrc/include)
+  nanobind_add_module(_jaxdecomp STABLE_ABI src/csrc/jaxdecomp.cc)
+  target_include_directories(_jaxdecomp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src/csrc/include ${XLA_FFI_INCLUDE_DIR})
   target_compile_definitions(_jaxdecomp PRIVATE JD_JAX_BACKEND)
 endif()
 
-set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-set_target_properties(_jaxdecomp PROPERTIES INSTALL_RPATH "$ORIGIN/../lib;${NVHPC_MATH_LIBRARY_DIR}")
+set_target_properties(_jaxdecomp PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
 install(TARGETS _jaxdecomp LIBRARY DESTINATION jaxdecomplib PUBLIC_HEADER DESTINATION jaxdecomplib)

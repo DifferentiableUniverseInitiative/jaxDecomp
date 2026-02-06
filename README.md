@@ -124,6 +124,7 @@ If you need to use `MPI` instead of `NCCL` for `GPU`, you can build from GitHub 
 
 ```bash
 pip install -U pip
+export CXXFLAGS='-noswitcherror'  # recommended for NVHPC
 pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -Ccmake.define.JD_CUDECOMP_BACKEND=ON
 ```
 

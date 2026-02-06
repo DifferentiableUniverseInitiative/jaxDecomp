@@ -4,8 +4,8 @@
 #include "checks.h"
 #include <cudecomp.h>
 #endif
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
+#include <nanobind/nanobind.h>
+#include <nanobind/stl/array.h>
 
 #ifdef JD_JAX_BACKEND
 enum cudecompTransposeCommBackend_t {

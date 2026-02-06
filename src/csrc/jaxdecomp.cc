@@ -1,4 +1,7 @@
 #include "jaxdecomp.h"
+#include <nanobind/nanobind.h>
+#include <nanobind/stl/array.h>
+#include <nanobind/stl/pair.h>
 #ifdef JD_CUDECOMP_BACKEND
 #include "checks.h"
 #include "fft.h"
@@ -13,18 +16,22 @@ void print_error() {
   throw std::runtime_error("This extension was compiled without CUDA support. cuDecomp functions are not supported.");
 }
 #endif
-#include "helpers.h"
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 
-namespace py = pybind11;
+#include "xla/ffi/api/ffi.h"
+
+
+
+namespace nb = nanobind;
+namespace ffi = xla::ffi;
 namespace jd = jaxdecomp;
 
-namespace jaxdecomp {
+template <ffi::DataType T>
+constexpr bool is_double_precision_v = (T == ffi::DataType::C128 || T == ffi::DataType::F64);
 
-// Global cuDecomp handle, initialized once from Python when the
-// library is imported, and then implicitly reused in all functions
-// cudecompHandle_t handle;
+template <ffi::DataType T>
+using fft_real_t = std::conditional_t<is_double_precision_v<T>, double, float>;
+
+namespace jaxdecomp {
 
 /**
  * @brief Initializes the global handle
@@ -67,15 +74,6 @@ decompPencilInfo_t getPencilInfo(decompGridDescConfig_t grid_config, int32_t axi
 
 /**
  * @brief Get the Autotuned Grid Config object
- *
- * @param grid_config
- * @param double_precision
- * @param disable_nccl_backends
- * @param disable_nvshmem_backends
- * @param tune_with_transpose
- * @param halo_extents
- * @param halo_periods
- * @return decompGridDescConfig_t
  */
 decompGridDescConfig_t getAutotunedGridConfig(decompGridDescConfig_t grid_config, bool double_precision,
                                               bool disable_nccl_backends, bool disable_nvshmem_backends,
@@ -101,7 +99,6 @@ decompGridDescConfig_t getAutotunedGridConfig(decompGridDescConfig_t grid_config
 
   // Transpose communication backend autotuning options
   options.autotune_transpose_backend = true;
-  // TODO(wassim) this was updated in cuDecomp check if autotuning works
   options.transpose_use_inplace_buffers[0] = true;
   options.transpose_use_inplace_buffers[1] = true;
   options.transpose_use_inplace_buffers[2] = true;
@@ -134,100 +131,497 @@ decompGridDescConfig_t getAutotunedGridConfig(decompGridDescConfig_t grid_config
   return output_config;
 };
 
-void transpose(cudaStream_t stream, void** buffers, const char* opaque, size_t opaque_len) {
-  transposeDescriptor descriptor = *UnpackDescriptor<transposeDescriptor>(opaque, opaque_len);
+// ============================================================================
+// FFI Handlers
+// ============================================================================
 
-  size_t work_size;
-  cudecompHandle_t my_handle(jd::GridDescriptorManager::getInstance().getHandle());
-  if (descriptor.double_precision) {
+/**
+ * @brief FFI Handler for parallel 3D FFT
+ */
+template <ffi::DataType T>
+ffi::Error pfft3d_ffi(
+    cudaStream_t stream,
+    ffi::Span<const int64_t> gdims,
+    ffi::Span<const int64_t> pdims,
+    int64_t transpose_comm_backend,
+    int64_t halo_comm_backend,
+    bool forward,
+    bool adjoint,
+    bool contiguous,
+    int64_t decomposition,
+    ffi::Buffer<T> input,
+    ffi::Result<ffi::Buffer<ffi::DataType::U8>> workspace,
+    ffi::Result<ffi::Buffer<T>> output
+) {
+    if (gdims.size() != 3) {
+        return ffi::Error::InvalidArgument("gdims must have 3 elements");
+    }
+    if (pdims.size() != 2) {
+        return ffi::Error::InvalidArgument("pdims must have 2 elements");
+    }
 
-    auto executor = std::make_shared<jd::Transpose<double>>();
+    constexpr bool is_double = is_double_precision_v<T>;
+
+    // Reconstruct cudecompGridDescConfig_t from FFI attributes
+    cudecompGridDescConfig_t cuconfig;
+    CHECK_CUDECOMP_EXIT(cudecompGridDescConfigSetDefaults(&cuconfig));
+    cuconfig.gdims[0] = static_cast<int32_t>(gdims[0]);
+    cuconfig.gdims[1] = static_cast<int32_t>(gdims[1]);
+    cuconfig.gdims[2] = static_cast<int32_t>(gdims[2]);
+    cuconfig.pdims[0] = static_cast<int32_t>(pdims[0]);
+    cuconfig.pdims[1] = static_cast<int32_t>(pdims[1]);
+    cuconfig.transpose_comm_backend = static_cast<cudecompTransposeCommBackend_t>(transpose_comm_backend);
+    cuconfig.halo_comm_backend = static_cast<cudecompHaloCommBackend_t>(halo_comm_backend);
+    for (int i = 0; i < 3; i++) {
+        cuconfig.transpose_axis_contiguous[i] = contiguous;
+    }
+
+    // Build descriptor
+    jd::fftDescriptor descriptor(cuconfig, is_double, forward, adjoint, contiguous,
+                                  static_cast<jd::Decomposition>(decomposition));
+
+    // Get buffer pointers
+    void* buffers[3] = {
+        const_cast<void*>(input.untyped_data()),
+        const_cast<void*>(workspace->untyped_data()),
+        output->untyped_data()
+    };
+
+    // Execute
+    size_t work_size;
+    cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
+    using real_t = fft_real_t<T>;
+    auto executor = std::make_shared<jd::FourierExecutor<real_t>>();
+    jd::GridDescriptorManager::getInstance().createFFTExecutor(descriptor, work_size, executor);
+    if (descriptor.forward)
+        executor->forward(handle, descriptor, stream, buffers);
+    else
+        executor->backward(handle, descriptor, stream, buffers);
+
+    return ffi::Error::Success();
+}
+
+
+/**
+ * @brief FFI Handler for halo exchange
+ */
+template <ffi::DataType T>
+ffi::Error halo_ffi(
+    cudaStream_t stream,
+    ffi::Span<const int64_t> gdims,
+    ffi::Span<const int64_t> pdims,
+    int64_t transpose_comm_backend,
+    int64_t halo_comm_backend,
+    ffi::Span<const int64_t> halo_extents,
+    ffi::Span<const int64_t> halo_periods,
+    int64_t axis,
+    ffi::Buffer<T> input,
+    ffi::Result<ffi::Buffer<ffi::DataType::U8>> workspace,
+    ffi::Result<ffi::Buffer<T>> output
+) {
+    if (gdims.size() != 3) {
+        return ffi::Error::InvalidArgument("gdims must have 3 elements");
+    }
+    if (pdims.size() != 2) {
+        return ffi::Error::InvalidArgument("pdims must have 2 elements");
+    }
+    if (halo_extents.size() != 3) {
+        return ffi::Error::InvalidArgument("halo_extents must have 3 elements");
+    }
+    if (halo_periods.size() != 3) {
+        return ffi::Error::InvalidArgument("halo_periods must have 3 elements");
+    }
+
+    constexpr bool is_double = is_double_precision_v<T>;
+
+    // Reconstruct cudecompGridDescConfig_t from FFI attributes
+    cudecompGridDescConfig_t cuconfig;
+    CHECK_CUDECOMP_EXIT(cudecompGridDescConfigSetDefaults(&cuconfig));
+    cuconfig.gdims[0] = static_cast<int32_t>(gdims[0]);
+    cuconfig.gdims[1] = static_cast<int32_t>(gdims[1]);
+    cuconfig.gdims[2] = static_cast<int32_t>(gdims[2]);
+    cuconfig.pdims[0] = static_cast<int32_t>(pdims[0]);
+    cuconfig.pdims[1] = static_cast<int32_t>(pdims[1]);
+    cuconfig.transpose_comm_backend = static_cast<cudecompTransposeCommBackend_t>(transpose_comm_backend);
+    cuconfig.halo_comm_backend = static_cast<cudecompHaloCommBackend_t>(halo_comm_backend);
+
+    // Build halo descriptor
+    jd::haloDescriptor_t descriptor;
+    descriptor.double_precision = is_double;
+    descriptor.halo_extents = {
+        static_cast<int32_t>(halo_extents[0]),
+        static_cast<int32_t>(halo_extents[1]),
+        static_cast<int32_t>(halo_extents[2])
+    };
+    descriptor.halo_periods = {
+        static_cast<bool>(halo_periods[0]),
+        static_cast<bool>(halo_periods[1]),
+        static_cast<bool>(halo_periods[2])
+    };
+    descriptor.axis = static_cast<int>(axis);
+    descriptor.config = cuconfig;
+
+    // Get buffer pointers
+    void* buffers[3] = {
+        const_cast<void*>(input.untyped_data()),
+        const_cast<void*>(workspace->untyped_data()),
+        output->untyped_data()
+    };
+
+    // Execute
+    size_t work_size;
+    cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
+    using real_t = fft_real_t<T>;
+    auto executor = std::make_shared<jd::HaloExchange<real_t>>();
+    jd::GridDescriptorManager::getInstance().createHaloExecutor(descriptor, work_size, executor);
+    executor->halo_exchange(handle, descriptor, stream, buffers);
+
+    return ffi::Error::Success();
+}
+
+
+/**
+ * @brief FFI Handler for transpose operations
+ */
+template <ffi::DataType T>
+ffi::Error transpose_ffi(
+    cudaStream_t stream,
+    ffi::Span<const int64_t> gdims,
+    ffi::Span<const int64_t> pdims,
+    int64_t transpose_comm_backend,
+    int64_t halo_comm_backend,
+    int64_t transpose_type,
+    bool contiguous,
+    ffi::Buffer<T> input,
+    ffi::Result<ffi::Buffer<ffi::DataType::U8>> workspace,
+    ffi::Result<ffi::Buffer<T>> output
+) {
+    if (gdims.size() != 3) {
+        return ffi::Error::InvalidArgument("gdims must have 3 elements");
+    }
+    if (pdims.size() != 2) {
+        return ffi::Error::InvalidArgument("pdims must have 2 elements");
+    }
+
+    constexpr bool is_double = is_double_precision_v<T>;
+
+    // Reconstruct cudecompGridDescConfig_t from FFI attributes
+    cudecompGridDescConfig_t cuconfig;
+    CHECK_CUDECOMP_EXIT(cudecompGridDescConfigSetDefaults(&cuconfig));
+    cuconfig.gdims[0] = static_cast<int32_t>(gdims[0]);
+    cuconfig.gdims[1] = static_cast<int32_t>(gdims[1]);
+    cuconfig.gdims[2] = static_cast<int32_t>(gdims[2]);
+    cuconfig.pdims[0] = static_cast<int32_t>(pdims[0]);
+    cuconfig.pdims[1] = static_cast<int32_t>(pdims[1]);
+    cuconfig.transpose_comm_backend = static_cast<cudecompTransposeCommBackend_t>(transpose_comm_backend);
+    cuconfig.halo_comm_backend = static_cast<cudecompHaloCommBackend_t>(halo_comm_backend);
+    for (int i = 0; i < 3; i++) {
+        cuconfig.transpose_axis_contiguous[i] = contiguous;
+    }
+
+    // Build descriptor
+    jd::transposeDescriptor descriptor(cuconfig, static_cast<jd::TransposeType>(transpose_type),
+                                        is_double, contiguous);
+
+    // Get buffer pointers
+    void* buffers[3] = {
+        const_cast<void*>(input.untyped_data()),
+        const_cast<void*>(workspace->untyped_data()),
+        output->untyped_data()
+    };
+
+    // Execute
+    size_t work_size;
+    cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
+    using real_t = fft_real_t<T>;
+    auto executor = std::make_shared<jd::Transpose<real_t>>();
     jd::GridDescriptorManager::getInstance().createTransposeExecutor(descriptor, work_size, executor);
-    executor->transpose(my_handle, descriptor, stream, buffers);
+    executor->transpose(handle, descriptor, stream, buffers);
 
-  } else {
+    return ffi::Error::Success();
+}
 
-    auto executor = std::make_shared<jd::Transpose<float>>();
-    jd::GridDescriptorManager::getInstance().createTransposeExecutor(descriptor, work_size, executor);
-    executor->transpose(my_handle, descriptor, stream, buffers);
-  }
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    pfft_C64, pfft3d_ffi<ffi::DataType::C64>,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<cudaStream_t>>()
+        .Attr<ffi::Span<const int64_t>>("gdims")
+        .Attr<ffi::Span<const int64_t>>("pdims")
+        .Attr<int64_t>("transpose_comm_backend")
+        .Attr<int64_t>("halo_comm_backend")
+        .Attr<bool>("forward")
+        .Attr<bool>("adjoint")
+        .Attr<bool>("contiguous")
+        .Attr<int64_t>("decomposition")
+        .Arg<ffi::Buffer<ffi::DataType::C64>>()   // input
+        .Ret<ffi::Buffer<ffi::DataType::U8>>()     // workspace (bytes)
+        .Ret<ffi::Buffer<ffi::DataType::C64>>()   // output
+);
+
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    pfft_C128, pfft3d_ffi<ffi::DataType::C128>,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<cudaStream_t>>()
+        .Attr<ffi::Span<const int64_t>>("gdims")
+        .Attr<ffi::Span<const int64_t>>("pdims")
+        .Attr<int64_t>("transpose_comm_backend")
+        .Attr<int64_t>("halo_comm_backend")
+        .Attr<bool>("forward")
+        .Attr<bool>("adjoint")
+        .Attr<bool>("contiguous")
+        .Attr<int64_t>("decomposition")
+        .Arg<ffi::Buffer<ffi::DataType::C128>>()   // input
+        .Ret<ffi::Buffer<ffi::DataType::U8>>()      // workspace (bytes)
+        .Ret<ffi::Buffer<ffi::DataType::C128>>()   // output
+);
+
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    halo_C64, halo_ffi<ffi::DataType::C64>,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<cudaStream_t>>()
+        .Attr<ffi::Span<const int64_t>>("gdims")
+        .Attr<ffi::Span<const int64_t>>("pdims")
+        .Attr<int64_t>("transpose_comm_backend")
+        .Attr<int64_t>("halo_comm_backend")
+        .Attr<ffi::Span<const int64_t>>("halo_extents")
+        .Attr<ffi::Span<const int64_t>>("halo_periods")
+        .Attr<int64_t>("axis")
+        .Arg<ffi::Buffer<ffi::DataType::C64>>()   // input
+        .Ret<ffi::Buffer<ffi::DataType::U8>>()     // workspace (bytes)
+        .Ret<ffi::Buffer<ffi::DataType::C64>>()   // output
+);
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    halo_C128, halo_ffi<ffi::DataType::C128>,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<cudaStream_t>>()
+        .Attr<ffi::Span<const int64_t>>("gdims")
+        .Attr<ffi::Span<const int64_t>>("pdims")
+        .Attr<int64_t>("transpose_comm_backend")
+        .Attr<int64_t>("halo_comm_backend")
+        .Attr<ffi::Span<const int64_t>>("halo_extents")
+        .Attr<ffi::Span<const int64_t>>("halo_periods")
+        .Attr<int64_t>("axis")
+        .Arg<ffi::Buffer<ffi::DataType::C128>>()   // input
+        .Ret<ffi::Buffer<ffi::DataType::U8>>()      // workspace (bytes)
+        .Ret<ffi::Buffer<ffi::DataType::C128>>()   // output
+);
+
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    transpose_C64, transpose_ffi<ffi::DataType::C64>,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<cudaStream_t>>()
+        .Attr<ffi::Span<const int64_t>>("gdims")
+        .Attr<ffi::Span<const int64_t>>("pdims")
+        .Attr<int64_t>("transpose_comm_backend")
+        .Attr<int64_t>("halo_comm_backend")
+        .Attr<int64_t>("transpose_type")
+        .Attr<bool>("contiguous")
+        .Arg<ffi::Buffer<ffi::DataType::C64>>()   // input
+        .Ret<ffi::Buffer<ffi::DataType::U8>>()     // workspace (bytes)
+        .Ret<ffi::Buffer<ffi::DataType::C64>>()   // output
+);
+
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    transpose_C128, transpose_ffi<ffi::DataType::C128>,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<cudaStream_t>>()
+        .Attr<ffi::Span<const int64_t>>("gdims")
+        .Attr<ffi::Span<const int64_t>>("pdims")
+        .Attr<int64_t>("transpose_comm_backend")
+        .Attr<int64_t>("halo_comm_backend")
+        .Attr<int64_t>("transpose_type")
+        .Attr<bool>("contiguous")
+        .Arg<ffi::Buffer<ffi::DataType::C128>>()   // input
+        .Ret<ffi::Buffer<ffi::DataType::U8>>()      // workspace (bytes)
+        .Ret<ffi::Buffer<ffi::DataType::C128>>()   // output
+);
+
+// ============================================================================
+// Workspace size calculation functions
+// ============================================================================
+
+/**
+ * @brief Get workspace size for FFT operations
+ */
+int64_t get_fft_workspace_size(
+    std::array<int32_t, 3> gdims,
+    std::array<int32_t, 2> pdims,
+    int transpose_comm_backend,
+    int halo_comm_backend,
+    bool forward,
+    bool double_precision,
+    bool adjoint,
+    bool contiguous,
+    int decomposition
+) {
+    cudecompGridDescConfig_t cuconfig;
+    CHECK_CUDECOMP_EXIT(cudecompGridDescConfigSetDefaults(&cuconfig));
+    cuconfig.gdims[0] = gdims[0];
+    cuconfig.gdims[1] = gdims[1];
+    cuconfig.gdims[2] = gdims[2];
+    cuconfig.pdims[0] = pdims[0];
+    cuconfig.pdims[1] = pdims[1];
+    cuconfig.transpose_comm_backend = static_cast<cudecompTransposeCommBackend_t>(transpose_comm_backend);
+    cuconfig.halo_comm_backend = static_cast<cudecompHaloCommBackend_t>(halo_comm_backend);
+    for (int i = 0; i < 3; i++) {
+        cuconfig.transpose_axis_contiguous[i] = contiguous;
+    }
+
+    size_t work_size;
+    jd::fftDescriptor fftdesc(cuconfig, double_precision, forward, adjoint, contiguous,
+                               static_cast<jd::Decomposition>(decomposition));
+
+    if (double_precision) {
+        auto executor = std::make_shared<jd::FourierExecutor<double>>();
+        jd::GridDescriptorManager::getInstance().createFFTExecutor(fftdesc, work_size, executor);
+    } else {
+        auto executor = std::make_shared<jd::FourierExecutor<float>>();
+        jd::GridDescriptorManager::getInstance().createFFTExecutor(fftdesc, work_size, executor);
+    }
+
+    return static_cast<int64_t>(work_size);
 }
 
 /**
- * @brief Wrapper to cuDecomp-based FFTs
+ * @brief Get workspace size for transpose operations
  */
-void pfft3d(cudaStream_t stream, void** buffers, const char* opaque, size_t opaque_len) {
+int64_t get_transpose_workspace_size(
+    std::array<int32_t, 3> gdims,
+    std::array<int32_t, 2> pdims,
+    int transpose_comm_backend,
+    int halo_comm_backend,
+    int transpose_type,
+    bool double_precision,
+    bool contiguous
+) {
+    cudecompGridDescConfig_t cuconfig;
+    CHECK_CUDECOMP_EXIT(cudecompGridDescConfigSetDefaults(&cuconfig));
+    cuconfig.gdims[0] = gdims[0];
+    cuconfig.gdims[1] = gdims[1];
+    cuconfig.gdims[2] = gdims[2];
+    cuconfig.pdims[0] = pdims[0];
+    cuconfig.pdims[1] = pdims[1];
+    cuconfig.transpose_comm_backend = static_cast<cudecompTransposeCommBackend_t>(transpose_comm_backend);
+    cuconfig.halo_comm_backend = static_cast<cudecompHaloCommBackend_t>(halo_comm_backend);
+    for (int i = 0; i < 3; i++) {
+        cuconfig.transpose_axis_contiguous[i] = contiguous;
+    }
 
-  fftDescriptor descriptor = *UnpackDescriptor<fftDescriptor>(opaque, opaque_len);
+    size_t work_size;
+    jd::transposeDescriptor desc(cuconfig, static_cast<jd::TransposeType>(transpose_type),
+                                  double_precision, contiguous);
 
-  size_t work_size;
-  cudecompHandle_t my_handle(jd::GridDescriptorManager::getInstance().getHandle());
-  // Execute the correct version of the FFT
-  if (descriptor.double_precision) {
+    if (double_precision) {
+        auto executor = std::make_shared<jd::Transpose<double>>();
+        jd::GridDescriptorManager::getInstance().createTransposeExecutor(desc, work_size, executor);
+    } else {
+        auto executor = std::make_shared<jd::Transpose<float>>();
+        jd::GridDescriptorManager::getInstance().createTransposeExecutor(desc, work_size, executor);
+    }
 
-    auto executor = std::make_shared<jd::FourierExecutor<double>>();
-    jd::GridDescriptorManager::getInstance().createFFTExecutor(descriptor, work_size, executor);
-
-    if (descriptor.forward)
-      executor->forward(my_handle, descriptor, stream, buffers);
-    else
-      executor->backward(my_handle, descriptor, stream, buffers);
-  } else {
-
-    auto executor = std::make_shared<jd::FourierExecutor<float>>();
-    jd::GridDescriptorManager::getInstance().createFFTExecutor(descriptor, work_size, executor);
-
-    if (descriptor.forward)
-      executor->forward(my_handle, descriptor, stream, buffers);
-    else
-      executor->backward(my_handle, descriptor, stream, buffers);
-  }
+    return static_cast<int64_t>(work_size);
 }
 
 /**
- * @brief Perfom a halo exchange along the 3 dimensions
- *
+ * @brief Get workspace size for halo exchange operations
  */
-void halo(cudaStream_t stream, void** buffers, const char* opaque, size_t opaque_len) {
-  cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
+int64_t get_halo_workspace_size(
+    std::array<int32_t, 3> gdims,
+    std::array<int32_t, 2> pdims,
+    int transpose_comm_backend,
+    int halo_comm_backend,
+    std::array<int32_t, 3> halo_extents,
+    std::array<bool, 3> halo_periods,
+    int axis,
+    bool double_precision
+) {
+    cudecompGridDescConfig_t cuconfig;
+    CHECK_CUDECOMP_EXIT(cudecompGridDescConfigSetDefaults(&cuconfig));
+    cuconfig.gdims[0] = gdims[0];
+    cuconfig.gdims[1] = gdims[1];
+    cuconfig.gdims[2] = gdims[2];
+    cuconfig.pdims[0] = pdims[0];
+    cuconfig.pdims[1] = pdims[1];
+    cuconfig.transpose_comm_backend = static_cast<cudecompTransposeCommBackend_t>(transpose_comm_backend);
+    cuconfig.halo_comm_backend = static_cast<cudecompHaloCommBackend_t>(halo_comm_backend);
 
-  haloDescriptor_t descriptor = *UnpackDescriptor<haloDescriptor_t>(opaque, opaque_len);
+    size_t work_size;
+    jd::haloDescriptor_t halo_desc;
+    halo_desc.double_precision = double_precision;
+    halo_desc.halo_extents = halo_extents;
+    halo_desc.halo_periods = halo_periods;
+    halo_desc.axis = axis;
+    halo_desc.config = cuconfig;
 
-  size_t work_size;
-  // Execute the correct version of the halo exchange
-  if (descriptor.double_precision) {
+    if (double_precision) {
+        auto executor = std::make_shared<jd::HaloExchange<double>>();
+        jd::GridDescriptorManager::getInstance().createHaloExecutor(halo_desc, work_size, executor);
+    } else {
+        auto executor = std::make_shared<jd::HaloExchange<float>>();
+        jd::GridDescriptorManager::getInstance().createHaloExecutor(halo_desc, work_size, executor);
+    }
 
-    auto executor = std::make_shared<jd::HaloExchange<double>>();
-    jd::GridDescriptorManager::getInstance().createHaloExecutor(descriptor, work_size, executor);
-
-    executor->halo_exchange(handle, descriptor, stream, buffers);
-  } else {
-
-    auto executor = std::make_shared<jd::HaloExchange<float>>();
-    jd::GridDescriptorManager::getInstance().createHaloExecutor(descriptor, work_size, executor);
-
-    executor->halo_exchange(handle, descriptor, stream, buffers);
-  }
+    return static_cast<int64_t>(work_size);
 }
+
 #else
+// Stubs for non-CUDA builds
 void getAutotunedGridConfig() { print_error(); }
 void getPencilInfo() { print_error(); }
-void transpose() { print_error(); }
-void pfft3d() { print_error(); }
-void halo() { print_error(); }
+int64_t get_fft_workspace_size(
+    std::array<int32_t, 3>, std::array<int32_t, 2>, int, int, bool, bool, bool, bool, int
+) { print_error(); return 0; }
+int64_t get_transpose_workspace_size(
+    std::array<int32_t, 3>, std::array<int32_t, 2>, int, int, int, bool, bool
+) { print_error(); return 0; }
+int64_t get_halo_workspace_size(
+    std::array<int32_t, 3>, std::array<int32_t, 2>, int, int, std::array<int32_t, 3>, std::array<bool, 3>, int, bool
+) { print_error(); return 0; }
 #endif
 
+/**
+ * @brief Encapsulates an FFI handler into a nanobind capsule.
+ *
+ * This helper function is used to wrap C++ FFI handlers so they can be exposed
+ * to Python via nanobind.
+ *
+ * @tparam T The function type of the FFI handler.
+ * @param fn Pointer to the FFI handler function.
+ * @return nb::capsule A nanobind capsule containing the FFI handler.
+ */
+template <typename T>
+nb::capsule EncapsulateFfiCall(T* fn) {
+    // Step 1: Assert that the provided function is a valid XLA FFI handler.
+    static_assert(std::is_invocable_r_v<XLA_FFI_Error*, T, XLA_FFI_CallFrame*>,
+                  "Encapsulated function must be an XLA FFI handler");
+    // Step 2: Return a nanobind capsule wrapping the function pointer.
+    return nb::capsule(reinterpret_cast<void*>(fn));
+}
+
+
 // Utility to export ops to XLA
-py::dict Registrations() {
-  py::dict dict;
-  dict["transpose"] = EncapsulateFunction(transpose);
-  dict["pfft3d"] = EncapsulateFunction(pfft3d);
-  dict["halo"] = EncapsulateFunction(halo);
+nb::dict Registrations() {
+  nb::dict dict;
+#ifdef JD_CUDECOMP_BACKEND
+  dict["pfft_C64"] = EncapsulateFfiCall(pfft_C64);
+  dict["pfft_C128"] = EncapsulateFfiCall(pfft_C128);
+  dict["transpose_C64"] = EncapsulateFfiCall(transpose_C64);
+  dict["transpose_C128"] = EncapsulateFfiCall(transpose_C128);
+  dict["halo_C64"] = EncapsulateFfiCall(halo_C64);
+  dict["halo_C128"] = EncapsulateFfiCall(halo_C128);
+#endif
   return dict;
 }
+
 } // namespace jaxdecomp
 
-PYBIND11_MODULE(_jaxdecomp, m) {
+NB_MODULE(_jaxdecomp, m) {
   // Utilities
   m.def("init", &jd::init);
   m.def("finalize", &jd::finalize);
@@ -237,87 +631,26 @@ PYBIND11_MODULE(_jaxdecomp, m) {
   // Function registering the custom ops
   m.def("registrations", &jd::Registrations);
 
-  // Utilities for exported ops
-  m.def("build_transpose_descriptor",
-        [](jd::decompGridDescConfig_t config, jd::TransposeType type, bool double_precision, bool contiguous) {
-#ifdef JD_CUDECOMP_BACKEND
-          cudecompGridDescConfig_t cuconfig;
-          cudecompGridDescConfigSet(&cuconfig, &config);
-          size_t work_size;
-          jd::transposeDescriptor desc(cuconfig, type, double_precision, contiguous);
+  // Workspace size calculation functions
+  m.def("get_fft_workspace_size", &jd::get_fft_workspace_size,
+        nb::arg("gdims"), nb::arg("pdims"),
+        nb::arg("transpose_comm_backend"), nb::arg("halo_comm_backend"),
+        nb::arg("forward"), nb::arg("double_precision"),
+        nb::arg("adjoint"), nb::arg("contiguous"), nb::arg("decomposition"));
 
-          if (double_precision) {
-            auto executor = std::make_shared<jd::Transpose<double>>();
-            HRESULT hr = jd::GridDescriptorManager::getInstance().createTransposeExecutor(desc, work_size, executor);
-          } else {
-            auto executor = std::make_shared<jd::Transpose<float>>();
-            HRESULT hr = jd::GridDescriptorManager::getInstance().createTransposeExecutor(desc, work_size, executor);
-          }
+  m.def("get_transpose_workspace_size", &jd::get_transpose_workspace_size,
+        nb::arg("gdims"), nb::arg("pdims"),
+        nb::arg("transpose_comm_backend"), nb::arg("halo_comm_backend"),
+        nb::arg("transpose_type"), nb::arg("double_precision"), nb::arg("contiguous"));
 
-          return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(desc));
-#else
-        print_error();
-#endif
-        });
-
-  m.def("build_fft_descriptor", [](jd::decompGridDescConfig_t config, bool forward, bool double_precision, bool adjoint,
-                                   bool contiguous, jd::Decomposition decomp) {
-#ifdef JD_CUDECOMP_BACKEND
-    // Create a real cuDecomp grid descriptor
-    cudecompGridDescConfig_t cuconfig;
-    cudecompGridDescConfigSet(&cuconfig, &config);
-
-    size_t work_size;
-    jd::fftDescriptor fftdesc(cuconfig, double_precision, forward, adjoint, contiguous, decomp);
-
-    if (double_precision) {
-
-      auto executor = std::make_shared<jd::FourierExecutor<double>>();
-      HRESULT hr = jd::GridDescriptorManager::getInstance().createFFTExecutor(fftdesc, work_size, executor);
-
-    } else {
-      auto executor = std::make_shared<jd::FourierExecutor<float>>();
-      HRESULT hr = jd::GridDescriptorManager::getInstance().createFFTExecutor(fftdesc, work_size, executor);
-    }
-    return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(fftdesc));
-#else
-        print_error();
-#endif
-  });
-
-  m.def("build_halo_descriptor",
-        [](jd::decompGridDescConfig_t config, bool double_precision, std::array<int32_t, 3> halo_extents,
-           std::array<bool, 3> halo_periods, int axis = 0) {
-#ifdef JD_CUDECOMP_BACKEND
-          // Create a real cuDecomp grid descriptor
-          cudecompGridDescConfig_t cuconfig;
-          cudecompGridDescConfigSet(&cuconfig, &config);
-          cudecompHandle_t handle(jd::GridDescriptorManager::getInstance().getHandle());
-
-          size_t work_size;
-          jd::haloDescriptor_t halo_desc;
-          halo_desc.double_precision = double_precision;
-          halo_desc.halo_extents = halo_extents;
-          halo_desc.halo_periods = halo_periods;
-          halo_desc.axis = axis;
-          halo_desc.config = cuconfig;
-
-          if (double_precision) {
-            auto executor = std::make_shared<jd::HaloExchange<double>>();
-            HRESULT hr = jd::GridDescriptorManager::getInstance().createHaloExecutor(halo_desc, work_size, executor);
-          } else {
-            auto executor = std::make_shared<jd::HaloExchange<float>>();
-            HRESULT hr = jd::GridDescriptorManager::getInstance().createHaloExecutor(halo_desc, work_size, executor);
-          }
-
-          return std::pair<int64_t, pybind11::bytes>(work_size, PackDescriptor(halo_desc));
-#else
-        print_error();
-#endif
-        });
+  m.def("get_halo_workspace_size", &jd::get_halo_workspace_size,
+        nb::arg("gdims"), nb::arg("pdims"),
+        nb::arg("transpose_comm_backend"), nb::arg("halo_comm_backend"),
+        nb::arg("halo_extents"), nb::arg("halo_periods"),
+        nb::arg("axis"), nb::arg("double_precision"));
 
   // Exported types
-  py::enum_<cudecompTransposeCommBackend_t>(m, "TransposeCommBackend")
+  nb::enum_<cudecompTransposeCommBackend_t>(m, "TransposeCommBackend")
       .value("TRANSPOSE_COMM_MPI_P2P", cudecompTransposeCommBackend_t::CUDECOMP_TRANSPOSE_COMM_MPI_P2P)
       .value("TRANSPOSE_COMM_MPI_P2P_PL", cudecompTransposeCommBackend_t::CUDECOMP_TRANSPOSE_COMM_MPI_P2P_PL)
       .value("TRANSPOSE_COMM_MPI_A2A", cudecompTransposeCommBackend_t::CUDECOMP_TRANSPOSE_COMM_MPI_A2A)
@@ -327,7 +660,7 @@ PYBIND11_MODULE(_jaxdecomp, m) {
       .value("TRANSPOSE_COMM_NVSHMEM_PL", cudecompTransposeCommBackend_t::CUDECOMP_TRANSPOSE_COMM_NVSHMEM_PL)
       .export_values();
 
-  py::enum_<cudecompHaloCommBackend_t>(m, "HaloCommBackend")
+  nb::enum_<cudecompHaloCommBackend_t>(m, "HaloCommBackend")
       .value("HALO_COMM_MPI", cudecompHaloCommBackend_t::CUDECOMP_HALO_COMM_MPI)
       .value("HALO_COMM_MPI_BLOCKING", cudecompHaloCommBackend_t::CUDECOMP_HALO_COMM_MPI_BLOCKING)
       .value("HALO_COMM_NCCL", cudecompHaloCommBackend_t::CUDECOMP_HALO_COMM_NCCL)
@@ -335,7 +668,7 @@ PYBIND11_MODULE(_jaxdecomp, m) {
       .value("HALO_COMM_NVSHMEM_BLOCKING", cudecompHaloCommBackend_t::CUDECOMP_HALO_COMM_NVSHMEM_BLOCKING)
       .export_values();
 
-  py::enum_<jd::TransposeType>(m, "TransposeType")
+  nb::enum_<jd::TransposeType>(m, "TransposeType")
       .value("TRANSPOSE_XY", jd::TransposeType::TRANSPOSE_XY)
       .value("TRANSPOSE_YZ", jd::TransposeType::TRANSPOSE_YZ)
       .value("TRANSPOSE_ZY", jd::TransposeType::TRANSPOSE_ZY)
@@ -344,26 +677,26 @@ PYBIND11_MODULE(_jaxdecomp, m) {
       .value("TRANSPOSE_ZX", jd::TransposeType::TRANSPOSE_XZ)
       .export_values();
 
-  py::enum_<jd::Decomposition>(m, "Decomposition")
+  nb::enum_<jd::Decomposition>(m, "Decomposition")
       .value("NO_DECOMP", jd::Decomposition::no_decomp)
       .value("SLAB_XY", jd::Decomposition::slab_XY)
       .value("SLAB_YZ", jd::Decomposition::slab_YZ)
       .value("PENCILS", jd::Decomposition::pencil)
       .export_values();
 
-  py::class_<jd::decompPencilInfo_t> pencil_info(m, "PencilInfo");
-  pencil_info.def(py::init<>())
-      .def_readonly("shape", &jd::decompPencilInfo_t::shape)
-      .def_readonly("lo", &jd::decompPencilInfo_t::lo)
-      .def_readonly("hi", &jd::decompPencilInfo_t::hi)
-      .def_readonly("order", &jd::decompPencilInfo_t::order)
-      .def_readonly("halo_extents", &jd::decompPencilInfo_t::halo_extents)
-      .def_readonly("size", &jd::decompPencilInfo_t::size);
+  nb::class_<jd::decompPencilInfo_t>(m, "PencilInfo")
+      .def(nb::init<>())
+      .def_ro("shape", &jd::decompPencilInfo_t::shape)
+      .def_ro("lo", &jd::decompPencilInfo_t::lo)
+      .def_ro("hi", &jd::decompPencilInfo_t::hi)
+      .def_ro("order", &jd::decompPencilInfo_t::order)
+      .def_ro("halo_extents", &jd::decompPencilInfo_t::halo_extents)
+      .def_ro("size", &jd::decompPencilInfo_t::size);
 
-  py::class_<jaxdecomp::decompGridDescConfig_t> config(m, "GridConfig");
-  config.def(py::init<>())
-      .def_readwrite("gdims", &jd::decompGridDescConfig_t::gdims)
-      .def_readwrite("pdims", &jd::decompGridDescConfig_t::pdims)
-      .def_readwrite("transpose_comm_backend", &jd::decompGridDescConfig_t::transpose_comm_backend)
-      .def_readwrite("halo_comm_backend", &jd::decompGridDescConfig_t::halo_comm_backend);
+  nb::class_<jaxdecomp::decompGridDescConfig_t>(m, "GridConfig")
+      .def(nb::init<>())
+      .def_rw("gdims", &jd::decompGridDescConfig_t::gdims)
+      .def_rw("pdims", &jd::decompGridDescConfig_t::pdims)
+      .def_rw("transpose_comm_backend", &jd::decompGridDescConfig_t::transpose_comm_backend)
+      .def_rw("halo_comm_backend", &jd::decompGridDescConfig_t::halo_comm_backend);
 }
