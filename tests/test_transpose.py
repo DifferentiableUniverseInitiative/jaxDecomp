@@ -159,19 +159,19 @@ class TestTransposes:
         assert_array_equal(gathered_array.transpose(forward_tranpose), gathered_jd_xy)
         # *********************************************
         # Test Y to Z transpose
-        # It tranposes XZY to YXZ so from 0 1 2 to 2 0 1 again
+        # It tranposes XZY to YXZ to from 0 1 2 to 2 0 1 again
         assert_array_equal(gathered_jd_xy.transpose(forward_tranpose), gathered_jd_yz)
         # and from the global array ZYX to YXZ so from 0 1 2 to 1 2 0
         assert_array_equal(gathered_array.transpose(double_forward), gathered_jd_yz)
         # *********************************************
         # Test Z to Y transpose
-        # It tranposes YXZ to XZY so from 0 1 2 to 1 2 0
+        # It tranposes YXZ to XZY to from 0 1 2 to 1 2 0
         assert_array_equal(gathered_jd_yz.transpose(backward_tranpose), gathered_jd_zy)
         # The Y pencils should match in forward and backward transposes (despite the inverted grid)
         # assert_array_equal(gathered_jd_zy, gathered_jd_xy)
         # *********************************************
         # Test Y to X transpose
-        # It tranposes XZY to ZYX so from 0 1 2 to 1 2 0
+        # It tranposes XZY to ZYX to from 0 1 2 to 1 2 0
         assert_array_equal(gathered_jd_zy.transpose(backward_tranpose), gathered_jd_yx)
         # The X pencils should match in forward and backward transposes (original array)
         assert_array_equal(gathered_jd_yx, gathered_array)

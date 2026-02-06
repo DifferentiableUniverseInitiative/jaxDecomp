@@ -372,9 +372,9 @@ def test_huge_fft(pdims, use_shardy, axis_type):
             pifft3d = partial(jaxdecomp.fft.pifft3d, backend='jax')
 
         # Perform distributed FFT
-        karray = pfft3d(global_array, backend='jax')
+        karray = pfft3d(global_array)
         # Perform inverse FFT
-        rec_array = pifft3d(karray, backend='jax')
+        rec_array = pifft3d(karray)
         print('WORKED')
         # Check the reconstruction
         assert_allclose(global_array.real, rec_array.real, rtol=1e-5, atol=1e-5)

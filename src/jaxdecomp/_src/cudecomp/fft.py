@@ -7,7 +7,6 @@ import jaxlib.mlir.ir as ir
 import numpy as np
 from jax import ShapeDtypeStruct
 from jax._src.interpreters import mlir
-from jax._src.lib.mlir.dialects import hlo
 from jax._src.numpy.util import promote_dtypes_complex
 from jax.core import ShapedArray
 from jax.extend.core import Primitive
@@ -212,7 +211,6 @@ class FFTPrimitive(BasePrimitive):
         )
 
         return result
-        return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
     @staticmethod
     def impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:
