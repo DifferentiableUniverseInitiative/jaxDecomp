@@ -175,7 +175,16 @@ class TransposePrimitive(BasePrimitive):
         dtype = aval_in.dtype
         x_type = ir.RankedTensorType(x.type)
         is_double = np.finfo(dtype).dtype == np.float64
-        ffi_name = 'transpose_C128' if is_double else 'transpose_C64'
+        if dtype == np.float32:
+            ffi_name = 'transpose_F32'
+        elif dtype == np.float64:
+            ffi_name = 'transpose_F64'
+        elif dtype == np.complex64:
+            ffi_name = 'transpose_C64'
+        elif dtype == np.complex128:
+            ffi_name = 'transpose_C128'
+        else:
+            raise ValueError(f'Unsupported dtype {dtype}')
 
         match kind:
             case 'x_y':
@@ -221,19 +230,8 @@ class TransposePrimitive(BasePrimitive):
             result_layouts=[layout],
             skip_ffi_layout_processing=True,
         )
-
-        workspace_aval = ShapedArray(shape=[workspace_size], dtype=np.byte)
-        ffi_ctx = mlir.LoweringRuleContext(
-            module_context=ctx.module_context,
-            primitive=None,
-            avals_in=[aval_in, workspace_aval],
-            avals_out=[aval_in],
-            tokens_in=ctx.tokens_in,
-            tokens_out=ctx.tokens_out,
-        )
-
         result = rule(
-            ffi_ctx,
+            ctx,
             x,
             workspace,
             gdims=np.array(global_shape[::-1], dtype=np.int64),
