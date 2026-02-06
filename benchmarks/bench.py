@@ -136,3 +136,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    multihost_utils.sync_global_devices('end')

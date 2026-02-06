@@ -20,6 +20,7 @@ import pytest
 from jax import lax, shard_map
 from jax.experimental.multihost_utils import process_allgather
 from jax.sharding import PartitionSpec as P
+from jax.sharding import auto_axes
 
 import jaxdecomp
 from jaxdecomp._src.spmd_ops import ALLOW_SHARDY_PARTITIONER
@@ -71,16 +72,9 @@ def test_halo_against_cudecomp(pdims, use_shardy, axis_type):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
         pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-    if axis_type == 'explicit':
-        pytest.skip(reason='Explicit axis type not yet supported for Halo tests')
-
     global_shape = (16, 16, 16)
     mesh = create_mesh(pdims, axis_type=axis_type)
     global_array = create_spmd_array(global_shape, mesh)
-
-    # @partial(shard_map, mesh=mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
-    # def sharded_add_multiply(arr, devices):
-    #   return (arr) + (devices + 10)
 
     halo_size = 2
 
@@ -96,13 +90,23 @@ def test_halo_against_cudecomp(pdims, use_shardy, axis_type):
 
     # perform halo exchange
     updated_array = pad(global_array)
-    jax_exchanged = jaxdecomp.halo_exchange(updated_array, halo_extents=halo_extents, halo_periods=periodic, backend='JAX')
-    cudecomp_exchanged = jaxdecomp.halo_exchange(
-        updated_array,
-        halo_extents=halo_extents,
-        halo_periods=periodic,
-        backend='CUDECOMP',
-    )
+
+    if axis_type == 'explicit':
+
+        @auto_axes
+        def halo_exchange_safe(x, backend, out_sharding=updated_array.sharding):
+            return jaxdecomp.halo_exchange(x, halo_extents=halo_extents, halo_periods=periodic, backend=backend)
+
+        jax_exchanged = halo_exchange_safe(updated_array, backend='JAX', out_sharding=updated_array.sharding)
+        cudecomp_exchanged = halo_exchange_safe(updated_array, backend='CUDECOMP', out_sharding=updated_array.sharding)
+    else:
+        jax_exchanged = jaxdecomp.halo_exchange(updated_array, halo_extents=halo_extents, halo_periods=periodic, backend='JAX')
+        cudecomp_exchanged = jaxdecomp.halo_exchange(
+            updated_array,
+            halo_extents=halo_extents,
+            halo_periods=periodic,
+            backend='CUDECOMP',
+        )
 
     g_array = all_gather(updated_array)
     g_jax_exchanged = all_gather(jax_exchanged)
@@ -123,9 +127,6 @@ class TestHaloExchange:
 
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
-
-        if axis_type == 'explicit':
-            pytest.skip(reason='Explicit axis type not yet supported for Halo tests')
 
         jnp.set_printoptions(linewidth=200)
 
@@ -160,18 +161,26 @@ class TestHaloExchange:
         # perform halo exchange
         padded_array = multiply(global_array)
         padded_array = pad(padded_array)
-        # periodic_exchanged_array = jaxdecomp.halo_exchange(
-        #    padded_array,
-        #    halo_extents=halo_extents,
-        #    halo_periods=periodic,
-        #    backend=backend,
-        # )
-        exchanged_array = jaxdecomp.halo_exchange(
-            padded_array,
-            halo_extents=halo_extents,
-            halo_periods=periodic,
-            backend=backend,
-        )
+
+        if axis_type == 'explicit':
+
+            @auto_axes
+            def halo_exchange_safe(x, out_sharding=padded_array.sharding):
+                return jaxdecomp.halo_exchange(
+                    x,
+                    halo_extents=halo_extents,
+                    halo_periods=periodic,
+                    backend=backend,
+                )
+
+            exchanged_array = halo_exchange_safe(padded_array, out_sharding=padded_array.sharding)
+        else:
+            exchanged_array = jaxdecomp.halo_exchange(
+                padded_array,
+                halo_extents=halo_extents,
+                halo_periods=periodic,
+                backend=backend,
+            )
 
         # Gather array from all processes
         # gathered_array = multihost_utils.process_allgather(global_array,tiled=True)

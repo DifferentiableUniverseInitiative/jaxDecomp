@@ -78,8 +78,7 @@ class FFTPrimitive(BasePrimitive):
             Output aval.
         """
         del mesh
-        if global_shape == x.shape:
-            return FFTPrimitive.outer_abstract(x, fft_type=fft_type, adjoint=adjoint)
+
         transpose_shape = get_transpose_order(fft_type)
         output_shape = (
             global_shape[transpose_shape[0]] // pdims[0],
@@ -185,7 +184,7 @@ class FFTPrimitive(BasePrimitive):
             double_precision=is_double,
             adjoint=adjoint,
             contiguous=local_transpose,
-            decomposition=int(pencil_type),
+            decomposition=int(pencil_type.value),
         )
 
         n = len(a_type.shape)
@@ -194,23 +193,12 @@ class FFTPrimitive(BasePrimitive):
 
         rule = jax.ffi.ffi_lowering(
             ffi_name,
-            operand_layouts=[layout, (0,)],
-            result_layouts=[layout],
-            operand_output_aliases={0: 0},
+            operand_layouts=(layout, (0,)),
+            result_layouts=(layout,),
+            skip_ffi_layout_processing=True,
         )
-
-        workspace_aval = ShapedArray(shape=[workspace_size], dtype=np.byte)
-        ffi_ctx = mlir.LoweringRuleContext(
-            module_context=ctx.module_context,
-            primitive=None,
-            avals_in=[x_aval, workspace_aval],
-            avals_out=[x_aval],
-            tokens_in=ctx.tokens_in,
-            tokens_out=ctx.tokens_out,
-        )
-
         result = rule(
-            ffi_ctx,
+            ctx,
             a,
             workspace,
             gdims=np.array(global_shape[::-1], dtype=np.int64),
@@ -220,10 +208,11 @@ class FFTPrimitive(BasePrimitive):
             forward=forward,
             adjoint=adjoint,
             contiguous=local_transpose,
-            decomposition=np.int64(pencil_type),
+            decomposition=np.int64(pencil_type.value),
         )
 
-        return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result[0]).results
+        return result
+        return hlo.ReshapeOp(mlir.aval_to_ir_type(aval_out), result).results
 
     @staticmethod
     def impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:

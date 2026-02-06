@@ -77,9 +77,6 @@ class TransposePrimitive(BasePrimitive):
         ShapedArray
             Output aval.
         """
-        if global_shape == x.shape:
-            return TransposePrimitive.outer_abstract(x, kind)
-
         assert kind in ['x_y', 'y_z', 'z_y', 'y_x']
 
         if jaxdecomp.config.transpose_axis_contiguous:
@@ -183,16 +180,16 @@ class TransposePrimitive(BasePrimitive):
         match kind:
             case 'x_y':
                 transpose_shape = (0, 1, 2)
-                transpose_type = int(_jaxdecomp.TRANSPOSE_XY)
+                transpose_type = int(_jaxdecomp.TRANSPOSE_XY.value)
             case 'y_z':
                 transpose_shape = (1, 2, 0)
-                transpose_type = int(_jaxdecomp.TRANSPOSE_YZ)
+                transpose_type = int(_jaxdecomp.TRANSPOSE_YZ.value)
             case 'z_y':
                 transpose_shape = (2, 0, 1)
-                transpose_type = int(_jaxdecomp.TRANSPOSE_ZY)
+                transpose_type = int(_jaxdecomp.TRANSPOSE_ZY.value)
             case 'y_x':
                 transpose_shape = (1, 2, 0)
-                transpose_type = int(_jaxdecomp.TRANSPOSE_YX)
+                transpose_type = int(_jaxdecomp.TRANSPOSE_YX.value)
             case _:
                 raise ValueError('Invalid kind')
 
@@ -222,7 +219,7 @@ class TransposePrimitive(BasePrimitive):
             ffi_name,
             operand_layouts=[layout, (0,)],
             result_layouts=[layout],
-            operand_output_aliases={0: 0},
+            skip_ffi_layout_processing=True,
         )
 
         workspace_aval = ShapedArray(shape=[workspace_size], dtype=np.byte)

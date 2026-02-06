@@ -18,6 +18,8 @@ from functools import partial
 import jax.numpy as jnp
 import pytest
 from jax.experimental.multihost_utils import process_allgather
+from jax.sharding import NamedSharding, auto_axes
+from jax.sharding import PartitionSpec as P
 
 import jaxdecomp
 from jaxdecomp._src import PENCILS, SLAB_XY, SLAB_YZ
@@ -54,14 +56,11 @@ class TestFFTs:
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-        if axis_type == 'explicit':
-            pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
-
         print('*' * 80)
         print(f'Testing with pdims {pdims} and global shape {global_shape} and local transpose {local_transpose} use shardy {use_shardy}')
         if pdims[0] == 1:
             penciltype = SLAB_XY
-        elif pdims[1] == 1:
+        elif len(pdims) < 2 or pdims[1] == 1:
             penciltype = SLAB_YZ
         else:
             penciltype = PENCILS
@@ -73,10 +72,29 @@ class TestFFTs:
         mesh = create_mesh(pdims, axis_type=axis_type)
         global_array = create_spmd_array(global_shape, mesh)
 
+        if axis_type == 'explicit':
+            # Perform distributed FFT with wrapper
+            out_sharding = jaxdecomp.get_fft_output_sharding(global_array.sharding)
+
+            @auto_axes
+            def pfft3d(x, out_sharding=out_sharding):
+                return jaxdecomp.fft.pfft3d(x, backend=backend)
+
+            # Perform inverse FFT with wrapper
+            @auto_axes
+            def pifft3d(x, out_sharding=global_array.sharding):
+                return jaxdecomp.fft.pifft3d(x, backend=backend)
+
+            pfft3d = partial(pfft3d, out_sharding=out_sharding)
+            pifft3d = partial(pifft3d, out_sharding=global_array.sharding)
+        else:
+            pfft3d = partial(jaxdecomp.fft.pfft3d, backend=backend)
+            pifft3d = partial(jaxdecomp.fft.pifft3d, backend=backend)
+
         # Perform distributed FFT
-        karray = jaxdecomp.fft.pfft3d(global_array, backend=backend)
+        karray = pfft3d(global_array)
         # Perform inverse FFT
-        rec_array = jaxdecomp.fft.pifft3d(karray, backend=backend)
+        rec_array = pifft3d(karray)
 
         print(f'orignal shard {global_array.sharding.spec}')
         print(f'sharding of karray {karray.sharding.spec}')
@@ -303,7 +321,7 @@ class TestFFTFreq:
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions
     @pytest.mark.parametrize('global_shape', global_shapes)  # Test cubes, non-cubes and primes
     def test_cudecomp_fft(self, pdims, global_shape, local_transpose, use_shardy, axis_type):
-        self.run_test(pdims, global_shape, local_transpose, backend='cuDecomp', use_shardy=use_shardy, axis_type=axis_type)
+        self.run_test(pdims, global_shape, local_transpose, backend='cuDeComp', use_shardy=use_shardy, axis_type=axis_type)
 
     # Cartesian product tests
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
@@ -321,18 +339,33 @@ def test_huge_fft(pdims, use_shardy, axis_type):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
         pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-    if axis_type == 'explicit':
-        pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
-
     with jax.experimental.disable_x64():
         jax.config.update('jax_use_shardy_partitioner', use_shardy)
         global_shape = (2048,) * 3  # Large cube to test integer overflow
         mesh = create_mesh(pdims, axis_type=axis_type)
         global_array = create_spmd_array(global_shape, mesh)
+
+        if axis_type == 'explicit':
+            out_sharding = jaxdecomp.get_fft_output_sharding(global_array.sharding)
+
+            @auto_axes
+            def pfft3d_safe(x, out_sharding=out_sharding):
+                return jaxdecomp.fft.pfft3d(x, backend='jax')
+
+            @auto_axes
+            def pifft3d_safe(x, out_sharding=global_array.sharding):
+                return jaxdecomp.fft.pifft3d(x, backend='jax')
+
+            pfft3d = partial(pfft3d_safe, out_sharding=out_sharding)
+            pifft3d = partial(pifft3d_safe, out_sharding=global_array.sharding)
+        else:
+            pfft3d = partial(jaxdecomp.fft.pfft3d, backend='jax')
+            pifft3d = partial(jaxdecomp.fft.pifft3d, backend='jax')
+
         # Perform distributed FFT
-        karray = jaxdecomp.fft.pfft3d(global_array, backend='jax')
+        karray = pfft3d(global_array, backend='jax')
         # Perform inverse FFT
-        rec_array = jaxdecomp.fft.pifft3d(karray, backend='jax')
+        rec_array = pifft3d(karray, backend='jax')
         print('WORKED')
         # Check the reconstruction
         assert_allclose(global_array.real, rec_array.real, rtol=1e-5, atol=1e-5)
@@ -346,24 +379,30 @@ def test_vmap(pdims, use_shardy, axis_type):
     if use_shardy and not ALLOW_SHARDY_PARTITIONER:
         pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-    if axis_type == 'explicit':
-        pytest.skip(reason='Explicit axis type not yet supported for FFT tests')
-
     jax.config.update('jax_use_shardy_partitioner', use_shardy)
     global_shape = (8, 8, 8)  # small shape because the shape in jacrev is (8 ,) * 6
     mesh = create_mesh(pdims, axis_type=axis_type)
     global_array = create_spmd_array(global_shape, mesh)
 
     fft_sharding = jaxdecomp.get_fft_output_sharding(global_array.sharding)
+    fft_sharding = NamedSharding(mesh, P(None, *fft_sharding.spec))
 
     batched = jnp.stack([global_array, global_array, global_array])
 
-    v_pfft = jax.vmap(jaxdecomp.fft.pfft3d)
+    if axis_type == 'explicit':
+
+        @auto_axes
+        def pfft3d_safe(x, out_sharding=fft_sharding):
+            return jax.vmap(jaxdecomp.fft.pfft3d)(x)
+
+        v_pfft = partial(pfft3d_safe, out_sharding=fft_sharding)
+    else:
+        v_pfft = jax.vmap(jaxdecomp.fft.pfft3d)
 
     batched_out = v_pfft(batched)
 
     assert batched_out.shape == (3, 8, 8, 8)
-    assert batched_out[0].sharding.is_equivalent_to(fft_sharding, ndim=3)
+    assert batched_out.sharding.is_equivalent_to(fft_sharding, ndim=4)
 
 
 @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
@@ -415,3 +454,28 @@ def test_fwd_rev_grad(pdims, use_shardy, axis_type):
     assert fwd_grad.sharding.is_equivalent_to(fft_sharding, ndim=3)
     assert scalar_grad.sharding.is_equivalent_to(in_sharding, ndim=3)
     assert rev_grad[0, 0, 0, ...].sharding.is_equivalent_to(in_sharding, ndim=3)
+
+
+def test_sharding_validation():
+    from jax.sharding import PartitionSpec as P
+
+    from jaxdecomp import validate_spec_matches_mesh
+
+    # Create a test mesh
+    pdims = (2, 4)
+    # Using explicit here but logic applies to both
+    mesh = create_mesh(pdims, axis_type='explicit')
+
+    # Valid spec
+    spec = P('z', 'y')
+    validate_spec_matches_mesh(spec, mesh)
+
+    # Invalid: Spec has None for 'z' which has size 2
+    spec_invalid_none = P(None, 'y')
+    with pytest.raises(ValueError, match="At position 0: spec has None but mesh axis 'z' has size 2"):
+        validate_spec_matches_mesh(spec_invalid_none, mesh)
+
+    # Invalid: Spec has wrong axis name
+    spec_invalid_name = P('x', 'y')
+    with pytest.raises(ValueError, match="At position 0: spec has 'x' but mesh expects 'z'"):
+        validate_spec_matches_mesh(spec_invalid_name, mesh)
