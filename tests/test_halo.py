@@ -20,7 +20,11 @@ import pytest
 from jax import lax, shard_map
 from jax.experimental.multihost_utils import process_allgather
 from jax.sharding import PartitionSpec as P
-from jax.sharding import auto_axes
+
+try:
+    from jax.sharding import auto_axes
+except ImportError:
+    auto_axes = None
 
 import jaxdecomp
 from jaxdecomp._src.spmd_ops import ALLOW_SHARDY_PARTITIONER
@@ -92,6 +96,8 @@ def test_halo_against_cudecomp(pdims, use_shardy, axis_type):
     updated_array = pad(global_array)
 
     if axis_type == 'explicit':
+        if auto_axes is None:
+            pytest.skip(reason='auto_axes is not available in this JAX version, please upgrade to at least JAX 0.9.0')
 
         @auto_axes
         def halo_exchange_safe(x, backend, out_sharding=updated_array.sharding):
@@ -163,6 +169,8 @@ class TestHaloExchange:
         padded_array = pad(padded_array)
 
         if axis_type == 'explicit':
+            if auto_axes is None:
+                pytest.skip(reason='auto_axes is not available in this JAX version, please upgrade to at least JAX 0.9.0')
 
             @auto_axes
             def halo_exchange_safe(x, out_sharding=padded_array.sharding):

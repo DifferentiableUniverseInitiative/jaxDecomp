@@ -18,8 +18,13 @@ from functools import partial
 import jax.numpy as jnp
 import pytest
 from jax.experimental.multihost_utils import process_allgather
-from jax.sharding import NamedSharding, auto_axes
+from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
+
+try:
+    from jax.sharding import auto_axes
+except ImportError:
+    auto_axes = None
 
 import jaxdecomp
 from jaxdecomp._src import PENCILS, SLAB_XY, SLAB_YZ
@@ -73,6 +78,8 @@ class TestFFTs:
         global_array = create_spmd_array(global_shape, mesh)
 
         if axis_type == 'explicit':
+            if auto_axes is None:
+                pytest.skip(reason='auto_axes is not available in this JAX version, please upgrade to at least JAX 0.9.0')
             # Perform distributed FFT with wrapper
             out_sharding = jaxdecomp.get_fft_output_sharding(global_array.sharding)
 
@@ -346,6 +353,8 @@ def test_huge_fft(pdims, use_shardy, axis_type):
         global_array = create_spmd_array(global_shape, mesh)
 
         if axis_type == 'explicit':
+            if auto_axes is None:
+                pytest.skip(reason='auto_axes is not available in this JAX version, please upgrade to at least JAX 0.9.0')
             out_sharding = jaxdecomp.get_fft_output_sharding(global_array.sharding)
 
             @auto_axes
@@ -390,6 +399,8 @@ def test_vmap(pdims, use_shardy, axis_type):
     batched = jnp.stack([global_array, global_array, global_array])
 
     if axis_type == 'explicit':
+        if auto_axes is None:
+            pytest.skip(reason='auto_axes is not available in this JAX version, please upgrade to at least JAX 0.9.0')
 
         @auto_axes
         def pfft3d_safe(x, out_sharding=fft_sharding):
