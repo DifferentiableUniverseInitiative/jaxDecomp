@@ -33,9 +33,9 @@ from jaxdecomplib._jaxdecomp import (  # dummy line to avoid yapf reformatting
     TransposeCommBackend,  # yapf: disable
 )
 
-# Registering ops for XLA
+# Registering ops for XLA (api_version=1 for FFI handlers)
 for name, fn in _jaxdecomp.registrations().items():
-    jax.ffi.register_ffi_target(name, fn, platform='CUDA', api_version=0)
+    jax.ffi.register_ffi_target(name, fn, platform='CUDA', api_version=1)
 
 __all__ = [
     'init',

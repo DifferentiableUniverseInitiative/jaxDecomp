@@ -62,7 +62,7 @@ def get_pdims_from_mesh(mesh: Optional[Mesh]) -> PdimsType:
     return pdims
 
 
-def get_pencil_type(mesh: Mesh) -> str:
+def get_pencil_type(mesh: Mesh) -> Any:
     if mesh.empty:
         pdims = (1, 1)
     else:
@@ -76,7 +76,7 @@ def get_pencil_type(mesh: Mesh) -> str:
     return get_pencil_type_from_pdims(pdims)
 
 
-def get_pencil_type_from_pdims(pdims) -> str:
+def get_pencil_type_from_pdims(pdims) -> Any:
     if len(pdims) != 2:
         raise ValueError('Only one or two-dimensional meshes are supported.')
 

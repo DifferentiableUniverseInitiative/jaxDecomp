@@ -21,6 +21,11 @@ from jax.experimental.multihost_utils import process_allgather
 from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
 
+try:
+    from jax.sharding import auto_axes
+except ImportError:
+    auto_axes = None
+
 import jaxdecomp
 from jaxdecomp import (
     transposeXtoY,
@@ -64,21 +69,8 @@ class TestTransposes:
         if use_shardy and not ALLOW_SHARDY_PARTITIONER:
             pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
 
-        if axis_type == 'explicit':
-            pytest.skip(reason='Explicit axis type not yet supported for Transpose tests')
-
         mesh = create_mesh(pdims, axis_type=axis_type)
         global_array = create_spmd_array(global_shape, mesh)
-
-        jd_tranposed_xy = transposeXtoY(global_array, backend=backend)
-        jd_tranposed_yz = transposeYtoZ(jd_tranposed_xy, backend=backend)
-        jd_tranposed_zy = transposeZtoY(jd_tranposed_yz, backend=backend)
-        jd_tranposed_yx = transposeYtoX(jd_tranposed_zy, backend=backend)
-
-        print(f'jd_tranposed_xy shape {jd_tranposed_xy.shape}')
-        print(f'jd_tranposed_yz shape {jd_tranposed_yz.shape}')
-        print(f'jd_tranposed_zy shape {jd_tranposed_zy.shape}')
-        print(f'jd_tranposed_yx shape {jd_tranposed_yx.shape}')
 
         if local_transpose:
             original_sharding = NamedSharding(mesh, P('z', 'y'))
@@ -88,6 +80,41 @@ class TestTransposes:
             original_sharding = NamedSharding(mesh, P('z', 'y'))
             y_pencil_sharding = NamedSharding(mesh, P('z', None, 'y'))
             z_pencil_sharding = NamedSharding(mesh, P(None, 'z', 'y'))
+
+        if axis_type == 'explicit':
+            if auto_axes is None:
+                pytest.skip(reason='auto_axes is not available in this JAX version, please upgrade to at least JAX 0.9.0')
+
+            @auto_axes
+            def transposeXtoY_safe(x, out_sharding=y_pencil_sharding):
+                return jaxdecomp.transposeXtoY(x, backend=backend)
+
+            @auto_axes
+            def transposeYtoZ_safe(x, out_sharding=z_pencil_sharding):
+                return jaxdecomp.transposeYtoZ(x, backend=backend)
+
+            @auto_axes
+            def transposeZtoY_safe(x, out_sharding=y_pencil_sharding):
+                return jaxdecomp.transposeZtoY(x, backend=backend)
+
+            @auto_axes
+            def transposeYtoX_safe(x, out_sharding=original_sharding):
+                return jaxdecomp.transposeYtoX(x, backend=backend)
+
+            jd_tranposed_xy = transposeXtoY_safe(global_array, out_sharding=y_pencil_sharding)
+            jd_tranposed_yz = transposeYtoZ_safe(jd_tranposed_xy, out_sharding=z_pencil_sharding)
+            jd_tranposed_zy = transposeZtoY_safe(jd_tranposed_yz, out_sharding=y_pencil_sharding)
+            jd_tranposed_yx = transposeYtoX_safe(jd_tranposed_zy, out_sharding=original_sharding)
+        else:
+            jd_tranposed_xy = transposeXtoY(global_array, backend=backend)
+            jd_tranposed_yz = transposeYtoZ(jd_tranposed_xy, backend=backend)
+            jd_tranposed_zy = transposeZtoY(jd_tranposed_yz, backend=backend)
+            jd_tranposed_yx = transposeYtoX(jd_tranposed_zy, backend=backend)
+
+        print(f'jd_tranposed_xy shape {jd_tranposed_xy.shape}')
+        print(f'jd_tranposed_yz shape {jd_tranposed_yz.shape}')
+        print(f'jd_tranposed_zy shape {jd_tranposed_zy.shape}')
+        print(f'jd_tranposed_yx shape {jd_tranposed_yx.shape}')
 
         print(f'Original sharding {original_sharding}')
         print(f'y pencil sharding {y_pencil_sharding}')
@@ -128,23 +155,23 @@ class TestTransposes:
         print(f'For local_transpose {local_transpose} forward_tranpose {forward_tranpose} backward_tranpose {backward_tranpose}')
         #
         # Test X to Y transpose
-        # It tranposes ZYX to XZY so from 0 1 2 to 2 0 1
+        # It tranposes ZYX to XZY to from 0 1 2 to 2 0 1
         assert_array_equal(gathered_array.transpose(forward_tranpose), gathered_jd_xy)
         # *********************************************
         # Test Y to Z transpose
-        # It tranposes XZY to YXZ so from 0 1 2 to 2 0 1 again
+        # It tranposes XZY to YXZ to from 0 1 2 to 2 0 1 again
         assert_array_equal(gathered_jd_xy.transpose(forward_tranpose), gathered_jd_yz)
         # and from the global array ZYX to YXZ so from 0 1 2 to 1 2 0
         assert_array_equal(gathered_array.transpose(double_forward), gathered_jd_yz)
         # *********************************************
         # Test Z to Y transpose
-        # It tranposes YXZ to XZY so from 0 1 2 to 1 2 0
+        # It tranposes YXZ to XZY to from 0 1 2 to 1 2 0
         assert_array_equal(gathered_jd_yz.transpose(backward_tranpose), gathered_jd_zy)
         # The Y pencils should match in forward and backward transposes (despite the inverted grid)
         # assert_array_equal(gathered_jd_zy, gathered_jd_xy)
         # *********************************************
         # Test Y to X transpose
-        # It tranposes XZY to ZYX so from 0 1 2 to 1 2 0
+        # It tranposes XZY to ZYX to from 0 1 2 to 1 2 0
         assert_array_equal(gathered_jd_zy.transpose(backward_tranpose), gathered_jd_yx)
         # The X pencils should match in forward and backward transposes (original array)
         assert_array_equal(gathered_jd_yx, gathered_array)
