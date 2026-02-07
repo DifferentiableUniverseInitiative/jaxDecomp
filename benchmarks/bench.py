@@ -2,8 +2,8 @@ import argparse
 import os
 
 import jax
-from jax.experimental import mesh_utils, multihost_utils
-from jax.sharding import Mesh
+from jax.experimental import multihost_utils
+from jax.sharding import AxisType
 from jax.sharding import PartitionSpec as P
 from jax_hpc_profiler import Timer
 
@@ -25,8 +25,7 @@ def run_benchmark(pdims, global_shape, backend, nb_nodes, precision, iterations,
 
     # create_device_mesh(pdims) expects a tuple/list of dimensions.
     # jaxfft.py used devices.T and axis_names=('z', 'y')
-    devices = mesh_utils.create_device_mesh(pdims)
-    mesh = Mesh(devices.T, axis_names=('z', 'y'))
+    mesh = jax.make_mesh(pdims, axis_names=('z', 'y'), axis_types=(AxisType.Auto, AxisType.Auto))
 
     # Calculate local shape based on decomposition
     # Based on jaxfft.py logic:

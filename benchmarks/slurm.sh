@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration
-ACCOUNT="nih@h100"
+ACCOUNT="XXX"
 CONSTRAINT="h100"
 OUTPUT_DIR="results/scaling"
 mkdir -p "$OUTPUT_DIR"
@@ -12,19 +12,53 @@ BASE_SBATCH_ARGS="--account=$ACCOUNT -C $CONSTRAINT --time=01:00:00 --exclusive"
 # Function to submit benchmarks for a backend
 run_benchmarks() {
     local BACKEND=$1
+    local PRECISION=$2
     echo "Launching benchmarks for backend: $BACKEND"
 
     # Configurations: Nodes GPUs_per_Node Pdim_X Pdim_Y
     CONFIGS=(
-        "1 1 1 1"
         "1 2 1 2"
+        # Four GPUS
         "1 4 2 2"
+        "1 4 1 4"
+        "1 4 4 1"
+        # Eight GPUS
         "2 4 2 4"
+        "2 4 4 2"
+        "2 4 1 8"
+        "2 4 8 1"
+        # Sixteen GPUS
         "4 4 4 4"
+        "4 4 2 8"
+        "4 4 8 2"
+        "4 4 1 16"
+        "4 4 16 1"
+        # Thirty-Two GPUS
         "8 4 4 8"
+        "8 4 8 4"
+        "8 4 1 32"
+        "8 4 32 1"
+        # Sixty-Four GPUS
         "16 4 8 8"
+        "16 4 4 16"
+        "16 4 16 4"
+        "16 4 1 64"
+        "16 4 64 1"
+        # One Hundred Twenty-Eight GPUS
         "32 4 8 16"
+        "32 4 16 8"
+        "32 4 1 128"
+        "32 4 128 1"
+        # 256 GPUs
         "64 4 16 16"
+        "64 4 8 32"
+        "64 4 1 256"
+        "64 4 256 1"
+        # 512 GPUs
+        "128 4 16 32"
+        "128 4 32 16"
+        "128 4 1 512"
+        "128 4 512 1"
     )
 
     for CONFIG in "${CONFIGS[@]}"; do
@@ -45,14 +79,14 @@ run_benchmarks() {
                         --gres=gpu:$GPUS_PER_NODE \
                         --tasks-per-node=$GPUS_PER_NODE \
                         --job-name="$JOB_NAME" \
-                        $SLURM_SCRIPT python benchmarks/bench.py \
+                        $SLURM_SCRIPT TRACES python bench.py \
                         --pdims $PX $PY \
                         --local_shape 64 128 128 \
                         -b "$BACKEND" \
                         -n "$NODES" \
                         -o "$OUTPUT_DIR" \
-                        -pr float32 \
-                        -i 100 \
+                        -pr "$PRECISION" \
+                        -i 5 \
                         -c
         }
 
@@ -77,5 +111,7 @@ run_benchmarks() {
 }
 
 # Run for both backends
-run_benchmarks "jax"
-run_benchmarks "cudecomp"
+run_benchmarks "jax" "float32"
+run_benchmarks "cudecomp" "float32"
+run_benchmarks "jax" "float64"
+run_benchmarks "cudecomp" "float64"
