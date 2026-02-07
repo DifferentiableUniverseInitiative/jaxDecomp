@@ -6,6 +6,8 @@
 [![Tests](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/actions/workflows/tests.yml/badge.svg)](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/actions/workflows/tests.yml)
 [![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Documentation](https://readthedocs.org/projects/jaxdecomp/badge/?version=latest)](https://jaxdecomp.readthedocs.io/en/latest/)
+[![DOI](https://zenodo.org/badge/564730551.svg)](https://doi.org/10.5281/zenodo.18512020)
+
 
 > **Important**
 > Version `0.2.0` includes a **pure JAX backend** that **no longer requires MPI**. For multi-node runs, MPI and NCCL backends are still available through **cuDecomp**.
