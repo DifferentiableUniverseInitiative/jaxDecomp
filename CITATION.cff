@@ -2,6 +2,7 @@ cff-version: 1.2.0
 message: 'If you use this software, please cite it as below.'
 type: software
 title: 'jaxDecomp: JAX Library for 3D Domain Decomposition and Parallel FFTs'
+doi: 10.5281/zenodo.18512020
 authors:
   - family-names: "Kabalan"
     given-names: "Wassim"
