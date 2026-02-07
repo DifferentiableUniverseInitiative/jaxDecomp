@@ -77,11 +77,11 @@ run_benchmarks() {
 
     for CONFIG in "${CONFIGS[@]}"; do
         read -r NODES GPUS_PER_NODE PX PY <<< "$CONFIG"
-        
+
         for SHAPE in "${SHAPES[@]}"; do
             # Convert spaces to 'x' for job name, e.g., 64x64x64
             SHAPE_NAME=${SHAPE// /x}
-            
+
             local JOB_NAME="strong_bench_${BACKEND}_N${NODES}_G${GPUS_PER_NODE}_${PX}x${PY}_${SHAPE_NAME}"
 
             echo "Submitting $JOB_NAME (Nodes: $NODES, GPUs/Node: $GPUS_PER_NODE, Grid: ${PX}x${PY}, Local: $SHAPE)"
