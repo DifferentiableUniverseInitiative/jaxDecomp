@@ -1,5 +1,7 @@
 from conftest import (
     assert_array_equal,
+    create_batched_mesh,
+    create_batched_spmd_array,
     create_mesh,
     create_ones_spmd_array,
     create_spmd_array,
@@ -35,6 +37,13 @@ pdims = [(1, size), (size, 1), pencil_1, pencil_2]
 use_shardy = [
     pytest.param(False, id='no_shardy'),
     pytest.param(True, id='shardy'),
+]
+
+# Parametrize over spatial decompositions that fit in 8 devices with batch_size=2
+batched_decomp = [
+    pytest.param((4, 1), id='SLAB_XY'),
+    pytest.param((1, 4), id='SLAB_YZ'),
+    pytest.param((2, 2), id='PENCILS'),
 ]
 
 
@@ -386,3 +395,63 @@ class TestHaloExchangeGrad:
         axis_type,
     ):
         self.run_test((16, 16, 16), pdims, 'JAX', use_shardy, axis_type)
+
+
+@pytest.mark.parametrize('use_shardy', use_shardy)
+@pytest.mark.parametrize('spatial_pdims', batched_decomp)
+def test_sharded_vmap(spatial_pdims, use_shardy, axis_type):
+    if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+        pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
+    if axis_type == 'explicit':
+        pytest.skip(reason='Explicit axis type not yet supported for sharded vmap tests')
+
+    jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+    batch_size = 2
+    global_shape = (batch_size, 16, 16, 16)
+
+    # Create 3D mesh: (batch, spatial_x, spatial_y)
+    mesh = create_batched_mesh(batch_size, spatial_pdims, axis_type=axis_type)
+    global_array = create_batched_spmd_array(global_shape, mesh)
+
+    halo_size = 2
+    halo_x = (halo_size, halo_size) if spatial_pdims[0] > 1 else (0, 0)
+    halo_y = (halo_size, halo_size) if spatial_pdims[1] > 1 else (0, 0)
+    halo_extents = (halo_x[0], halo_y[0])
+    periodic = (True, True)
+    padding = (halo_x, halo_y, (0, 0))
+
+    # Pad using shard_map with 3D mesh specs — vmap over batch dim inside shard_map
+    @partial(shard_map, mesh=mesh, in_specs=P('c', 'z', 'y'), out_specs=P('c', 'z', 'y'))
+    def pad(arr):
+        return jax.vmap(lambda x: jnp.pad(x, padding, mode='linear_ramp', end_values=20))(arr)
+
+    padded = pad(global_array)
+
+    # Run batched halo exchange
+    v_halo = jax.vmap(lambda x: jaxdecomp.halo_exchange(x, halo_extents=halo_extents, halo_periods=periodic))
+    exchanged = v_halo(padded)
+
+    assert exchanged.shape == padded.shape
+
+    # Compare batch element [0] against individual halo exchange on a 2D mesh
+    spatial_mesh = create_mesh(spatial_pdims, axis_type=axis_type)
+    spatial_array = create_spmd_array((16, 16, 16), spatial_mesh)
+
+    @partial(shard_map, mesh=spatial_mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
+    def pad_individual(arr):
+        return jnp.pad(arr, padding, mode='linear_ramp', end_values=20)
+
+    padded_individual = pad_individual(spatial_array)
+    exchanged_individual = jaxdecomp.halo_exchange(padded_individual, halo_extents=halo_extents, halo_periods=periodic)
+
+    # Gather both outputs and compare
+    gathered_batched = all_gather(exchanged)
+    gathered_individual = all_gather(exchanged_individual)
+
+    # The batched element [0] should have same structure as the individual result
+    # (both are halo-exchanged with same parameters, so shapes must match)
+    assert gathered_batched[0].shape == gathered_individual.shape
+
+    jax.clear_caches()

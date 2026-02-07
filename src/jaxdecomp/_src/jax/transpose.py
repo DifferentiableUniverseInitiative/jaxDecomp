@@ -2,6 +2,7 @@ from functools import partial
 
 import jax
 from jax import ShapeDtypeStruct, lax
+from jax._src.interpreters import batching
 from jax._src.typing import Array, ArrayLike
 from jax.core import ShapedArray
 from jax.sharding import Mesh, NamedSharding
@@ -177,10 +178,10 @@ def infer_sharding_from_operands(
         spec = input_sharding.spec
         transposed_specs = get_output_specs(spec, kind)
     elif operand.ndim == 4:
-        assert input_sharding.spec[0] is None
+        batch_spec = input_sharding.spec[0]
         spec = input_sharding.spec[1:]
         transposed_specs = get_output_specs(spec, kind)
-        transposed_specs = (None,) + transposed_specs
+        transposed_specs = (batch_spec,) + transposed_specs
     else:
         raise ValueError(f'Unsupported input shape {operand.shape}')
 
@@ -285,6 +286,31 @@ def vjp_transpose_rule(cotangent: Array, x: Array, kind: str) -> tuple[Array]:
             return (spmd_transpose_primitive(cotangent, kind='x_z'),)
         case _:
             raise ValueError('Invalid kind')
+
+
+@spmd_transpose_primitive.def_batching_rule
+def batching_rule(batched_args: tuple[Array], batched_axis, kind: str) -> Array:
+    """
+    Batching rule for the transpose operation.
+
+    Parameters
+    ----------
+    batched_args : Tuple[Array]
+        Batched input arrays.
+    batched_axis : int
+        Batch axis.
+    kind : str
+        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+
+    Returns
+    -------
+    Array
+        Resulting array after the transpose operation.
+    """
+    (x,) = batched_args
+    (bd,) = batched_axis
+    x = batching.moveaxis(x, bd, 0)
+    return spmd_transpose_primitive(x, kind=kind), 0
 
 
 @partial(jax.jit, static_argnums=(1,))
