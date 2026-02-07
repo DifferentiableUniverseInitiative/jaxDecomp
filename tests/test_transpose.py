@@ -309,9 +309,6 @@ def test_sharded_vmap(spatial_pdims, use_shardy, axis_type):
     assert_array_equal(global_array, roundtrip)
 
     # Compare batch element [0] against individual transpose on a 2D mesh
-    spatial_mesh = create_mesh(spatial_pdims, axis_type=axis_type)
-    spatial_array = create_spmd_array((8, 8, 8), spatial_mesh)
-    individual_out = transposeXtoY(spatial_array)
 
     # Gather both to compare
     gathered_batched = all_gather(transposed_xy)
