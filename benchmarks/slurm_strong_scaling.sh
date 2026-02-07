@@ -3,8 +3,15 @@
 # Configuration
 ACCOUNT="XXX"
 CONSTRAINT="h100"
-OUTPUT_DIR="results/scaling"
+OUTPUT_DIR="results/strong_scaling"
 mkdir -p "$OUTPUT_DIR"
+
+# Check for SLURM_SCRIPT environment variable
+if [ -z "$SLURM_SCRIPT" ]; then
+    echo "Error: SLURM_SCRIPT environment variable is not set."
+    echo "Please set it to the path of your sbatch launcher script."
+    exit 1
+fi
 
 # Common SBATCH arguments base
 BASE_SBATCH_ARGS="--account=$ACCOUNT -C $CONSTRAINT --time=01:00:00 --exclusive"
@@ -56,52 +63,44 @@ run_benchmarks() {
         "64 4 256 1"
     )
 
+    # Local Sizes to iterate
+    # Range: 64^3 to 512^3
+    SHAPES=(
+        "64 64 64"
+        "64 128 128"
+        "128 128 128"
+        "128 128 256"
+        "256 256 256"
+        "256 256 512"
+        "512 512 512"
+    )
+
     for CONFIG in "${CONFIGS[@]}"; do
-        read -r NODES GPUS_PER_NODE PPX PPY <<< "$CONFIG"
-        TOTAL_GPUS=$((NODES * GPUS_PER_NODE))
+        read -r NODES GPUS_PER_NODE PX PY <<< "$CONFIG"
+        
+        for SHAPE in "${SHAPES[@]}"; do
+            # Convert spaces to 'x' for job name, e.g., 64x64x64
+            SHAPE_NAME=${SHAPE// /x}
+            
+            local JOB_NAME="strong_bench_${BACKEND}_N${NODES}_G${GPUS_PER_NODE}_${PX}x${PY}_${SHAPE_NAME}"
 
-        # Helper to submit a specific decomposition
-        submit_job() {
-            local PX=$1
-            local PY=$2
-
-            local JOB_NAME="bench_${BACKEND}_N${NODES}_G${GPUS_PER_NODE}_${PX}x${PY}"
-
-            echo "Submitting $JOB_NAME (Nodes: $NODES, GPUs/Node: $GPUS_PER_NODE, Grid: ${PX}x${PY})"
+            echo "Submitting $JOB_NAME (Nodes: $NODES, GPUs/Node: $GPUS_PER_NODE, Grid: ${PX}x${PY}, Local: $SHAPE)"
 
             sbatch $BASE_SBATCH_ARGS \
                         --nodes=$NODES \
                         --gres=gpu:$GPUS_PER_NODE \
                         --tasks-per-node=$GPUS_PER_NODE \
                         --job-name="$JOB_NAME" \
-                        $SLURM_SCRIPT TRACES python bench.py \
+                        $SLURM_SCRIPT STRONG_TRACES python benchmarks/bench.py \
                         --pdims $PX $PY \
-                        --local_shape 64 128 128 \
+                        --local_shape $SHAPE \
                         -b "$BACKEND" \
                         -n "$NODES" \
                         -o "$OUTPUT_DIR" \
                         -pr "$PRECISION" \
                         -i 5 \
                         -c
-        }
-
-        # 1. Pencil (Square-ish) Decomposition from Config
-        submit_job $PPX $PPY
-
-        # 2. Slab Decompositions (if total GPUs > 1)
-        if [ "$TOTAL_GPUS" -gt 1 ]; then
-            # Slab Y (1 x Total)
-            # Avoid duplicate if Pencil was already 1 x Total
-            if [ "$PPX" != "1" ] || [ "$PPY" != "$TOTAL_GPUS" ]; then
-                submit_job 1 $TOTAL_GPUS
-            fi
-
-            # Slab X (Total x 1)
-            # Avoid duplicate if Pencil was already Total x 1
-            if [ "$PPX" != "$TOTAL_GPUS" ] || [ "$PPY" != "1" ]; then
-                submit_job $TOTAL_GPUS 1
-            fi
-        fi
+        done
     done
 }
 
