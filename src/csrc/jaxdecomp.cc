@@ -138,7 +138,7 @@ template <ffi::DataType T>
 ffi::Error pfft3d_ffi(cudaStream_t stream, ffi::Span<const int64_t> gdims, ffi::Span<const int64_t> pdims,
                       int64_t transpose_comm_backend, int64_t halo_comm_backend, bool forward, bool adjoint,
                       bool contiguous, int64_t decomposition, ffi::Buffer<T> input,
-                      ffi::Buffer<ffi::DataType::U8> workspace, ffi::Result<ffi::Buffer<T>> output) {
+                      ffi::Buffer<ffi::DataType::S8> workspace, ffi::Result<ffi::Buffer<T>> output) {
   if (gdims.size() != 3) { return ffi::Error::InvalidArgument("gdims must have 3 elements"); }
   if (pdims.size() != 2) { return ffi::Error::InvalidArgument("pdims must have 2 elements"); }
 
@@ -185,7 +185,7 @@ template <ffi::DataType T>
 ffi::Error halo_ffi(cudaStream_t stream, ffi::Span<const int64_t> gdims, ffi::Span<const int64_t> pdims,
                     int64_t transpose_comm_backend, int64_t halo_comm_backend, ffi::Span<const int64_t> halo_extents,
                     ffi::Span<const int64_t> halo_periods, int64_t axis, ffi::Buffer<T> input,
-                    ffi::Buffer<ffi::DataType::U8> workspace, ffi::Result<ffi::Buffer<T>> output) {
+                    ffi::Buffer<ffi::DataType::S8> workspace, ffi::Result<ffi::Buffer<T>> output) {
   if (gdims.size() != 3) { return ffi::Error::InvalidArgument("gdims must have 3 elements"); }
   if (pdims.size() != 2) { return ffi::Error::InvalidArgument("pdims must have 2 elements"); }
   if (halo_extents.size() != 3) { return ffi::Error::InvalidArgument("halo_extents must have 3 elements"); }
@@ -235,7 +235,7 @@ ffi::Error halo_ffi(cudaStream_t stream, ffi::Span<const int64_t> gdims, ffi::Sp
 template <ffi::DataType T>
 ffi::Error transpose_ffi(cudaStream_t stream, ffi::Span<const int64_t> gdims, ffi::Span<const int64_t> pdims,
                          int64_t transpose_comm_backend, int64_t halo_comm_backend, int64_t transpose_type,
-                         bool contiguous, ffi::Buffer<T> input, ffi::Buffer<ffi::DataType::U8> workspace,
+                         bool contiguous, ffi::Buffer<T> input, ffi::Buffer<ffi::DataType::S8> workspace,
                          ffi::Result<ffi::Buffer<T>> output) {
   if (gdims.size() != 3) { return ffi::Error::InvalidArgument("gdims must have 3 elements"); }
   if (pdims.size() != 2) { return ffi::Error::InvalidArgument("pdims must have 2 elements"); }
@@ -284,7 +284,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(pfft_C64, pfft3d_ffi<ffi::DataType::C64>,
                                   .Attr<bool>("contiguous")
                                   .Attr<int64_t>("decomposition")
                                   .Arg<ffi::Buffer<ffi::DataType::C64>>() // input
-                                  .Arg<ffi::Buffer<ffi::DataType::U8>>()  // workspace (bytes)
+                                  .Arg<ffi::Buffer<ffi::DataType::S8>>()  // workspace (bytes)
                                   .Ret<ffi::Buffer<ffi::DataType::C64>>() // output
 );
 
@@ -300,11 +300,11 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(pfft_C128, pfft3d_ffi<ffi::DataType::C128>,
                                   .Attr<bool>("contiguous")
                                   .Attr<int64_t>("decomposition")
                                   .Arg<ffi::Buffer<ffi::DataType::C128>>() // input
-                                  .Arg<ffi::Buffer<ffi::DataType::U8>>()   // workspace (bytes)
+                                  .Arg<ffi::Buffer<ffi::DataType::S8>>()   // workspace (bytes)
                                   .Ret<ffi::Buffer<ffi::DataType::C128>>() // output
 );
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(halo_C64, halo_ffi<ffi::DataType::C64>,
+XLA_FFI_DEFINE_HANDLER_SYMBOL(halo_F32, halo_ffi<ffi::DataType::F32>,
                               ffi::Ffi::Bind()
                                   .Ctx<ffi::PlatformStream<cudaStream_t>>()
                                   .Attr<ffi::Span<const int64_t>>("gdims")
@@ -314,12 +314,12 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(halo_C64, halo_ffi<ffi::DataType::C64>,
                                   .Attr<ffi::Span<const int64_t>>("halo_extents")
                                   .Attr<ffi::Span<const int64_t>>("halo_periods")
                                   .Attr<int64_t>("axis")
-                                  .Arg<ffi::Buffer<ffi::DataType::C64>>() // input
-                                  .Arg<ffi::Buffer<ffi::DataType::U8>>()  // workspace (bytes)
-                                  .Ret<ffi::Buffer<ffi::DataType::C64>>() // output
+                                  .Arg<ffi::Buffer<ffi::DataType::F32>>() // input
+                                  .Arg<ffi::Buffer<ffi::DataType::S8>>()  // workspace (bytes)
+                                  .Ret<ffi::Buffer<ffi::DataType::F32>>() // output
 );
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(halo_C128, halo_ffi<ffi::DataType::C128>,
+XLA_FFI_DEFINE_HANDLER_SYMBOL(halo_F64, halo_ffi<ffi::DataType::F64>,
                               ffi::Ffi::Bind()
                                   .Ctx<ffi::PlatformStream<cudaStream_t>>()
                                   .Attr<ffi::Span<const int64_t>>("gdims")
@@ -329,9 +329,9 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(halo_C128, halo_ffi<ffi::DataType::C128>,
                                   .Attr<ffi::Span<const int64_t>>("halo_extents")
                                   .Attr<ffi::Span<const int64_t>>("halo_periods")
                                   .Attr<int64_t>("axis")
-                                  .Arg<ffi::Buffer<ffi::DataType::C128>>() // input
-                                  .Arg<ffi::Buffer<ffi::DataType::U8>>()   // workspace (bytes)
-                                  .Ret<ffi::Buffer<ffi::DataType::C128>>() // output
+                                  .Arg<ffi::Buffer<ffi::DataType::F64>>() // input
+                                  .Arg<ffi::Buffer<ffi::DataType::S8>>()  // workspace (bytes)
+                                  .Ret<ffi::Buffer<ffi::DataType::F64>>() // output
 );
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(transpose_C64, transpose_ffi<ffi::DataType::C64>,
@@ -344,7 +344,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(transpose_C64, transpose_ffi<ffi::DataType::C64>,
                                   .Attr<int64_t>("transpose_type")
                                   .Attr<bool>("contiguous")
                                   .Arg<ffi::Buffer<ffi::DataType::C64>>() // input
-                                  .Arg<ffi::Buffer<ffi::DataType::U8>>()  // workspace (bytes)
+                                  .Arg<ffi::Buffer<ffi::DataType::S8>>()  // workspace (bytes)
                                   .Ret<ffi::Buffer<ffi::DataType::C64>>() // output
 );
 
@@ -358,8 +358,36 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(transpose_C128, transpose_ffi<ffi::DataType::C128>
                                   .Attr<int64_t>("transpose_type")
                                   .Attr<bool>("contiguous")
                                   .Arg<ffi::Buffer<ffi::DataType::C128>>() // input
-                                  .Arg<ffi::Buffer<ffi::DataType::U8>>()   // workspace (bytes)
+                                  .Arg<ffi::Buffer<ffi::DataType::S8>>()   // workspace (bytes)
                                   .Ret<ffi::Buffer<ffi::DataType::C128>>() // output
+);
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(transpose_F32, transpose_ffi<ffi::DataType::F32>,
+                              ffi::Ffi::Bind()
+                                  .Ctx<ffi::PlatformStream<cudaStream_t>>()
+                                  .Attr<ffi::Span<const int64_t>>("gdims")
+                                  .Attr<ffi::Span<const int64_t>>("pdims")
+                                  .Attr<int64_t>("transpose_comm_backend")
+                                  .Attr<int64_t>("halo_comm_backend")
+                                  .Attr<int64_t>("transpose_type")
+                                  .Attr<bool>("contiguous")
+                                  .Arg<ffi::Buffer<ffi::DataType::F32>>() // input
+                                  .Arg<ffi::Buffer<ffi::DataType::S8>>()  // workspace (bytes)
+                                  .Ret<ffi::Buffer<ffi::DataType::F32>>() // output
+);
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(transpose_F64, transpose_ffi<ffi::DataType::F64>,
+                              ffi::Ffi::Bind()
+                                  .Ctx<ffi::PlatformStream<cudaStream_t>>()
+                                  .Attr<ffi::Span<const int64_t>>("gdims")
+                                  .Attr<ffi::Span<const int64_t>>("pdims")
+                                  .Attr<int64_t>("transpose_comm_backend")
+                                  .Attr<int64_t>("halo_comm_backend")
+                                  .Attr<int64_t>("transpose_type")
+                                  .Attr<bool>("contiguous")
+                                  .Arg<ffi::Buffer<ffi::DataType::F64>>() // input
+                                  .Arg<ffi::Buffer<ffi::DataType::S8>>()  // workspace (bytes)
+                                  .Ret<ffi::Buffer<ffi::DataType::F64>>() // output
 );
 
 // ============================================================================
@@ -509,8 +537,10 @@ nb::dict Registrations() {
   dict["pfft_C128"] = EncapsulateFfiCall(pfft_C128);
   dict["transpose_C64"] = EncapsulateFfiCall(transpose_C64);
   dict["transpose_C128"] = EncapsulateFfiCall(transpose_C128);
-  dict["halo_C64"] = EncapsulateFfiCall(halo_C64);
-  dict["halo_C128"] = EncapsulateFfiCall(halo_C128);
+  dict["transpose_F32"] = EncapsulateFfiCall(transpose_F32);
+  dict["transpose_F64"] = EncapsulateFfiCall(transpose_F64);
+  dict["halo_F32"] = EncapsulateFfiCall(halo_F32);
+  dict["halo_F64"] = EncapsulateFfiCall(halo_F64);
 #endif
   return dict;
 }

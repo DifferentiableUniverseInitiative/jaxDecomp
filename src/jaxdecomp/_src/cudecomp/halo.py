@@ -124,7 +124,7 @@ class HaloPrimitive(BasePrimitive):
         x_type = ir.RankedTensorType(x.type)
         n = len(x_type.shape)
         is_double = np.finfo(x_aval.dtype).dtype == np.float64
-        ffi_name = 'halo_C128' if is_double else 'halo_C64'
+        ffi_name = 'halo_F64' if is_double else 'halo_F32'
 
         lowered_halo_extents = (*halo_extents, 0)
         lowered_halo_periods = (*halo_periods, True)
@@ -149,19 +149,8 @@ class HaloPrimitive(BasePrimitive):
             result_layouts=[layout],
             operand_output_aliases={0: 0},
         )
-
-        workspace_aval = ShapedArray(shape=[workspace_size], dtype=np.byte)
-        ffi_ctx = mlir.LoweringRuleContext(
-            module_context=ctx.module_context,
-            primitive=None,
-            avals_in=[x_aval, workspace_aval],
-            avals_out=[x_aval],
-            tokens_in=ctx.tokens_in,
-            tokens_out=ctx.tokens_out,
-        )
-
         return rule(
-            ffi_ctx,
+            ctx,
             x,
             workspace,
             gdims=np.array(global_shape[::-1], dtype=np.int64),
