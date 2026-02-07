@@ -104,10 +104,13 @@ def create_mesh(pdims, axis_type, transposed_devices=False):
 
     size = jax.device_count()
     assert len(pdims) == 2
-    assert prod(pdims) == size, 'The product of pdims must be equal to the number of MPI processes'
+    if prod(pdims) != size:
+        devices_id = jax.devices()[: prod(pdims)]
+    else:
+        devices_id = jax.devices()
 
     # Remap to the global array from the local slicei
-    devices = mesh_utils.create_device_mesh(pdims)
+    devices = mesh_utils.create_device_mesh(pdims, devices=devices_id)
     if transposed_devices:
         devices = devices.T
 
@@ -116,6 +119,46 @@ def create_mesh(pdims, axis_type, transposed_devices=False):
     else:
         axis_types = (AxisType.Auto,) * len(pdims)
     return jax.make_mesh(devices.shape, ('z', 'y'), devices=devices.flatten(), axis_types=axis_types)
+
+
+def create_batched_mesh(batch_size, spatial_pdims, axis_type):
+    import jax
+    from jax.sharding import AxisType
+
+    size = jax.device_count()
+    assert len(spatial_pdims) == 2
+    assert batch_size * prod(spatial_pdims) == size, 'batch_size * prod(spatial_pdims) must equal device count'
+
+    mesh_shape = (batch_size, *spatial_pdims)
+    if axis_type == 'explicit':
+        axis_types = (AxisType.Explicit,) * len(mesh_shape)
+    else:
+        axis_types = (AxisType.Auto,) * len(mesh_shape)
+    return jax.make_mesh(mesh_shape, ('c', 'z', 'y'), axis_types=axis_types)
+
+
+def create_batched_spmd_array(global_shape, mesh):
+    import jax
+    from jax.sharding import NamedSharding
+    from jax.sharding import PartitionSpec as P
+
+    assert len(global_shape) == 4
+
+    local_shape = (
+        global_shape[0] // mesh.shape['c'],
+        global_shape[1] // mesh.shape['z'],
+        global_shape[2] // mesh.shape['y'],
+        global_shape[3],
+    )
+
+    sharding = NamedSharding(mesh, P('c', 'z', 'y'))
+    global_array = jax.make_array_from_callback(
+        global_shape,
+        sharding,
+        data_callback=lambda x: jax.random.normal(jax.random.PRNGKey(process_slices(x)), local_shape),
+    )
+
+    return global_array
 
 
 def create_ones_spmd_array(global_shape, mesh):

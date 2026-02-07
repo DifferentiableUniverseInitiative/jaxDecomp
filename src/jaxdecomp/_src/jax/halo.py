@@ -378,8 +378,9 @@ def partition(
     pencil_type = get_pencil_type(mesh)
     spec_for_validation = input_sharding.spec
     if arg_infos[0].ndim == 4:
-        assert input_sharding.spec[0] is None
-        spec_for_validation = input_sharding.spec[1:]
+        if input_sharding.spec[0] is None:
+            spec_for_validation = input_sharding.spec[1:]
+        # else: sharded batch — full spec validates against full mesh
 
     validate_spec_matches_mesh(spec_for_validation, mesh)
 
