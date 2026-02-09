@@ -79,7 +79,7 @@ pip install git+https://github.com/DifferentiableUniverseInitiative/jaxDecomp -C
 **Note**: If using only the pure-JAX backend, you do not need NVHPC.
 
 > **Important for JeanZay users**
-> Make sure to load the correct architucture module before loading the `nvidia-compilers` module.
+> Make sure to load the correct architecture module before loading the `nvidia-compilers` module.
 > For example for A100 you need to load `module load arch/a100` first.
 > You also need to set the CXXFLAGS to `export CXXFLAGS="-tp=zen2 -noswitcherror"` if you are using the H100 or A100 partition or if you are using AMD CPUs in general.
 > More info in [Jean Zay documentation](http://www.idris.fr/eng/jean-zay/gpu/jean-zay-gpu-exec_partition_slurm-eng.html#a100_partition_gpu_p5).
