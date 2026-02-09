@@ -153,7 +153,7 @@ If jax complains about incompatiliby with CuSparse or any other library, the eas
 ### IDRIS [Jean Zay](http://www.idris.fr/eng/jean-zay/cpu/jean-zay-cpu-hw-eng.html) HPE SGI 8600 supercomputer
 
 
-As of February 2025, loading modules **in this exact order** works:
+As of February 2026, loading modules **in this exact order** works:
 
 ```bash
 module load nvidia-compilers/25.1 cuda/12.6.3 openmpi/4.1.6-cuda nccl/2.26.2-1-cuda cudnn  cmake
