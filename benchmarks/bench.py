@@ -81,8 +81,8 @@ def run_benchmark(pdims, global_shape, backend, nb_nodes, precision, iterations,
         'nodes': str(nb_nodes),
     }
 
-    fft_chrono.report(f'{output_path}/jaxfft.csv', function=f'FFT{cont_str}', **metadata)
-    ifft_chrono.report(f'{output_path}/jaxfft.csv', function=f'IFFT{cont_str}', **metadata)
+    fft_chrono.report(f'{output_path}/jaxfft.csv', function=f'{backend}-FFT{cont_str}', **metadata)
+    ifft_chrono.report(f'{output_path}/jaxfft.csv', function=f'{backend}-IFFT{cont_str}', **metadata)
     print('Done')
 
 
