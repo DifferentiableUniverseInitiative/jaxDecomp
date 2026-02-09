@@ -219,11 +219,9 @@ def get_fft_output_sharding(fft_sharding):
     spec = fft_sharding.spec
     mesh = fft_sharding.mesh
     pencil_type = get_pencil_type(mesh)
-
     nb_not_none = sum(s is not None for s in spec)
-    print(f'Spec is {spec} with {nb_not_none} non-None entries')
 
-    if nb_not_none >= 3:
+    if nb_not_none >= 3 or spec[0] is None:
         # 4D: strip batch spec, compute spatial output, prepend batch back
         batch_spec = spec[0]
         spatial_spec = spec[1:]

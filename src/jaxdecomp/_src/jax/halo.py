@@ -423,10 +423,10 @@ def transpose_rule(cotangent: Array, x: Array, halo_extents: HaloExtentType, hal
 @spmd_halo_primitive.def_batching_rule
 def batching_rule(
     batched_args: tuple[Array],
-    batched_axis,
+    batched_axis: tuple[int | None, ...],
     halo_extents: HaloExtentType,
     halo_periods: Periodicity,
-) -> Array:
+) -> tuple[Array, int]:
     """
     Batching rule for the halo exchange operation.
 
@@ -434,8 +434,8 @@ def batching_rule(
     ----------
     batched_args : Tuple[Array]
         Batched input arrays.
-    batched_axis : int
-        Batch axis.
+    batched_axis : tuple[int | None, ...]
+        Batch axis for each operand.
     halo_extents : HaloExtentType
         Extents of the halo in X and Y directions.
     halo_periods : Periodicity
@@ -443,8 +443,8 @@ def batching_rule(
 
     Returns
     -------
-    Array
-        Resulting array after the halo exchange operation.
+    tuple[Array, int]
+        Resulting array and the output batch axis.
     """
     (x,) = batched_args
     (bd,) = batched_axis

@@ -289,7 +289,7 @@ def vjp_transpose_rule(cotangent: Array, x: Array, kind: str) -> tuple[Array]:
 
 
 @spmd_transpose_primitive.def_batching_rule
-def batching_rule(batched_args: tuple[Array], batched_axis, kind: str) -> Array:
+def batching_rule(batched_args: tuple[Array], batched_axis: tuple[int | None, ...], kind: str) -> tuple[Array, int]:
     """
     Batching rule for the transpose operation.
 
@@ -297,15 +297,15 @@ def batching_rule(batched_args: tuple[Array], batched_axis, kind: str) -> Array:
     ----------
     batched_args : Tuple[Array]
         Batched input arrays.
-    batched_axis : int
-        Batch axis.
+    batched_axis : tuple[int | None, ...]
+        Batch axis for each operand.
     kind : str
         Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
 
     Returns
     -------
-    Array
-        Resulting array after the transpose operation.
+    tuple[Array, int]
+        Resulting array and the output batch axis.
     """
     (x,) = batched_args
     (bd,) = batched_axis

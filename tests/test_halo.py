@@ -1,7 +1,8 @@
 from conftest import (
+    assert_allclose,
     assert_array_equal,
     create_batched_mesh,
-    create_batched_spmd_array,
+    create_batched_ones_spmd_array,
     create_mesh,
     create_ones_spmd_array,
     create_spmd_array,
@@ -413,7 +414,7 @@ def test_sharded_vmap(spatial_pdims, use_shardy, axis_type):
 
     # Create 3D mesh: (batch, spatial_x, spatial_y)
     mesh = create_batched_mesh(batch_size, spatial_pdims, axis_type=axis_type)
-    global_array = create_batched_spmd_array(global_shape, mesh)
+    global_array = create_batched_ones_spmd_array(global_shape, mesh)
 
     halo_size = 2
     halo_x = (halo_size, halo_size) if spatial_pdims[0] > 1 else (0, 0)
@@ -437,7 +438,7 @@ def test_sharded_vmap(spatial_pdims, use_shardy, axis_type):
 
     # Compare batch element [0] against individual halo exchange on a 2D mesh
     spatial_mesh = create_mesh(spatial_pdims, axis_type=axis_type)
-    spatial_array = create_spmd_array((16, 16, 16), spatial_mesh)
+    spatial_array = create_ones_spmd_array((16, 16, 16), spatial_mesh)
 
     @partial(shard_map, mesh=spatial_mesh, in_specs=P('z', 'y'), out_specs=P('z', 'y'))
     def pad_individual(arr):
@@ -450,8 +451,9 @@ def test_sharded_vmap(spatial_pdims, use_shardy, axis_type):
     gathered_batched = all_gather(exchanged)
     gathered_individual = all_gather(exchanged_individual)
 
-    # The batched element [0] should have same structure as the individual result
-    # (both are halo-exchanged with same parameters, so shapes must match)
+    # The batched element [0] should have same structure and values as the individual result
+    # (both are halo-exchanged with same parameters on identical ones arrays)
     assert gathered_batched[0].shape == gathered_individual.shape
+    assert assert_allclose(gathered_batched[0], gathered_individual)
 
     jax.clear_caches()

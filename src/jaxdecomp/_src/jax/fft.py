@@ -547,7 +547,7 @@ def transpose_rule(cotangent: Array, x: Array, fft_type: FftType, adjoint: bool)
 
 
 @spmd_fft_primitive.def_batching_rule
-def batching_rule(batched_args: tuple[Array], batched_axis, fft_type: FftType, adjoint: bool) -> Array:
+def batching_rule(batched_args: tuple[Array], batched_axis: tuple[int | None, ...], fft_type: FftType, adjoint: bool) -> tuple[Array, int]:
     """
     Batching rule for the FFT operation.
 
@@ -555,6 +555,8 @@ def batching_rule(batched_args: tuple[Array], batched_axis, fft_type: FftType, a
     ----------
     batched_args : Tuple[Array]
         Batched input arrays.
+    batched_axis : tuple[int | None, ...]
+        Batch axis for each operand.
     fft_type : FftType
         Type of FFT operation to perform.
     adjoint : bool
@@ -562,8 +564,8 @@ def batching_rule(batched_args: tuple[Array], batched_axis, fft_type: FftType, a
 
     Returns
     -------
-    Array
-        Resulting array after the FFT operation.
+    tuple[Array, int]
+        Resulting array and the output batch axis.
     """
     (x,) = batched_args
     (bd,) = batched_axis
