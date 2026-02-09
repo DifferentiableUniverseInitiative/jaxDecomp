@@ -404,11 +404,11 @@ def infer_sharding_from_operands(
         spec = input_sharding.spec
         transposed_specs = get_output_specs(fft_type, pencil_type, spec, backend='jax')
     elif operand.ndim == 4:
-        assert input_sharding.spec[0] is None
+        batch_spec = input_sharding.spec[0]  # can be None OR a sharded axis name
         spec = input_sharding.spec[1:]
         transposed_specs = get_output_specs(fft_type, pencil_type, spec, backend='jax')
         assert len(transposed_specs) == 3
-        transposed_specs = (None,) + transposed_specs
+        transposed_specs = (batch_spec,) + transposed_specs
     else:
         raise ValueError(f'Unsupported input shape {operand.shape}')
 
@@ -501,11 +501,12 @@ def partition(
     input_sharding: NamedSharding = arg_infos[0].sharding  # type: ignore
     output_sharding: NamedSharding = result_infos.sharding  # type: ignore
     pencil_type = get_pencil_type(mesh)
-    # For 4D (vmap), strip the batch dimension's None before validation
     spec_for_validation = input_sharding.spec
     if arg_infos[0].ndim == 4:
-        assert input_sharding.spec[0] is None
-        spec_for_validation = input_sharding.spec[1:]
+        if input_sharding.spec[0] is None:
+            # Unsharded batch (old vmap with 2D mesh): strip batch for validation
+            spec_for_validation = input_sharding.spec[1:]
+        # else: sharded batch — full spec validates against full mesh
 
     if fft_type in FORWARD_FFTs:
         validate_spec_matches_mesh(spec_for_validation, mesh)
@@ -546,7 +547,7 @@ def transpose_rule(cotangent: Array, x: Array, fft_type: FftType, adjoint: bool)
 
 
 @spmd_fft_primitive.def_batching_rule
-def batching_rule(batched_args: tuple[Array], batched_axis, fft_type: FftType, adjoint: bool) -> Array:
+def batching_rule(batched_args: tuple[Array], batched_axis: tuple[int | None, ...], fft_type: FftType, adjoint: bool) -> tuple[Array, int]:
     """
     Batching rule for the FFT operation.
 
@@ -554,6 +555,8 @@ def batching_rule(batched_args: tuple[Array], batched_axis, fft_type: FftType, a
     ----------
     batched_args : Tuple[Array]
         Batched input arrays.
+    batched_axis : tuple[int | None, ...]
+        Batch axis for each operand.
     fft_type : FftType
         Type of FFT operation to perform.
     adjoint : bool
@@ -561,8 +564,8 @@ def batching_rule(batched_args: tuple[Array], batched_axis, fft_type: FftType, a
 
     Returns
     -------
-    Array
-        Resulting array after the FFT operation.
+    tuple[Array, int]
+        Resulting array and the output batch axis.
     """
     (x,) = batched_args
     (bd,) = batched_axis

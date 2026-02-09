@@ -66,13 +66,12 @@ run_benchmarks() {
     # Local Sizes to iterate
     # Range: 64^3 to 512^3
     SHAPES=(
-        "64 64 64"
-        "64 128 128"
         "128 128 128"
-        "128 128 256"
         "256 256 256"
-        "256 256 512"
         "512 512 512"
+        "1024 1024 1024"
+        "2048 2048 2048"
+        "4096 4096 4096"
     )
 
     for CONFIG in "${CONFIGS[@]}"; do
@@ -91,9 +90,9 @@ run_benchmarks() {
                         --gres=gpu:$GPUS_PER_NODE \
                         --tasks-per-node=$GPUS_PER_NODE \
                         --job-name="$JOB_NAME" \
-                        $SLURM_SCRIPT STRONG_TRACES python benchmarks/bench.py \
+                        $SLURM_SCRIPT STRONG_TRACES python bench.py \
                         --pdims $PX $PY \
-                        --local_shape $SHAPE \
+                        --global_shape $SHAPE \
                         -b "$BACKEND" \
                         -n "$NODES" \
                         -o "$OUTPUT_DIR" \

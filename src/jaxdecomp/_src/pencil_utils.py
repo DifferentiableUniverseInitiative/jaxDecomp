@@ -56,7 +56,10 @@ def get_pdims_from_mesh(mesh: Optional[Mesh]) -> PdimsType:
     if mesh is None or mesh.empty:
         pdims = (1, 1)
     else:
-        pdims = mesh.devices.shape[::-1]
+        pdims = mesh.devices.shape
+        if len(pdims) > 2:
+            pdims = pdims[-2:]
+        pdims = pdims[::-1]
         assert len(pdims) == 2
 
     return pdims
@@ -69,9 +72,8 @@ def get_pencil_type(mesh: Mesh) -> Any:
         pdims = mesh.devices.shape
         if len(pdims) == 1:
             pdims = (1,) + pdims
-
-        if len(pdims) != 2:
-            raise ValueError('Only one or two-dimensional meshes are supported.')
+        elif len(pdims) > 2:
+            pdims = pdims[-2:]  # Take last 2 spatial dimensions
 
     return get_pencil_type_from_pdims(pdims)
 
@@ -91,7 +93,10 @@ def get_pencil_type_from_pdims(pdims) -> Any:
 
 
 def get_axis_names_from_mesh(mesh: Mesh) -> tuple[str, str]:
-    return mesh.axis_names + (None,) * (2 - len(mesh.axis_names))
+    names = mesh.axis_names
+    if len(names) > 2:
+        names = names[-2:]
+    return names + (None,) * (2 - len(names))
 
 
 def get_pdims_from_axis_names(x_axis_name: AxisName, y_axis_name: AxisName) -> PdimsType:
@@ -214,9 +219,17 @@ def get_fft_output_sharding(fft_sharding):
     spec = fft_sharding.spec
     mesh = fft_sharding.mesh
     pencil_type = get_pencil_type(mesh)
-    out_specs = get_output_specs(FftType.FFT, pencil_type, spec)
+    nb_not_none = sum(s is not None for s in spec)
 
-    return NamedSharding(mesh, P(*out_specs))
+    if nb_not_none >= 3 or spec[0] is None:
+        # 4D: strip batch spec, compute spatial output, prepend batch back
+        batch_spec = spec[0]
+        spatial_spec = spec[1:]
+        out_specs = get_output_specs(FftType.FFT, pencil_type, spatial_spec)
+        return NamedSharding(mesh, P(batch_spec, *out_specs))
+    else:
+        out_specs = get_output_specs(FftType.FFT, pencil_type, spec)
+        return NamedSharding(mesh, P(*out_specs))
 
 
 def get_output_specs(fft_type: FftType, pencil_type: str, spec: P, backend: str = 'JAX') -> tuple[Optional[int], ...]:

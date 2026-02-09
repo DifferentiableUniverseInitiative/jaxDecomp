@@ -2,6 +2,8 @@ from conftest import (
     assert_allclose,
     assert_array_equal,
     compare_sharding,
+    create_batched_mesh,
+    create_batched_spmd_array,
     create_mesh,
     create_spmd_array,
     initialize_distributed,
@@ -52,6 +54,13 @@ local_transpose = [
 use_shardy = [
     pytest.param(False, id='no_shardy'),
     pytest.param(True, id='shardy'),
+]
+
+# Parametrize over spatial decompositions that fit in 8 devices with batch_size=2
+batched_decomp = [
+    pytest.param((4, 1), id='SLAB_XY'),
+    pytest.param((1, 4), id='SLAB_YZ'),
+    pytest.param((2, 2), id='PENCILS'),
 ]
 
 
@@ -265,3 +274,48 @@ class TestTransposesGrad:
     @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     def test_jax_transpose_grad(self, pdims, global_shape, local_transpose, use_shardy, axis_type):
         self.run_test(pdims, global_shape, local_transpose, backend='jax', use_shardy=use_shardy, axis_type=axis_type)
+
+
+@pytest.mark.parametrize('use_shardy', use_shardy)
+@pytest.mark.parametrize('spatial_pdims', batched_decomp)
+def test_sharded_vmap(spatial_pdims, use_shardy, axis_type):
+    if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+        pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
+    if axis_type == 'explicit':
+        pytest.skip(reason='Explicit axis type not yet supported for sharded vmap tests')
+
+    jax.config.update('jax_use_shardy_partitioner', use_shardy)
+    jaxdecomp.config.update('transpose_axis_contiguous', True)
+
+    batch_size = 2
+    global_shape = (batch_size, 8, 8, 8)
+
+    # Create 3D mesh: (batch, spatial_x, spatial_y)
+    mesh = create_batched_mesh(batch_size, spatial_pdims, axis_type=axis_type)
+    global_array = create_batched_spmd_array(global_shape, mesh)
+
+    # Forward transpose X->Y
+    v_transposeXtoY = jax.vmap(transposeXtoY)
+    transposed_xy = v_transposeXtoY(global_array)
+
+    assert transposed_xy.shape == global_shape
+
+    # Roundtrip: Y->X should recover original
+    v_transposeYtoX = jax.vmap(transposeYtoX)
+    roundtrip = v_transposeYtoX(transposed_xy)
+
+    assert roundtrip.shape == global_shape
+    assert_array_equal(global_array, roundtrip)
+
+    # Compare batch element [0] against individual transpose on a 2D mesh
+
+    # Gather both to compare
+    gathered_batched = all_gather(transposed_xy)
+    gathered_batched_input = all_gather(global_array)
+
+    # In contiguous mode, forward transpose permutation is [2, 0, 1]
+    forward_transpose = [2, 0, 1]
+    assert_array_equal(gathered_batched[0], gathered_batched_input[0].transpose(forward_transpose))
+
+    jax.clear_caches()

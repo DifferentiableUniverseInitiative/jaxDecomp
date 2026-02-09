@@ -1,5 +1,7 @@
 from conftest import (
     assert_allclose,
+    create_batched_mesh,
+    create_batched_spmd_array,
     create_mesh,
     create_spmd_array,
     initialize_distributed,
@@ -490,3 +492,69 @@ def test_sharding_validation():
     spec_invalid_name = P('x', 'y')
     with pytest.raises(ValueError, match="At position 0: spec has 'x' but mesh expects 'z'"):
         validate_spec_matches_mesh(spec_invalid_name, mesh)
+
+
+# Parametrize over spatial decompositions that fit in 8 devices with batch_size=2
+batched_decomp = [
+    pytest.param((4, 1), id='SLAB_XY'),
+    pytest.param((1, 4), id='SLAB_YZ'),
+    pytest.param((2, 2), id='PENCILS'),
+]
+
+
+@pytest.mark.parametrize('use_shardy', use_shardy)
+@pytest.mark.parametrize('spatial_pdims', batched_decomp)
+def test_sharded_vmap(spatial_pdims, use_shardy, axis_type):
+    if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+        pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
+    if axis_type == 'explicit':
+        pytest.skip(reason='Explicit axis type not yet supported for sharded vmap tests')
+
+    jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+    batch_size = 2
+    global_shape = (batch_size, 8, 8, 8)
+
+    # Create 3D mesh: (batch, spatial_x, spatial_y)
+    mesh = create_batched_mesh(batch_size, spatial_pdims, axis_type=axis_type)
+    global_array = create_batched_spmd_array(global_shape, mesh)
+    # Compute expected output sharding
+    out_sharding = jaxdecomp.get_fft_output_sharding(global_array.sharding)
+
+    # Forward FFT
+    v_pfft = jax.vmap(jaxdecomp.fft.pfft3d)
+    karray = v_pfft(global_array)
+
+    assert karray.shape == global_shape
+    assert karray.sharding.is_equivalent_to(out_sharding, ndim=4)
+
+    # Inverse FFT roundtrip
+    v_pifft = jax.vmap(jaxdecomp.fft.pifft3d)
+    rec_array = v_pifft(karray)
+
+    assert rec_array.shape == global_shape
+    assert_allclose(global_array.real, rec_array.real, rtol=1e-5, atol=1e-5)
+    assert_allclose(global_array.imag, rec_array.imag, rtol=1e-5, atol=1e-5)
+
+    # Compare batch element 0 against individual pfft3d on a 2D mesh
+    spatial_mesh = create_mesh(spatial_pdims, axis_type=axis_type)
+    spatial_array = create_spmd_array((8, 8, 8), spatial_mesh)
+    individual_out = jaxdecomp.fft.pfft3d(spatial_array)
+
+    # Gather both to compare
+    gathered_batched = all_gather(karray)
+    gathered_individual = all_gather(individual_out)
+    gathered_spatial_input = all_gather(spatial_array)
+    gathered_batched_input = all_gather(global_array)
+
+    # Compute reference FFT from the same input data
+    ref_batched_0 = jnp.fft.fftn(gathered_batched_input[0])
+    ref_individual = jnp.fft.fftn(gathered_spatial_input)
+
+    # Both should match their respective reference FFTs (transposed)
+    transpose_back = [1, 2, 0]
+    assert_allclose(gathered_batched[0], ref_batched_0.transpose(transpose_back), rtol=1e-5, atol=1e-5)
+    assert_allclose(gathered_individual, ref_individual.transpose(transpose_back), rtol=1e-5, atol=1e-5)
+
+    jax.clear_caches()
