@@ -36,7 +36,7 @@ test = [
     'chex',
 ]
 benchmark = [
-    'jax-hpc-profiler',
+    'jax-hpc-profiler>=0.3.2',
 ]
 
 [tool.scikit-build]
