@@ -5,7 +5,7 @@ import jax
 from jax.experimental import multihost_utils
 from jax.sharding import AxisType
 from jax.sharding import PartitionSpec as P
-from jax_hpc_profiler import Timer
+from jax_hpc_profiler import JaxTimer
 
 import jaxdecomp
 
@@ -56,8 +56,8 @@ def run_benchmark(pdims, global_shape, backend, nb_nodes, precision, iterations,
     def do_ifft(x):
         return jaxdecomp.fft.pifft3d(x, backend=pfft_backend)
 
-    fft_chrono = Timer(save_jaxpr=False)
-    ifft_chrono = Timer(save_jaxpr=False)
+    fft_chrono = JaxTimer(save_jaxpr=False)
+    ifft_chrono = JaxTimer(save_jaxpr=False)
 
     # Warmup
     global_array = fft_chrono.chrono_jit(do_fft, global_array)
