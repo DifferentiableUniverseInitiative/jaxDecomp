@@ -76,14 +76,13 @@ The table below summarizes the FFT-transpose sequence:
 
 # Benchmarks
 
-Benchmarks were run on the Jean Zay supercomputer using NVIDIA A100 GPUs to evaluate strong and weak scaling of large 3D FFTs across nodes.
+Benchmarks were run on the Jean Zay supercomputer using NVIDIA H100 GPUs to evaluate the scaling behavior of distributed 3D FFTs across 2 to 256 GPUs, comparing single-precision (float32) and double-precision (float64) performance.
 
-We benchmarked both backends in `jaxDecomp`; `cuDecomp` was slightly faster than native JAX, especially on large, multi-node workloads.
+For strong scaling, a fixed global grid (512³, 1024³, 2048³, or 4096³) is distributed across an increasing number of GPUs. For weak scaling, a fixed local volume of 1,048,576 elements per GPU is maintained as the GPU count grows. Both experiments test multiple pencil and slab decomposition strategies, reporting the fastest configuration at each GPU count.
 
+![Strong scaling of distributed 3D FFTs on the Jean Zay supercomputer (H100 GPUs). Each subplot shows a fixed global grid size with execution time decreasing as GPUs increase.\label{fig:strong_scaling}](assets/strong_scaling.png){ width=100% }
 
-![Strong scaling results on the Jean Zay supercomputer using A100 GPUs.](assets/strong_scaling.png){ width=100% }
-
-![Weak scaling results showing that `jaxDecomp` maintains high efficiency as both problem size and GPU count increase.](assets/weak_scaling.png){ width=100% }
+![Weak scaling with a fixed local volume of 1,048,576 elements per GPU. Execution time remains nearly flat as GPU count increases from 2 to 256, demonstrating high parallel efficiency.\label{fig:weak_scaling}](assets/weak_scaling.png){ width=100% }
 
 
 # Stability and releases
