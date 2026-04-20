@@ -1,5 +1,17 @@
 # Code and Contribution guidelines
 
+Contributions are welcome — bug reports, feature requests, documentation improvements, and code changes all help.
+
+## Getting in touch
+
+Open a [GitHub Issue](https://github.com/DifferentiableUniverseInitiative/jaxDecomp/issues) for bugs, feature requests, or questions. Use the `question` label for open-ended discussion.
+
+## Contributing code
+
+- **Small fixes** (typos, docs, single-line bugs): open a PR directly, no prior issue needed.
+- **Non-trivial changes** (new features, API changes, refactors): please open an issue first to align on the approach before investing time in a PR.
+- PRs should target the `main` branch and must pass all CI checks (tests + formatting).
+
 ## Code formatting
 
 Formatting is enforced using [yapf](https://github.com/google/yapf) and automatically applied using pre-commit hooks. To manually format the code, run the following command:
