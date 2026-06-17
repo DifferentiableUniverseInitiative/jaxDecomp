@@ -1,6 +1,5 @@
 from collections.abc import Sequence
 from functools import partial
-from typing import Optional
 
 import jax.numpy as jnp
 from jax import jit, lax
@@ -53,7 +52,7 @@ def _str_to_fft_type(s: str) -> FftType | int:
         raise ValueError(f"Unknown FFT type '{s}'")
 
 
-def _fft_norm(s: Array, func_name: str, norm: Optional[str]) -> Array:
+def _fft_norm(s: Array, func_name: str, norm: str | None) -> Array:
     """
     Compute the normalization factor for FFT operations.
 
@@ -90,7 +89,7 @@ def _do_pfft(
     func_name: str,
     fft_type: FftType,
     arr: Array,
-    norm: Optional[str],
+    norm: str | None,
     backend: str = 'JAX',
 ) -> Array:
     """
@@ -138,7 +137,7 @@ def _do_pfft(
     return transformed
 
 
-def pfft3d(a: ArrayLike, norm: Optional[str] = 'backward', backend: str = 'JAX') -> Array:
+def pfft3d(a: ArrayLike, norm: str | None = 'backward', backend: str = 'JAX') -> Array:
     """
     Perform 3D FFT on the input array.
 
@@ -181,7 +180,7 @@ def pfft3d(a: ArrayLike, norm: Optional[str] = 'backward', backend: str = 'JAX')
     return _do_pfft('fft', FftType.FFT, a, norm=norm, backend=backend)
 
 
-def pifft3d(a: ArrayLike, norm: Optional[str] = 'backward', backend: str = 'JAX') -> Array:
+def pifft3d(a: ArrayLike, norm: str | None = 'backward', backend: str = 'JAX') -> Array:
     """
     Perform inverse 3D FFT on the input array.
 
@@ -211,7 +210,7 @@ def pifft3d(a: ArrayLike, norm: Optional[str] = 'backward', backend: str = 'JAX'
     return _do_pfft('ifft', FftType.IFFT, a, norm=norm, backend=backend)
 
 
-def prfft3d(a: ArrayLike, norm: Optional[str] = 'backward', backend: str = 'JAX') -> Array:
+def prfft3d(a: ArrayLike, norm: str | None = 'backward', backend: str = 'JAX') -> Array:
     """
     Perform 3D FFT on the input array.
 
@@ -254,7 +253,7 @@ def prfft3d(a: ArrayLike, norm: Optional[str] = 'backward', backend: str = 'JAX'
     return _do_pfft('rfft', FftType.RFFT, a, norm=norm, backend=backend)
 
 
-def pirfft3d(a: ArrayLike, norm: Optional[str] = 'backward', backend: str = 'JAX') -> Array:
+def pirfft3d(a: ArrayLike, norm: str | None = 'backward', backend: str = 'JAX') -> Array:
     """
     Perform inverse 3D FFT on the input array.
 

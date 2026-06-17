@@ -1,24 +1,32 @@
 repos:
--   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: 'v5.0.0'
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
     hooks:
-    -   id: check-yaml
-    -   id: end-of-file-fixer
-    -   id: trailing-whitespace
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.8.2
-  hooks:
-    - id: ruff-format
-    - id: ruff
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
 
--   repo: https://github.com/pre-commit/mirrors-clang-format
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v18.1.4
     hooks:
       - id: clang-format
+        name: clang-format
         files: '\.(c|cc|cpp|h|hpp|cxx|hh|cu|cuh)$'
         exclude: '^third_party/|/pybind11/'
-        name: clang-format
--   repo: https://github.com/pre-commit/mirrors-mypy
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.13.0
     hooks:
-    -   id: mypy
+      - id: mypy
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.11.21
+    hooks:
+      - id: uv-lock

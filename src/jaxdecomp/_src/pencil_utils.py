@@ -1,5 +1,5 @@
 from collections.abc import Hashable
-from typing import Any, Optional
+from typing import Any
 
 import jax
 from jax import lax
@@ -44,7 +44,7 @@ def get_pdims_from_sharding(sharding: NamedSharding) -> TransposablePdimsType:
     return tuple([get_axis_size(sharding, i) for i in range(len(sharding.spec))])  # type: ignore
 
 
-def get_pdims_from_mesh(mesh: Optional[Mesh]) -> PdimsType:
+def get_pdims_from_mesh(mesh: Mesh | None) -> PdimsType:
     """Returns the processor dimensions from the device mesh.
 
     Args:
@@ -127,10 +127,10 @@ def validate_spec_matches_mesh(spec, mesh: Mesh):
         if spec[i] is not None:
             if i >= len(mesh_names) or spec[i] != mesh_names[i]:
                 raise ValueError(
-                    f"Spec {spec} does not match mesh axis names {mesh_names}. "
+                    f'Spec {spec} does not match mesh axis names {mesh_names}. '
                     f"At position {i}: spec has '{spec[i]}' but mesh expects "
                     f"'{mesh_names[i] if i < len(mesh_names) else 'nothing (trailing)'}'. "
-                    "Ensure the array is sharded with a spec matching the mesh axis order."
+                    'Ensure the array is sharded with a spec matching the mesh axis order.'
                 )
         else:
             if i < len(mesh_names) and mesh.shape[mesh_names[i]] > 1:
@@ -232,7 +232,7 @@ def get_fft_output_sharding(fft_sharding):
         return NamedSharding(mesh, P(*out_specs))
 
 
-def get_output_specs(fft_type: FftType, pencil_type: str, spec: P, backend: str = 'JAX') -> tuple[Optional[int], ...]:
+def get_output_specs(fft_type: FftType, pencil_type: str, spec: P, backend: str = 'JAX') -> tuple[int | None, ...]:
     """Returns the output specs based on FFT type, pencil type, and spec.
 
     Args:
