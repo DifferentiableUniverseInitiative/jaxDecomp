@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    name: Run pre-commit hooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up prek and run hooks
+        uses: j178/prek-action@v2.0.4
+
+  test:
+    name: Run tests on Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history + tags for setuptools_scm version at build time
+
+      - name: Install uv and set up environment
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --locked --no-dev --extra test
+
+      - name: Run tests
+        # --doctest-modules imports jax at collection time, before conftest's session
+        # fixture runs, so the device-count flags must be set in the environment here.
+        env:
+          JAX_PLATFORM_NAME: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=8"
+        run: uv run pytest -v

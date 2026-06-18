@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from functools import partial
-from typing import Any, Optional
+from typing import Any
 
 import jax
 import jax.extend as jex
@@ -24,8 +24,8 @@ class BasePrimitive(metaclass=ABCMeta):
     name: str
     multiple_results: bool
     impl_static_args: tuple[Any, ...]
-    inner_primitive: Optional[jex.core.Primitive]
-    outer_primitive: Optional[jex.core.Primitive]
+    inner_primitive: jex.core.Primitive | None
+    outer_primitive: jex.core.Primitive | None
     outer_lowering: custom_partitioning
 
     @staticmethod

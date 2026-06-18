@@ -1,0 +1,87 @@
+name: Build and upload to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history + tags (belt-and-suspenders for setuptools_scm)
+
+      - name: Derive release version from tag
+        id: version
+        # The workflow is tag-triggered, so the tag *is* the version. Feeding it to
+        # setuptools_scm via PRETEND_VERSION guarantees an exact PEP 440 release version
+        # (no `+local` segment, which PyPI rejects) regardless of in-container git state.
+        run: echo "value=${TAG#v}" >> "$GITHUB_OUTPUT"
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.23.3
+        env:
+          CIBW_BUILD: "cp311-manylinux_x86_64 cp312-manylinux_x86_64 cp313-manylinux_x86_64"
+          # Drive scikit-build-core through uv as the in-container build frontend.
+          CIBW_BUILD_FRONTEND: "build[uv]"
+          CIBW_ENVIRONMENT: >-
+            PIP_ONLY_BINARY=scipy,numpy
+            SETUPTOOLS_SCM_PRETEND_VERSION_FOR_JAXDECOMP=${{ steps.version.outputs.value }}
+          # Belt-and-suspenders: if PRETEND_VERSION is ever empty, setuptools_scm falls back
+          # to `git describe` inside the container (root over a mounted checkout).
+          CIBW_BEFORE_ALL: "git config --global --add safe.directory '*'"
+          CIBW_BUILD_VERBOSITY: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./wheelhouse/*.whl
+
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # tags for setuptools_scm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build sdist
+        # Same exact-version guarantee as the wheels (strip the leading `v` from the tag).
+        run: |
+          export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_JAXDECOMP="${TAG#v}"
+          uv build --sdist
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-sdist
+          path: dist/*.tar.gz
+
+  upload_pypi:
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    if: github.event_name == 'release' && github.event.action == 'published'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          # unpacks all CIBW artifacts into dist/
+          pattern: cibw-*
+          path: dist
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@release/v1

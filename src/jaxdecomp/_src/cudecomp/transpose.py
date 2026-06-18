@@ -348,7 +348,7 @@ class TransposePrimitive(BasePrimitive):
         operand = arg_infos[0]
         if operand.ndim != 3:
             raise NotImplementedError(
-                f'cuDecomp backend only supports 3D arrays, got {operand.ndim}D. ' 'Please use the JAX backend for batching/vmap support.'
+                f'cuDecomp backend only supports 3D arrays, got {operand.ndim}D. Please use the JAX backend for batching/vmap support.'
             )
 
         if jaxdecomp.config.transpose_axis_contiguous:
@@ -415,7 +415,7 @@ class TransposePrimitive(BasePrimitive):
         operand = arg_infos[0]
         if operand.rank != 3:
             raise NotImplementedError(
-                f'cuDecomp backend only supports 3D arrays, got rank {operand.rank}. ' 'Please use the JAX backend for batching/vmap support.'
+                f'cuDecomp backend only supports 3D arrays, got rank {operand.rank}. Please use the JAX backend for batching/vmap support.'
             )
 
         spec = ('i', 'j', 'k')  # einsum spec for shardy

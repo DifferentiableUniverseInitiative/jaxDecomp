@@ -1,8 +1,8 @@
 import argparse
 import os
-from collections.abc import Hashable
+from collections.abc import Callable, Hashable
 from functools import partial
-from typing import Any, Callable
+from typing import Any
 
 Specs = Any
 AxisName = Hashable
