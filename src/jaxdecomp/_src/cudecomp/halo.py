@@ -373,6 +373,7 @@ register_primitive(HaloPrimitive)
 def halo_transpose_rule(cotangent: Array, x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> tuple[Array]:
     return (HaloPrimitive.outer_primitive.bind(cotangent, halo_extents=halo_extents, halo_periods=halo_periods),)
 
+
 ad.primitive_transposes[HaloPrimitive.outer_primitive] = halo_transpose_rule
 
 
@@ -388,6 +389,7 @@ def halo_jvp_rule(*args, **kwargs):
         primals, tangents = args[-2], args[-1]
     (x,), (x_dot,) = primals, tangents
     return x, x_dot
+
 
 ad.primitive_jvps[HaloPrimitive.outer_primitive] = halo_jvp_rule
 
@@ -441,7 +443,7 @@ class HaloExchangeHiPrim(HiPrim):
         return (self.expand(g),)
 
     def batch_dim_rule(self, axis_data, in_dims):
-        raise NotImplementedError("Batching not implemented for cuDecomp halo exchange")
+        raise NotImplementedError('Batching not implemented for cuDecomp halo exchange')
 
 
 def halo_exchange(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> Array:

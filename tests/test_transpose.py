@@ -287,12 +287,12 @@ class TestTransposesGrad:
             # Just verify we got some result structure
             assert isinstance(hess, tuple)
         except ValueError as e:
-            if "not implemented" in str(e).lower() or "differentiation rule" in str(e).lower():
-                pytest.fail(f"HiPrim autodiff not working: {e}")
+            if 'not implemented' in str(e).lower() or 'differentiation rule' in str(e).lower():
+                pytest.fail(f'HiPrim autodiff not working: {e}')
             # Shape mismatch errors are expected limitations of the transpose
             # function's shape checking with Hessian's higher-dimensional
             # tangent spaces, not HiPrim issues. Pass the test in this case.
-            if "Unsupported input shape" in str(e) or "shape" in str(e).lower():
+            if 'Unsupported input shape' in str(e) or 'shape' in str(e).lower():
                 pass  # Expected limitation, not a HiPrim issue
             else:
                 raise

@@ -14,7 +14,6 @@ from jaxdecomplib import _jaxdecomp
 import jaxdecomp
 from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
 from jaxdecomp._src.fft_utils import (
-    ADJOINT,
     COMPLEX,  # yapf: disable
     FftType,  # yapf: disable
     FORWARD_FFTs,

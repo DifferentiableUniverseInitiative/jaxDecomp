@@ -9,7 +9,6 @@ from jax import ShapeDtypeStruct
 from jax._src.interpreters import ad, mlir
 from jax._src.numpy.util import promote_dtypes_complex
 from jax.core import ShapedArray
-from jax.extend.core import Primitive
 from jax.experimental.hijax import VJPHiPrimitive as HiPrim
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
@@ -435,7 +434,9 @@ register_primitive(FFTPrimitive)
 
 def fft_transpose_rule(cotangent: Array, x: Array, fft_type: FftType, adjoint: bool) -> tuple[Array]:
     from jaxdecomp._src.fft_utils import ADJOINT
+
     return (FFTPrimitive.outer_primitive.bind(cotangent, fft_type=ADJOINT(fft_type), adjoint=not adjoint),)
+
 
 ad.primitive_transposes[FFTPrimitive.outer_primitive] = fft_transpose_rule
 
@@ -444,6 +445,7 @@ def fft_jvp_rule(fft_type: FftType, adjoint: bool, primals, tangents):
     (x,), (x_dot,) = primals, tangents
     # Outer primitive is FFT with custom partitioning, JVP is same FFT on tangent
     return x, FFTPrimitive.outer_primitive.bind(x_dot, fft_type=fft_type, adjoint=adjoint)
+
 
 ad.primitive_jvps[FFTPrimitive.outer_primitive] = fft_jvp_rule
 
@@ -502,7 +504,7 @@ class PfftHiPrim(HiPrim):
         return (self.expand(g),)
 
     def batch_dim_rule(self, axis_data, in_dims):
-        raise NotImplementedError("Batching not implemented for cuDecomp FFT")
+        raise NotImplementedError('Batching not implemented for cuDecomp FFT')
 
 
 def pfft(x: Array, fft_type: FftType, adjoint: bool = False) -> Array:

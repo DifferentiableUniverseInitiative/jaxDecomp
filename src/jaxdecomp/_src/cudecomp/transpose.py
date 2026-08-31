@@ -500,6 +500,7 @@ _INV_KIND_CUDECOMP = {
 def transpose_transpose_rule(cotangent: Array, x: Array, kind: str) -> tuple[Array]:
     return (TransposePrimitive.outer_primitive.bind(cotangent, kind=_INV_KIND_CUDECOMP[kind]),)
 
+
 ad.primitive_transposes[TransposePrimitive.outer_primitive] = transpose_transpose_rule
 
 
@@ -507,6 +508,7 @@ def transpose_jvp_rule(kind: str, primals, tangents):
     (x,), (x_dot,) = primals, tangents
     # Outer primitive is transpose with custom partitioning, JVP is same transpose on tangent
     return x, TransposePrimitive.outer_primitive.bind(x_dot, kind=kind)
+
 
 ad.primitive_jvps[TransposePrimitive.outer_primitive] = transpose_jvp_rule
 
@@ -562,11 +564,12 @@ class TransposeHiPrim(HiPrim):
         return (self.expand(g),)
 
     def batch_dim_rule(self, axis_data, in_dims):
-        raise NotImplementedError("Batching not implemented for cuDecomp transpose")
+        raise NotImplementedError('Batching not implemented for cuDecomp transpose')
 
 
 def transpose(x: ArrayLike, kind: str) -> Array:
     return TransposeHiPrim(jax.typeof(x), kind)(x)
+
 
 # Custom transposition functions
 
