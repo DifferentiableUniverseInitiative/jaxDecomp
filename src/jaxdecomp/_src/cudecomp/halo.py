@@ -6,9 +6,10 @@ import jax.ffi
 import jaxlib.mlir.ir as ir
 import numpy as np
 from jax import ShapeDtypeStruct
-from jax._src.interpreters import mlir
+from jax._src.interpreters import ad, mlir
 from jax._src.typing import Array
 from jax.core import ShapedArray
+from jax.experimental.hijax import VJPHiPrimitive as HiPrim
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
@@ -368,6 +369,29 @@ class HaloPrimitive(BasePrimitive):
 register_primitive(HaloPrimitive)
 
 
+# VJP rule for the outer primitive (needed for HiPrim expand)
+def halo_transpose_rule(cotangent: Array, x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> tuple[Array]:
+    return (HaloPrimitive.outer_primitive.bind(cotangent, halo_extents=halo_extents, halo_periods=halo_periods),)
+
+ad.primitive_transposes[HaloPrimitive.outer_primitive] = halo_transpose_rule
+
+
+# JVP rule for the outer primitive (needed for HiPrim jvp)
+def halo_jvp_rule(*args, **kwargs):
+    # JAX calls JVP rule with: static_args..., primals, tangents
+    # static_argnums=(1, 2) so static args are at positions 1, 2
+    # The actual call signature varies, so we extract primals and tangents
+    primals = args[-2] if len(args) >= 2 else kwargs.get('primals')
+    tangents = args[-1] if len(args) >= 1 else kwargs.get('tangents')
+    if primals is None or tangents is None:
+        # Fallback: assume last two args are primals and tangents
+        primals, tangents = args[-2], args[-1]
+    (x,), (x_dot,) = primals, tangents
+    return x, x_dot
+
+ad.primitive_jvps[HaloPrimitive.outer_primitive] = halo_jvp_rule
+
+
 @partial(jax.jit, static_argnums=(1, 2))
 def halo_p_lower(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> Array:
     """
@@ -394,70 +418,31 @@ def halo_p_lower(x: Array, halo_extents: HaloExtentType, halo_periods: Periodici
     )
 
 
-@partial(jax.custom_vjp, nondiff_argnums=(1, 2))
+class HaloExchangeHiPrim(HiPrim):
+    def __init__(self, x_aval, halo_extents: HaloExtentType, halo_periods: Periodicity):
+        self.in_avals = (x_aval,)
+        self.out_aval = x_aval
+        self.params = dict(halo_extents=halo_extents, halo_periods=halo_periods)
+        super().__init__()
+
+    def expand(self, x):
+        return halo_p_lower(x, self.params['halo_extents'], self.params['halo_periods'])
+
+    def jvp(self, primals, tangents):
+        (x,), (x_dot,) = primals, tangents
+        y = self.expand(x)
+        y_dot = self.expand(x_dot)
+        return y, y_dot
+
+    def vjp_fwd(self, nzs_in, x):
+        return self.expand(x), x
+
+    def vjp_bwd_retval(self, res, g):
+        return (self.expand(g),)
+
+    def batch_dim_rule(self, axis_data, in_dims):
+        raise NotImplementedError("Batching not implemented for cuDecomp halo exchange")
+
+
 def halo_exchange(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> Array:
-    """
-    Halo exchange operation with custom VJP.
-
-    Parameters
-    ----------
-    x : Array
-        Input array.
-    halo_extents : HaloExtentType
-        Extents of the halo in x, y, and z dimensions.
-    halo_periods : Periodicity
-        Periodicity of the halo in x, y, and z dimensions.
-
-    Returns
-    -------
-    Array
-        Output array after the halo exchange operation.
-    """
-    output, _ = _halo_fwd_rule(x, halo_extents, halo_periods)
-    return output
-
-
-def _halo_fwd_rule(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> tuple[Array, None]:
-    """
-    Forward rule for the halo exchange operation.
-
-    Parameters
-    ----------
-    x : Array
-        Input array.
-    halo_extents : HaloExtentType
-        Extents of the halo in x, y, and z dimensions.
-    halo_periods : Periodicity
-        Periodicity of the halo in x, y, and z dimensions.
-
-    Returns
-    -------
-    Tuple[Array, None]
-        Output array after the halo exchange operation and None for no residuals.
-    """
-    return halo_p_lower(x, halo_extents, halo_periods), None
-
-
-def _halo_bwd_rule(halo_extents: HaloExtentType, halo_periods: Periodicity, _, g: Array) -> tuple[Array]:
-    """
-    Backward rule for the halo exchange operation.
-
-    Parameters
-    ----------
-    halo_extents : HaloExtentType
-        Extents of the halo in x, y, and z dimensions.
-    halo_periods : Periodicity
-        Periodicity of the halo in x, y, and z dimensions.
-    g : Array
-        Gradient array.
-
-    Returns
-    -------
-    Tuple[Array]
-        Gradient array after the halo exchange operation.
-    """
-    return (halo_p_lower(g, halo_extents, halo_periods),)
-
-
-# Define VJP for custom halo_exchange operation
-halo_exchange.defvjp(_halo_fwd_rule, _halo_bwd_rule)
+    return HaloExchangeHiPrim(jax.typeof(x), halo_extents, halo_periods)(x)

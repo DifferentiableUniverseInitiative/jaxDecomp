@@ -5,6 +5,7 @@ from jax import ShapeDtypeStruct, lax
 from jax._src.interpreters import batching
 from jax._src.typing import Array, ArrayLike
 from jax.core import ShapedArray
+from jax.experimental.hijax import VJPHiPrimitive as HiPrim
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
@@ -269,25 +270,6 @@ def partition(
     return mesh, impl, output_sharding, (input_sharding,)
 
 
-@spmd_transpose_primitive.def_transpose_rule
-def vjp_transpose_rule(cotangent: Array, x: Array, kind: str) -> tuple[Array]:
-    match kind:
-        case 'x_y':
-            return (spmd_transpose_primitive(cotangent, kind='y_x'),)
-        case 'y_z':
-            return (spmd_transpose_primitive(cotangent, kind='z_y'),)
-        case 'z_y':
-            return (spmd_transpose_primitive(cotangent, kind='y_z'),)
-        case 'y_x':
-            return (spmd_transpose_primitive(cotangent, kind='x_y'),)
-        case 'x_z':
-            return (spmd_transpose_primitive(cotangent, kind='z_x'),)
-        case 'z_x':
-            return (spmd_transpose_primitive(cotangent, kind='x_z'),)
-        case _:
-            raise ValueError('Invalid kind')
-
-
 @spmd_transpose_primitive.def_batching_rule
 def batching_rule(batched_args: tuple[Array], batched_axis: tuple[int | None, ...], kind: str) -> tuple[Array, int]:
     """
@@ -333,37 +315,74 @@ def transpose_impl(x: ArrayLike, kind: str) -> Array:
     return spmd_transpose_primitive(x, kind=kind)
 
 
-@partial(jax.custom_jvp, nondiff_argnums=(1,))
+_INV_KIND = {
+    'x_y': 'y_x',
+    'y_z': 'z_y',
+    'z_y': 'y_z',
+    'y_x': 'x_y',
+    'x_z': 'z_x',
+    'z_x': 'x_z',
+}
+
+
+class TransposeHiPrim(HiPrim):
+    def __init__(self, x_aval, kind: str):
+        self.in_avals = (x_aval,)
+        self.out_aval = x_aval
+        self.params = dict(kind=kind)
+        super().__init__()
+
+    def expand(self, x):
+        return transpose_impl(x, self.params['kind'])
+
+    def jvp(self, primals, tangents):
+        (x,), (x_dot,) = primals, tangents
+        y = self(x)
+        y_dot = self(x_dot)
+        return y, y_dot
+
+    def vjp_fwd(self, nzs_in, x):
+        return self(x), None
+
+    def vjp_bwd_retval(self, res, g):
+        return (self(g),)
+
+    def batch_dim_rule(self, axis_data, in_dims):
+        return in_dims[0]
+
+
+class TransposeShardHiPrim(HiPrim):
+    def __init__(self, x_aval, kind: str, mesh: Mesh, x_axis_name: str, y_axis_name: str):
+        self.in_avals = (x_aval,)
+        self.out_aval = x_aval
+        self.params = dict(kind=kind, mesh=mesh, x_axis_name=x_axis_name, y_axis_name=y_axis_name)
+        super().__init__()
+
+    def expand(self, x):
+        return per_shard_impl(x, self.params['kind'], self.params['x_axis_name'], self.params['y_axis_name'])
+
+    def jvp(self, primals, tangents):
+        (x,), (x_dot,) = primals, tangents
+        y = self(x)
+        y_dot = self(x_dot)
+        return y, y_dot
+
+    def vjp_fwd(self, nzs_in, x):
+        return self(x), x
+
+    def vjp_bwd_retval(self, res, g):
+        return (self(g),)
+
+    def batch_dim_rule(self, axis_data, in_dims):
+        return in_dims[0]
+
+
 def transpose(x: ArrayLike, kind: str) -> Array:
-    return transpose_impl(x, kind=kind)
+    return TransposeHiPrim(jax.typeof(x), kind)(x)
 
 
-@transpose.defjvp
-def transpose_jvp(kind: str, primals: tuple[Array], tangents: tuple[Array]) -> tuple[Array, Array]:
-    (x,) = primals
-    (t,) = tangents
-    y = transpose(x, kind=kind)
-    return y, transpose(t, kind=kind)
-
-
-@partial(jax.custom_jvp, nondiff_argnums=(1, 2, 3))
 def transpose_shard(x: ArrayLike, kind: str, mesh: Mesh, x_axis_name: str, y_axis_name: str) -> Array:
-    return per_shard_impl(x, kind, x_axis_name, y_axis_name)
-
-
-@transpose_shard.defjvp
-def transpose_shard_jvp(
-    kind: str,
-    mesh: Mesh,
-    x_axis_name: str,
-    y_axis_name: str,
-    primals: tuple[Array],
-    tangents: tuple[Array],
-) -> tuple[Array, Array]:
-    (x,) = primals
-    (t,) = tangents
-    y = transpose_shard(x, kind=kind, mesh=mesh, x_axis_name=x_axis_name, y_axis_name=y_axis_name)
-    return y, transpose_shard(t, kind=kind, mesh=mesh, x_axis_name=x_axis_name, y_axis_name=y_axis_name)
+    return TransposeShardHiPrim(jax.typeof(x), kind, mesh, x_axis_name, y_axis_name)(x)
 
 
 # Custom transposition functions

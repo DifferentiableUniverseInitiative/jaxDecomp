@@ -6,10 +6,11 @@ import jax.ffi
 import jaxlib.mlir.ir as ir
 import numpy as np
 from jax import ShapeDtypeStruct
-from jax._src.interpreters import mlir
+from jax._src.interpreters import ad, mlir
 from jax._src.numpy.util import promote_dtypes_complex
 from jax.core import ShapedArray
 from jax.extend.core import Primitive
+from jax.experimental.hijax import VJPHiPrimitive as HiPrim
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
@@ -432,6 +433,21 @@ class FFTPrimitive(BasePrimitive):
 register_primitive(FFTPrimitive)
 
 
+def fft_transpose_rule(cotangent: Array, x: Array, fft_type: FftType, adjoint: bool) -> tuple[Array]:
+    from jaxdecomp._src.fft_utils import ADJOINT
+    return (FFTPrimitive.outer_primitive.bind(cotangent, fft_type=ADJOINT(fft_type), adjoint=not adjoint),)
+
+ad.primitive_transposes[FFTPrimitive.outer_primitive] = fft_transpose_rule
+
+
+def fft_jvp_rule(fft_type: FftType, adjoint: bool, primals, tangents):
+    (x,), (x_dot,) = primals, tangents
+    # Outer primitive is FFT with custom partitioning, JVP is same FFT on tangent
+    return x, FFTPrimitive.outer_primitive.bind(x_dot, fft_type=fft_type, adjoint=adjoint)
+
+ad.primitive_jvps[FFTPrimitive.outer_primitive] = fft_jvp_rule
+
+
 @partial(jax.jit, static_argnums=(1, 2))
 def pfft_impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:
     """
@@ -458,77 +474,36 @@ def pfft_impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:
     return FFTPrimitive.outer_primitive.bind(x, fft_type=fft_type, adjoint=adjoint)
 
 
-@partial(jax.custom_vjp, nondiff_argnums=(1, 2))
-def pfft(x: Array, fft_type: FftType, adjoint: bool = False) -> Primitive:
-    """
-    Custom VJP definition for pfft.
+class PfftHiPrim(HiPrim):
+    def __init__(self, x_aval, fft_type: FftType, adjoint: bool):
+        self.in_avals = (x_aval,)
+        self.out_aval = x_aval
+        self.params = dict(fft_type=fft_type, adjoint=adjoint)
+        super().__init__()
 
-    Parameters
-    ----------
-    x : Array
-      Input array.
-    fft_type : Union[str, lax.FftType]
-      Type of FFT operation.
-    adjoint : bool, optional
-      Whether to compute the adjoint FFT. Defaults to False.
+    def expand(self, x):
+        return pfft_impl(x, self.params['fft_type'], self.params['adjoint'])
 
-    Returns
-    -------
-    Primitive
-      Result of the operation.
-    """
-    output, _ = _pfft_fwd_rule(x, fft_type=fft_type, adjoint=adjoint)
-    return output
+    def jvp(self, primals, tangents):
+        (x,), (x_dot,) = primals, tangents
+        y = self.expand(x)
+        y_dot = self.expand(x_dot)
+        return y, y_dot
 
+    def vjp_fwd(self, nzs_in, x):
+        return self.expand(x), (self.params['fft_type'], self.params['adjoint'])
 
-def _pfft_fwd_rule(x: Array, fft_type: FftType, adjoint: bool) -> tuple[Primitive, None]:
-    """
-    Forward rule for pfft.
+    def vjp_bwd_retval(self, res, g):
+        fft_type, adjoint = res
+        if fft_type == FftType.FFT:
+            fft_type = FftType.IFFT
+        elif fft_type == FftType.IFFT:
+            fft_type = FftType.FFT
+        return (self.expand(g),)
 
-    Parameters
-    ----------
-    x : Array
-      Input array.
-    fft_type : Union[str, lax.FftType]
-      Type of FFT operation.
-    adjoint : bool, optional
-      Whether to compute the adjoint FFT. Defaults to False.
-
-    Returns
-    -------
-    Tuple[Primitive, None]
-      Result of the operation and None (no residuals).
-    """
-    return pfft_impl(x, fft_type=fft_type, adjoint=adjoint), None
+    def batch_dim_rule(self, axis_data, in_dims):
+        raise NotImplementedError("Batching not implemented for cuDecomp FFT")
 
 
-def _pfft_bwd_rule(fft_type: FftType, adjoint: bool, _, g: Primitive) -> tuple[Primitive]:
-    """
-    Backward rule for pfft.
-
-    Parameters
-    ----------
-    fft_type : Union[str, lax.FftType]
-      Type of FFT operation.
-    adjoint : bool
-      Whether to compute the adjoint FFT.
-    ctx
-      Context.
-    g : Primitive
-      Gradient value.
-
-    Returns
-    -------
-    Tuple[Primitive]
-      Result of the operation.
-    """
-    assert fft_type in [FftType.FFT, FftType.IFFT]
-    if fft_type == FftType.FFT:
-        fft_type = FftType.IFFT
-    elif fft_type == FftType.IFFT:
-        fft_type = FftType.FFT
-
-    return (pfft_impl(g, fft_type, not adjoint),)
-
-
-pfft.defvjp(_pfft_fwd_rule, _pfft_bwd_rule)
+def pfft(x: Array, fft_type: FftType, adjoint: bool = False) -> Array:
+    return PfftHiPrim(jax.typeof(x), fft_type, adjoint)(x)
