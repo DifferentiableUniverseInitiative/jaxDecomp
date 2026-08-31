@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "jaxdecomp"
 dynamic = ["version"]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 description = "JAX bindings for the cuDecomp library"
 authors = [
   { name = "Wassim Kabalan" },
@@ -25,7 +25,7 @@ classifiers = [
 ]
 dependencies = [
   "jaxtyping>=0.2.0",
-  "jax>=0.4.35",
+  "jax>=0.11.1",
 ]
 
 [project.optional-dependencies]
@@ -39,7 +39,7 @@ benchmark = [
     'jax-hpc-profiler>=0.3.2',
 ]
 cuda = [
-    'jax[cuda12]>=0.4.35',
+    'jax[cuda12]>=0.11.1',
 ]
 
 [dependency-groups]
