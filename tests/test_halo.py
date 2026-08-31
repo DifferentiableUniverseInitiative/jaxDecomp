@@ -387,6 +387,59 @@ class TestHaloExchangeGrad:
         assert_array_equal(model(global_array, obs), jnp.zeros_like(global_array))
         assert_array_equal(model(global_array * 2, obs), jnp.full_like(global_array, 3))
 
+    def _run_hessian_test(self, pdims, backend, use_shardy, axis_type):
+        """Test that jax.hessian works with halo exchange."""
+        jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
+        if axis_type == 'explicit':
+            pytest.skip(reason='Explicit axis type not yet supported for Halo tests')
+
+        # Use a simple non-distributed array for Hessian test
+        # Hessian wrt distributed arrays is not well-defined in this test environment
+        x = jnp.ones((16, 16, 16), dtype=jnp.float32)
+        halo_size = 2
+
+        halo_x = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
+        halo_y = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
+        halo_extents = (halo_x[0], halo_y[0])
+        periodic = (True, True)
+        padding = (halo_x, halo_y, (0, 0))
+
+        @jax.jit
+        def f(alpha, beta, x):
+            # Pad manually without shard_map
+            padded = jnp.pad(x, padding, mode='linear_ramp', end_values=20)
+            y = alpha * jaxdecomp.halo_exchange(padded, halo_extents=halo_extents, halo_periods=periodic, backend=backend) + beta
+            return y.sum()
+
+        # Compute Hessian wrt all three arguments (alpha, beta, x)
+        # Returns a 3x3 tuple of arrays: hess[i][j] = d^2f / d(arg_i) d(arg_j)
+        hess = jax.hessian(f, argnums=(0, 1, 2))(1.0, 2.0, x)
+        # Diagonal elements: hess[0][0] = d^2f/dalpha^2, hess[1][1] = d^2f/dbeta^2, hess[2][2] = d^2f/dx^2
+        hess_alpha = hess[0][0]
+        hess_beta = hess[1][1]
+        hess_x = hess[2][2]
+        # Hessian wrt scalars alpha, beta should be scalars (0-d)
+        assert hess_alpha.ndim == 0
+        assert hess_beta.ndim == 0
+        # Hessian wrt x should be 6D: (16, 16, 16, 16, 16, 16)
+        assert hess_x.ndim == 6
+        assert hess_x.shape == x.shape + x.shape
+
+    @pytest.mark.parametrize('use_shardy', use_shardy)
+    @pytest.mark.parametrize('pdims', pdims)
+    def test_jax_hessian(self, pdims, use_shardy, axis_type):
+        self._run_hessian_test(pdims, 'JAX', use_shardy, axis_type)
+
+    @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
+    @pytest.mark.parametrize('use_shardy', use_shardy)
+    @pytest.mark.parametrize('pdims', pdims)
+    def test_cudecomp_hessian(self, pdims, use_shardy, axis_type):
+        self._run_hessian_test(pdims, 'CUDECOMP', use_shardy, axis_type)
+
     @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', pdims)
     def test_jax_halo(
