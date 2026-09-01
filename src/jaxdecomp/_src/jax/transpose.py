@@ -345,7 +345,8 @@ class TransposeHiPrim(HiPrim):
         return self(x), None
 
     def vjp_bwd_retval(self, res, g):
-        return (self(g),)
+        inv_kind = _INV_KIND[self.params['kind']]
+        return (TransposeHiPrim(jax.typeof(g), inv_kind)(g),)
 
     def batch_dim_rule(self, axis_data, in_dims):
         return in_dims[0]
@@ -371,7 +372,8 @@ class TransposeShardHiPrim(HiPrim):
         return self(x), x
 
     def vjp_bwd_retval(self, res, g):
-        return (self(g),)
+        inv_kind = _INV_KIND[self.params['kind']]
+        return (TransposeShardHiPrim(jax.typeof(g), inv_kind, self.params['mesh'], self.params['x_axis_name'], self.params['y_axis_name'])(g),)
 
     def batch_dim_rule(self, axis_data, in_dims):
         return in_dims[0]
