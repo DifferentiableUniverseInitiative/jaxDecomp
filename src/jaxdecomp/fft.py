@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from functools import partial
+from math import prod, sqrt
 
 import jax.numpy as jnp
 from jax import jit, lax
@@ -52,13 +53,13 @@ def _str_to_fft_type(s: str) -> FftType | int:
         raise ValueError(f"Unknown FFT type '{s}'")
 
 
-def _fft_norm(s: Array, func_name: str, norm: str | None) -> Array:
+def _fft_norm(s: tuple[int, ...], func_name: str, norm: str | None) -> Array:
     """
     Compute the normalization factor for FFT operations.
 
     Parameters
     ----------
-    s : Array
+    s : tuple[int, ...]
         Shape of the input array.
     func_name : str
         Name of the FFT function ("fft" or "ifft").
@@ -75,12 +76,13 @@ def _fft_norm(s: Array, func_name: str, norm: str | None) -> Array:
     ValueError
         If an invalid norm value is provided.
     """
+    total = prod(s)
     if norm == 'backward':
-        return 1 / jnp.prod(s) if func_name.startswith('i') else jnp.array(1)
+        return 1 / total if func_name.startswith('i') else 1
     elif norm == 'ortho':
-        return 1 / jnp.sqrt(jnp.prod(s))
+        return 1 / sqrt(total)
     elif norm == 'forward':
-        return jnp.array(1) if func_name.startswith('i') else 1 / jnp.prod(s)
+        return 1 if func_name.startswith('i') else 1 / total
     raise ValueError(f'Invalid norm value {norm}; should be "backward", "ortho" or "forward".')
 
 
@@ -133,7 +135,7 @@ def _do_pfft(
     else:
         raise ValueError(f"Unknown backend value '{backend}'")
 
-    transformed *= _fft_norm(jnp.array(arr.shape, dtype=transformed.dtype), func_name, norm)
+    transformed *= _fft_norm(arr.shape, func_name, norm)
     return transformed
 
 

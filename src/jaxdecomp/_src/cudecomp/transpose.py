@@ -6,10 +6,11 @@ import jax.ffi
 import jaxlib.mlir.ir as ir
 import numpy as np
 from jax import ShapeDtypeStruct
-from jax._src.interpreters import mlir
+from jax._src.interpreters import ad, mlir
 from jax._src.lib.mlir.dialects import hlo
 from jax._src.typing import Array, ArrayLike
 from jax.core import ShapedArray
+from jax.experimental.hijax import VJPHiPrimitive as HiPrim
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
@@ -488,6 +489,30 @@ class TransposePrimitive(BasePrimitive):
 register_primitive(TransposePrimitive)
 
 
+_INV_KIND_CUDECOMP = {
+    'x_y': 'y_x',
+    'y_z': 'z_y',
+    'z_y': 'y_z',
+    'y_x': 'x_y',
+}
+
+
+def transpose_transpose_rule(cotangent: Array, x: Array, kind: str) -> tuple[Array]:
+    return (TransposePrimitive.outer_primitive.bind(cotangent, kind=_INV_KIND_CUDECOMP[kind]),)
+
+
+ad.primitive_transposes[TransposePrimitive.outer_primitive] = transpose_transpose_rule
+
+
+def transpose_jvp_rule(kind: str, primals, tangents):
+    (x,), (x_dot,) = primals, tangents
+    # Outer primitive is transpose with custom partitioning, JVP is same transpose on tangent
+    return x, TransposePrimitive.outer_primitive.bind(x_dot, kind=kind)
+
+
+ad.primitive_jvps[TransposePrimitive.outer_primitive] = transpose_jvp_rule
+
+
 @partial(jax.jit, static_argnums=(1,))
 def transpose_impl(x: ArrayLike, kind: str) -> Array:
     """
@@ -508,10 +533,43 @@ def transpose_impl(x: ArrayLike, kind: str) -> Array:
     return TransposePrimitive.outer_primitive.bind(x, kind=kind)
 
 
-@partial(jax.custom_vjp, nondiff_argnums=(1,))
+_INV_KIND = {
+    'x_y': 'y_x',
+    'y_z': 'z_y',
+    'z_y': 'y_z',
+    'y_x': 'x_y',
+}
+
+
+class TransposeHiPrim(HiPrim):
+    def __init__(self, x_aval, kind: str):
+        self.in_avals = (x_aval,)
+        self.params = dict(kind=kind)
+        self.out_aval = jax.make_jaxpr(self.expand)(x_aval).out_avals[0]
+        super().__init__()
+
+    def expand(self, x):
+        return transpose_impl(x, self.params['kind'])
+
+    def jvp(self, primals, tangents):
+        (x,), (x_dot,) = primals, tangents
+        y = self.expand(x)
+        y_dot = self.expand(x_dot)
+        return y, y_dot
+
+    def vjp_fwd(self, nzs_in, x):
+        return self.expand(x), None
+
+    def vjp_bwd_retval(self, res, g):
+        return (self.expand(g),)
+
+    def batch_dim_rule(self, axis_data, in_dims):
+        raise NotImplementedError('Batching not implemented for cuDecomp transpose')
+
+
 def transpose(x: ArrayLike, kind: str) -> Array:
     """
-    Custom VJP transposition function.
+    Perform distributed transpose operation using cuDecomp backend.
 
     Parameters
     ----------
@@ -523,61 +581,10 @@ def transpose(x: ArrayLike, kind: str) -> Array:
     Returns
     -------
     Array
-        Transposed array with custom VJP.
+        Transposed array.
     """
-    out, _ = transpose_fwd_rule(x, kind)
-    return out
+    return TransposeHiPrim(jax.typeof(x), kind)(x)
 
-
-def transpose_fwd_rule(x: ArrayLike, kind: str) -> tuple[Array, None]:
-    """
-    Forward rule for transposition with custom VJP.
-
-    Parameters
-    ----------
-    x : ArrayLike
-        Input array.
-    kind : str
-        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
-
-    Returns
-    -------
-    Tuple[Array, None]
-        Transposed array and None as residual.
-    """
-    return transpose_impl(x, kind), None
-
-
-def transpose_bwd_rule(kind: str, _, g: Array) -> tuple[Array]:
-    """
-    Backward rule for transposition with custom VJP.
-
-    Parameters
-    ----------
-    kind : str
-        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
-    g : Array
-        Gradient of the output array.
-
-    Returns
-    -------
-    Tuple[Array]
-          Transposed gradient.
-    """
-    match kind:
-        case 'x_y':
-            return (transpose_impl(g, 'y_x'),)
-        case 'y_z':
-            return (transpose_impl(g, 'z_y'),)
-        case 'z_y':
-            return (transpose_impl(g, 'y_z'),)
-        case 'y_x':
-            return (transpose_impl(g, 'x_y'),)
-        case _:
-            raise ValueError('Invalid kind')
-
-
-transpose.defvjp(transpose_fwd_rule, transpose_bwd_rule)
 
 # Custom transposition functions
 

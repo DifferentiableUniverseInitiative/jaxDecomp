@@ -4,6 +4,7 @@ import jax
 from jax import ShapeDtypeStruct, lax
 from jax._src.interpreters import batching
 from jax.core import ShapedArray
+from jax.experimental.hijax import VJPHiPrimitive as HiPrim
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
@@ -197,6 +198,23 @@ def _halo_pencils(
 
 
 def spmd_halo_exchange(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> Array:
+    """
+    SPMD halo exchange operation (identity for abstract evaluation).
+
+    Parameters
+    ----------
+    x : Array
+        Input array.
+    halo_extents : HaloExtentType
+        Extents of the halo in X and Y directions.
+    halo_periods : Periodicity
+        Periodicity in X and Y directions.
+
+    Returns
+    -------
+    Array
+        The input array (identity operation for abstract evaluation).
+    """
     del halo_extents, halo_periods
     return x
 
@@ -474,10 +492,35 @@ def halo_impl(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity)
     return spmd_halo_primitive(x, halo_extents=halo_extents, halo_periods=halo_periods)
 
 
-@partial(jax.custom_jvp, nondiff_argnums=(1, 2))
+class HaloExchangeHiPrim(HiPrim):
+    def __init__(self, x_aval, halo_extents: HaloExtentType, halo_periods: Periodicity):
+        self.in_avals = (x_aval,)
+        self.out_aval = x_aval
+        self.params = dict(halo_extents=halo_extents, halo_periods=halo_periods)
+        super().__init__()
+
+    def expand(self, x):
+        return halo_impl(x, self.params['halo_extents'], self.params['halo_periods'])
+
+    def jvp(self, primals, tangents):
+        (x,), (x_dot,) = primals, tangents
+        y = self(x)
+        y_dot = self(x_dot)
+        return y, y_dot
+
+    def vjp_fwd(self, nzs_in, x):
+        return self(x), x
+
+    def vjp_bwd_retval(self, res, g):
+        return (self(g),)
+
+    def batch_dim_rule(self, axis_data, in_dims):
+        return in_dims[0]
+
+
 def halo_exchange(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> Array:
     """
-    Custom VJP definition for halo exchange.
+    Perform distributed halo exchange operation.
 
     Parameters
     ----------
@@ -491,18 +534,6 @@ def halo_exchange(x: Array, halo_extents: HaloExtentType, halo_periods: Periodic
     Returns
     -------
     Array
-        Output array after the halo exchange operation.
+        Array after halo exchange.
     """
-    return halo_impl(x, halo_extents=halo_extents, halo_periods=halo_periods)
-
-
-@halo_exchange.defjvp
-def halo_exchange_jvp(
-    halo_extents: HaloExtentType,
-    halo_periods: Periodicity,
-    primals: tuple[Array],
-    tangents: tuple[Array],
-) -> tuple[Array, Array]:
-    (x,) = primals
-    (x_dot,) = tangents
-    return halo_impl(x, halo_extents=halo_extents, halo_periods=halo_periods), halo_impl(x_dot, halo_extents=halo_extents, halo_periods=halo_periods)
+    return HaloExchangeHiPrim(jax.typeof(x), halo_extents, halo_periods)(x)

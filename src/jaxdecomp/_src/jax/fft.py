@@ -6,6 +6,7 @@ from jax._src.api import ShapeDtypeStruct
 from jax._src.core import ShapedArray
 from jax._src.interpreters import batching
 from jax._src.typing import Array
+from jax.experimental.hijax import VJPHiPrimitive as HiPrim
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
@@ -13,7 +14,6 @@ from jaxdecomplib import _jaxdecomp
 import jaxdecomp
 from jaxdecomp._src.error import error_during_jacfwd, error_during_jacrev
 from jaxdecomp._src.fft_utils import (
-    ADJOINT,
     COMPLEX,  # yapf: disable
     FftType,  # yapf: disable
     FORWARD_FFTs,
@@ -543,6 +543,8 @@ def transpose_rule(cotangent: Array, x: Array, fft_type: FftType, adjoint: bool)
     Array
         Resulting array after the transpose operation.
     """
+    from jaxdecomp._src.fft_utils import ADJOINT
+
     return (spmd_fft_primitive(cotangent, fft_type=ADJOINT(fft_type), adjoint=not adjoint),)
 
 
@@ -595,10 +597,38 @@ def pfft_impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:
     return spmd_fft_primitive(x, fft_type=fft_type, adjoint=adjoint)
 
 
-@partial(jax.custom_jvp, nondiff_argnums=(1, 2))
+class PfftHiPrim(HiPrim):
+    def __init__(self, x_aval, fft_type: FftType, adjoint: bool):
+        self.in_avals = (x_aval,)
+        self.params = dict(fft_type=fft_type, adjoint=adjoint)
+        self.out_aval = jax.make_jaxpr(self.expand)(x_aval).out_avals[0]
+        super().__init__()
+
+    def expand(self, x):
+        return pfft_impl(x, self.params['fft_type'], self.params['adjoint'])
+
+    def jvp(self, primals, tangents):
+        (x,), (x_dot,) = primals, tangents
+        y = self(x)
+        y_dot = self(x_dot)
+        return y, y_dot
+
+    def vjp_fwd(self, nzs_in, x):
+        return self(x), (self.params['fft_type'], self.params['adjoint'])
+
+    def vjp_bwd_retval(self, res, g):
+        from jaxdecomp._src.fft_utils import ADJOINT
+
+        fft_type, adjoint = res
+        return (PfftHiPrim(jax.typeof(g), ADJOINT(fft_type), not adjoint)(g),)
+
+    def batch_dim_rule(self, axis_data, in_dims):
+        return in_dims[0]
+
+
 def pfft(x: Array, fft_type: FftType, adjoint: bool = False) -> Array:
     """
-    Custom VJP definition for pfft.
+    Perform distributed FFT operation.
 
     Parameters
     ----------
@@ -607,23 +637,11 @@ def pfft(x: Array, fft_type: FftType, adjoint: bool = False) -> Array:
     fft_type : FftType
         Type of FFT operation to perform.
     adjoint : bool, optional
-        Whether to compute the adjoint FFT. Defaults to False.
+        Whether to compute the adjoint FFT, by default False.
 
     Returns
     -------
     Array
-        Resulting array after the pfft operation.
+        Result of the distributed FFT operation.
     """
-    return pfft_impl(x, fft_type=fft_type, adjoint=adjoint)
-
-
-@pfft.defjvp
-def pfft_jvp(fft_type: FftType, adjoint: bool, primals: tuple[Array], tangents: tuple[Array]) -> tuple[Array, Array]:
-    (x,) = primals
-    (x_dot,) = tangents
-
-    primals_out = pfft_impl(x, fft_type=fft_type, adjoint=adjoint)
-
-    tangents_out = pfft_impl(x_dot, fft_type=fft_type, adjoint=adjoint)
-
-    return primals_out, tangents_out
+    return PfftHiPrim(jax.typeof(x), fft_type, adjoint)(x)
