@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from functools import partial
+from math import prod, sqrt
 
 import jax.numpy as jnp
 from jax import jit, lax
@@ -10,7 +11,6 @@ from jaxdecomp._src.cudecomp.fft import pfft as _cudecomp_pfft
 from jaxdecomp._src.fft_utils import FftType
 from jaxdecomp._src.jax import fftfreq as _fftfreq
 from jaxdecomp._src.jax.fft import pfft as _jax_pfft
-from math import prod, sqrt
 
 Shape = Sequence[int]
 
@@ -77,13 +77,12 @@ def _fft_norm(s: tuple[int, ...], func_name: str, norm: str | None) -> Array:
         If an invalid norm value is provided.
     """
     total = prod(s)
-    print(f"Total elements in array: {total}")
     if norm == 'backward':
-        return jnp.array(1) / total if func_name.startswith('i') else jnp.array(1)
+        return 1 / total if func_name.startswith('i') else 1
     elif norm == 'ortho':
-        return jnp.array(1) / sqrt(total)
+        return 1 / sqrt(total)
     elif norm == 'forward':
-        return jnp.array(1) if func_name.startswith('i') else jnp.array(1) / total
+        return 1 if func_name.startswith('i') else 1 / total
     raise ValueError(f'Invalid norm value {norm}; should be "backward", "ortho" or "forward".')
 
 

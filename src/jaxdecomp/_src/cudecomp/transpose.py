@@ -544,8 +544,8 @@ _INV_KIND = {
 class TransposeHiPrim(HiPrim):
     def __init__(self, x_aval, kind: str):
         self.in_avals = (x_aval,)
-        self.out_aval = x_aval
         self.params = dict(kind=kind)
+        self.out_aval = jax.make_jaxpr(self.expand)(x_aval).out_avals[0]
         super().__init__()
 
     def expand(self, x):
@@ -568,6 +568,21 @@ class TransposeHiPrim(HiPrim):
 
 
 def transpose(x: ArrayLike, kind: str) -> Array:
+    """
+    Perform distributed transpose operation using cuDecomp backend.
+
+    Parameters
+    ----------
+    x : ArrayLike
+        Input array.
+    kind : str
+        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x').
+
+    Returns
+    -------
+    Array
+        Transposed array.
+    """
     return TransposeHiPrim(jax.typeof(x), kind)(x)
 
 

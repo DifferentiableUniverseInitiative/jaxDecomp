@@ -543,6 +543,8 @@ def transpose_rule(cotangent: Array, x: Array, fft_type: FftType, adjoint: bool)
     Array
         Resulting array after the transpose operation.
     """
+    from jaxdecomp._src.fft_utils import ADJOINT
+
     return (spmd_fft_primitive(cotangent, fft_type=ADJOINT(fft_type), adjoint=not adjoint),)
 
 
@@ -598,8 +600,8 @@ def pfft_impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:
 class PfftHiPrim(HiPrim):
     def __init__(self, x_aval, fft_type: FftType, adjoint: bool):
         self.in_avals = (x_aval,)
-        self.out_aval = x_aval
         self.params = dict(fft_type=fft_type, adjoint=adjoint)
+        self.out_aval = jax.make_jaxpr(self.expand)(x_aval).out_avals[0]
         super().__init__()
 
     def expand(self, x):
@@ -616,6 +618,7 @@ class PfftHiPrim(HiPrim):
 
     def vjp_bwd_retval(self, res, g):
         from jaxdecomp._src.fft_utils import ADJOINT
+
         fft_type, adjoint = res
         return (PfftHiPrim(jax.typeof(g), ADJOINT(fft_type), not adjoint)(g),)
 
@@ -624,4 +627,21 @@ class PfftHiPrim(HiPrim):
 
 
 def pfft(x: Array, fft_type: FftType, adjoint: bool = False) -> Array:
+    """
+    Perform distributed FFT operation.
+
+    Parameters
+    ----------
+    x : Array
+        Input array.
+    fft_type : FftType
+        Type of FFT operation to perform.
+    adjoint : bool, optional
+        Whether to compute the adjoint FFT, by default False.
+
+    Returns
+    -------
+    Array
+        Result of the distributed FFT operation.
+    """
     return PfftHiPrim(jax.typeof(x), fft_type, adjoint)(x)

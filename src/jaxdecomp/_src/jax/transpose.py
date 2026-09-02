@@ -347,8 +347,8 @@ _INV_KIND = {
 class TransposeHiPrim(HiPrim):
     def __init__(self, x_aval, kind: str):
         self.in_avals = (x_aval,)
-        self.out_aval = x_aval
         self.params = dict(kind=kind)
+        self.out_aval = jax.make_jaxpr(self.expand)(x_aval).out_avals[0]
         super().__init__()
 
     def expand(self, x):
@@ -371,39 +371,23 @@ class TransposeHiPrim(HiPrim):
         return in_dims[0]
 
 
-class TransposeShardHiPrim(HiPrim):
-    def __init__(self, x_aval, kind: str, mesh: Mesh, x_axis_name: str, y_axis_name: str):
-        self.in_avals = (x_aval,)
-        self.out_aval = x_aval
-        self.params = dict(kind=kind, mesh=mesh, x_axis_name=x_axis_name, y_axis_name=y_axis_name)
-        super().__init__()
-
-    def expand(self, x):
-        return per_shard_impl(x, self.params['kind'], self.params['x_axis_name'], self.params['y_axis_name'])
-
-    def jvp(self, primals, tangents):
-        (x,), (x_dot,) = primals, tangents
-        y = self(x)
-        y_dot = self(x_dot)
-        return y, y_dot
-
-    def vjp_fwd(self, nzs_in, x):
-        return self(x), x
-
-    def vjp_bwd_retval(self, res, g):
-        inv_kind = _INV_KIND[self.params['kind']]
-        return (TransposeShardHiPrim(jax.typeof(g), inv_kind, self.params['mesh'], self.params['x_axis_name'], self.params['y_axis_name'])(g),)
-
-    def batch_dim_rule(self, axis_data, in_dims):
-        return in_dims[0]
-
-
 def transpose(x: ArrayLike, kind: str) -> Array:
+    """
+    Perform distributed transpose operation.
+
+    Parameters
+    ----------
+    x : ArrayLike
+        Input array.
+    kind : str
+        Kind of transposition ('x_y', 'y_z', 'z_y', 'y_x', 'x_z', 'z_x').
+
+    Returns
+    -------
+    Array
+        Transposed array.
+    """
     return TransposeHiPrim(jax.typeof(x), kind)(x)
-
-
-def transpose_shard(x: ArrayLike, kind: str, mesh: Mesh, x_axis_name: str, y_axis_name: str) -> Array:
-    return TransposeShardHiPrim(jax.typeof(x), kind, mesh, x_axis_name, y_axis_name)(x)
 
 
 # Custom transposition functions

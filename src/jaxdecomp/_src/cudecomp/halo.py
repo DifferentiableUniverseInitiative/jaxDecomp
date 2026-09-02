@@ -447,4 +447,21 @@ class HaloExchangeHiPrim(HiPrim):
 
 
 def halo_exchange(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> Array:
+    """
+    Perform distributed halo exchange operation using cuDecomp backend.
+
+    Parameters
+    ----------
+    x : Array
+        Input array.
+    halo_extents : HaloExtentType
+        Extents of the halo in X and Y directions.
+    halo_periods : Periodicity
+        Periodicity in X and Y directions.
+
+    Returns
+    -------
+    Array
+        Array after halo exchange.
+    """
     return HaloExchangeHiPrim(jax.typeof(x), halo_extents, halo_periods)(x)
