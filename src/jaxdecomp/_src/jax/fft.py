@@ -524,6 +524,28 @@ def partition(
     return mesh, impl, output_sharding, (input_sharding,)
 
 
+@spmd_fft_primitive.def_transpose_rule
+def transpose_rule(cotangent: Array, x: Array, fft_type: FftType, adjoint: bool) -> tuple[Array]:
+    """
+    Transpose rule for the FFT operation.
+
+    Parameters
+    ----------
+    fft_type : FftType
+        Type of FFT operation to perform.
+    adjoint : bool
+        Whether to compute the adjoint FFT.
+    x : Array
+        Input array.
+
+    Returns
+    -------
+    Array
+        Resulting array after the transpose operation.
+    """
+    return (spmd_fft_primitive(cotangent, fft_type=ADJOINT(fft_type), adjoint=not adjoint),)
+
+
 @spmd_fft_primitive.def_batching_rule
 def batching_rule(batched_args: tuple[Array], batched_axis: tuple[int | None, ...], fft_type: FftType, adjoint: bool) -> tuple[Array, int]:
     """
@@ -593,8 +615,9 @@ class PfftHiPrim(HiPrim):
         return self(x), (self.params['fft_type'], self.params['adjoint'])
 
     def vjp_bwd_retval(self, res, g):
+        from jaxdecomp._src.fft_utils import ADJOINT
         fft_type, adjoint = res
-        return (self(g),)
+        return (PfftHiPrim(jax.typeof(g), ADJOINT(fft_type), not adjoint)(g),)
 
     def batch_dim_rule(self, axis_data, in_dims):
         return in_dims[0]

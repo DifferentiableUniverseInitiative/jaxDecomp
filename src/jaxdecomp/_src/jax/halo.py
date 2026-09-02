@@ -399,6 +399,28 @@ def partition(
     return mesh, impl, input_sharding, (output_sharding,)
 
 
+@spmd_halo_primitive.def_transpose_rule
+def transpose_rule(cotangent: Array, x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> tuple[Array]:
+    """
+    Transpose rule for the FFT operation.
+
+    Parameters
+    ----------
+    fft_type : FftType
+        Type of FFT operation to perform.
+    adjoint : bool
+        Whether to compute the adjoint FFT.
+    x : Array
+        Input array.
+
+    Returns
+    -------
+    Array
+        Resulting array after the transpose operation.
+    """
+    return (spmd_halo_primitive(cotangent, halo_extents=halo_extents, halo_periods=halo_periods),)
+
+
 @spmd_halo_primitive.def_batching_rule
 def batching_rule(
     batched_args: tuple[Array],

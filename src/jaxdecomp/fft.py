@@ -10,6 +10,7 @@ from jaxdecomp._src.cudecomp.fft import pfft as _cudecomp_pfft
 from jaxdecomp._src.fft_utils import FftType
 from jaxdecomp._src.jax import fftfreq as _fftfreq
 from jaxdecomp._src.jax.fft import pfft as _jax_pfft
+from math import prod, sqrt
 
 Shape = Sequence[int]
 
@@ -52,13 +53,13 @@ def _str_to_fft_type(s: str) -> FftType | int:
         raise ValueError(f"Unknown FFT type '{s}'")
 
 
-def _fft_norm(s: Array, func_name: str, norm: str | None) -> Array:
+def _fft_norm(s: tuple[int, ...], func_name: str, norm: str | None) -> Array:
     """
     Compute the normalization factor for FFT operations.
 
     Parameters
     ----------
-    s : Array
+    s : tuple[int, ...]
         Shape of the input array.
     func_name : str
         Name of the FFT function ("fft" or "ifft").
@@ -75,12 +76,14 @@ def _fft_norm(s: Array, func_name: str, norm: str | None) -> Array:
     ValueError
         If an invalid norm value is provided.
     """
+    total = prod(s)
+    print(f"Total elements in array: {total}")
     if norm == 'backward':
-        return 1 / jnp.prod(s) if func_name.startswith('i') else jnp.array(1)
+        return jnp.array(1) / total if func_name.startswith('i') else jnp.array(1)
     elif norm == 'ortho':
-        return 1 / jnp.sqrt(jnp.prod(s))
+        return jnp.array(1) / sqrt(total)
     elif norm == 'forward':
-        return jnp.array(1) if func_name.startswith('i') else 1 / jnp.prod(s)
+        return jnp.array(1) if func_name.startswith('i') else jnp.array(1) / total
     raise ValueError(f'Invalid norm value {norm}; should be "backward", "ortho" or "forward".')
 
 
@@ -133,7 +136,7 @@ def _do_pfft(
     else:
         raise ValueError(f"Unknown backend value '{backend}'")
 
-    transformed *= _fft_norm(jnp.array(arr.shape, dtype=transformed.dtype), func_name, norm)
+    transformed *= _fft_norm(arr.shape, func_name, norm)
     return transformed
 
 

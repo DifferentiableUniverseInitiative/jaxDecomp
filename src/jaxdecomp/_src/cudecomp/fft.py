@@ -441,15 +441,6 @@ def fft_transpose_rule(cotangent: Array, x: Array, fft_type: FftType, adjoint: b
 ad.primitive_transposes[FFTPrimitive.outer_primitive] = fft_transpose_rule
 
 
-def fft_jvp_rule(fft_type: FftType, adjoint: bool, primals, tangents):
-    (x,), (x_dot,) = primals, tangents
-    # Outer primitive is FFT with custom partitioning, JVP is same FFT on tangent
-    return x, FFTPrimitive.outer_primitive.bind(x_dot, fft_type=fft_type, adjoint=adjoint)
-
-
-ad.primitive_jvps[FFTPrimitive.outer_primitive] = fft_jvp_rule
-
-
 @partial(jax.jit, static_argnums=(1, 2))
 def pfft_impl(x: Array, fft_type: FftType, adjoint: bool) -> Array:
     """
@@ -496,12 +487,9 @@ class PfftHiPrim(HiPrim):
         return self.expand(x), (self.params['fft_type'], self.params['adjoint'])
 
     def vjp_bwd_retval(self, res, g):
+        from jaxdecomp._src.fft_utils import ADJOINT
         fft_type, adjoint = res
-        if fft_type == FftType.FFT:
-            fft_type = FftType.IFFT
-        elif fft_type == FftType.IFFT:
-            fft_type = FftType.FFT
-        return (self.expand(g),)
+        return (PfftHiPrim(jax.typeof(g), ADJOINT(fft_type), not adjoint).expand(g),)
 
     def batch_dim_rule(self, axis_data, in_dims):
         raise NotImplementedError('Batching not implemented for cuDecomp FFT')

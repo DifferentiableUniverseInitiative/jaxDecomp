@@ -270,6 +270,25 @@ def partition(
     return mesh, impl, output_sharding, (input_sharding,)
 
 
+@spmd_transpose_primitive.def_transpose_rule
+def vjp_transpose_rule(cotangent: Array, x: Array, kind: str) -> tuple[Array]:
+    match kind:
+        case 'x_y':
+            return (spmd_transpose_primitive(cotangent, kind='y_x'),)
+        case 'y_z':
+            return (spmd_transpose_primitive(cotangent, kind='z_y'),)
+        case 'z_y':
+            return (spmd_transpose_primitive(cotangent, kind='y_z'),)
+        case 'y_x':
+            return (spmd_transpose_primitive(cotangent, kind='x_y'),)
+        case 'x_z':
+            return (spmd_transpose_primitive(cotangent, kind='z_x'),)
+        case 'z_x':
+            return (spmd_transpose_primitive(cotangent, kind='x_z'),)
+        case _:
+            raise ValueError('Invalid kind')
+
+
 @spmd_transpose_primitive.def_batching_rule
 def batching_rule(batched_args: tuple[Array], batched_axis: tuple[int | None, ...], kind: str) -> tuple[Array, int]:
     """
