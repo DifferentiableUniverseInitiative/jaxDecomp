@@ -1,0 +1,42 @@
+name: Toy release wheel build
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-toy-build.yml"
+      - ".github/constraints/cibw-build-constraints.txt"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  manylinux-wheel-smoke:
+    name: manylinux cp313 cibuildwheel smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build wheel
+        uses: pypa/cibuildwheel@v2.23.3
+        env:
+          CIBW_BUILD: "cp313-manylinux_x86_64"
+          CIBW_BUILD_FRONTEND: "build[uv]"
+          CIBW_ENVIRONMENT: >-
+            PIP_ONLY_BINARY=:all:
+            PIP_PREFER_BINARY=1
+            PIP_CONSTRAINT=/project/.github/constraints/cibw-build-constraints.txt
+            UV_CONSTRAINT=/project/.github/constraints/cibw-build-constraints.txt
+            SETUPTOOLS_SCM_PRETEND_VERSION_FOR_JAXDECOMP=0.0.0
+          CIBW_BEFORE_ALL: "git config --global --add safe.directory '*'"
+          CIBW_BUILD_VERBOSITY: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: toy-cibw-wheelhouse
+          path: ./wheelhouse/*.whl
