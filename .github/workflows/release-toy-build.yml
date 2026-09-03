@@ -29,7 +29,7 @@ jobs:
         uses: pypa/cibuildwheel@v2.23.3
         env:
           CIBW_BUILD: "cp313-manylinux_x86_64"
-          CIBW_BUILD_FRONTEND: "build[uv]"
+          CIBW_BUILD_FRONTEND: "build"
           CIBW_ENVIRONMENT: >-
             PIP_ONLY_BINARY=:all:
             PIP_PREFER_BINARY=1

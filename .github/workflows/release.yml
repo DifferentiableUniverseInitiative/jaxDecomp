@@ -30,8 +30,8 @@ jobs:
         uses: pypa/cibuildwheel@v2.23.3
         env:
           CIBW_BUILD: "cp311-manylinux_x86_64 cp312-manylinux_x86_64 cp313-manylinux_x86_64"
-          # Drive scikit-build-core through uv as the in-container build frontend.
-          CIBW_BUILD_FRONTEND: "build[uv]"
+          # Use pip-based build frontend so PIP_* controls (constraints/binary-only) are enforced.
+          CIBW_BUILD_FRONTEND: "build"
           CIBW_ENVIRONMENT: >-
             PIP_ONLY_BINARY=:all:
             PIP_PREFER_BINARY=1
