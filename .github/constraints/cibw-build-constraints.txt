@@ -1,2 +1,3 @@
 # Keep build-time NumPy on a manylinux2014 wheel-backed series for uv/pip inside cibuildwheel.
 numpy<2.3
+ml-dtypes<0.6
