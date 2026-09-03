@@ -35,6 +35,8 @@ jobs:
           CIBW_ENVIRONMENT: >-
             PIP_ONLY_BINARY=:all:
             PIP_PREFER_BINARY=1
+            PIP_CONSTRAINT=/project/.github/constraints/cibw-build-constraints.txt
+            UV_CONSTRAINT=/project/.github/constraints/cibw-build-constraints.txt
             SETUPTOOLS_SCM_PRETEND_VERSION_FOR_JAXDECOMP=${{ steps.version.outputs.value }}
           # Belt-and-suspenders: if PRETEND_VERSION is ever empty, setuptools_scm falls back
           # to `git describe` inside the container (root over a mounted checkout).
