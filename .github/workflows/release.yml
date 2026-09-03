@@ -33,7 +33,8 @@ jobs:
           # Drive scikit-build-core through uv as the in-container build frontend.
           CIBW_BUILD_FRONTEND: "build[uv]"
           CIBW_ENVIRONMENT: >-
-            PIP_ONLY_BINARY=scipy,numpy
+            PIP_ONLY_BINARY=:all:
+            PIP_PREFER_BINARY=1
             SETUPTOOLS_SCM_PRETEND_VERSION_FOR_JAXDECOMP=${{ steps.version.outputs.value }}
           # Belt-and-suspenders: if PRETEND_VERSION is ever empty, setuptools_scm falls back
           # to `git describe` inside the container (root over a mounted checkout).
