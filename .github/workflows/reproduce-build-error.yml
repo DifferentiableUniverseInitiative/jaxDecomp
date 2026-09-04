@@ -1,4 +1,4 @@
-name: Reproduce build error (for testing fix)
+name: Build wheels
 
 on:
   push:
@@ -15,8 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  manylinux-wheel-reproduce:
-    name: Reproduce numpy source-build failure (${{ matrix.python }})
+  manylinux-wheel:
+    name: Build wheels (${{ matrix.python }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -25,14 +25,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: recursive
 
-      - name: Build wheel (broken config)
+      - name: Build wheel
         uses: pypa/cibuildwheel@v2.23.3
         env:
           CIBW_BUILD: "${{ matrix.python }}"
           CIBW_BUILD_FRONTEND: "build[uv]"
+          CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
           CIBW_ENVIRONMENT: >-
+            UV_ONLY_BINARY=scipy,numpy
             PIP_ONLY_BINARY=scipy,numpy
             SETUPTOOLS_SCM_PRETEND_VERSION_FOR_JAXDECOMP=0.0.0
           CIBW_BEFORE_ALL: "git config --global --add safe.directory '*'"
+          CIBW_TEST_SKIP: "*"
           CIBW_BUILD_VERBOSITY: 2
