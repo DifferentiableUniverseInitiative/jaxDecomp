@@ -52,3 +52,48 @@ jobs:
           JAX_PLATFORM_NAME: cpu
           XLA_FLAGS: "--xla_force_host_platform_device_count=8"
         run: uv run pytest -v
+
+  docs:
+    name: Build documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install docs environment
+        run: uv sync --locked --only-group docs --no-install-project
+
+      - name: Build docs with Sphinx
+        run: uv run --no-sync sphinx-build -b html docs docs/_build/html
+
+  build-wheels:
+    name: Build wheels (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["cp312-manylinux_x86_64", "cp313-manylinux_x86_64"]
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build wheel
+        uses: pypa/cibuildwheel@v2.23.3
+        env:
+          CIBW_BUILD: "${{ matrix.python }}"
+          CIBW_BUILD_FRONTEND: "build[uv]"
+          CIBW_ENVIRONMENT: >-
+            PIP_ONLY_BINARY=:all:
+            PIP_PREFER_BINARY=1
+            SETUPTOOLS_SCM_PRETEND_VERSION_FOR_JAXDECOMP=0.0.0
+          CIBW_BEFORE_ALL: "git config --global --add safe.directory '*'"
+          CIBW_TEST_SKIP: "*"
+          CIBW_BUILD_VERBOSITY: 2
