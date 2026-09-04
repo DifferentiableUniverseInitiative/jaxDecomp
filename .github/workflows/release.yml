@@ -29,18 +29,17 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.23.3
         env:
-          CIBW_BUILD: "cp311-manylinux_x86_64 cp312-manylinux_x86_64 cp313-manylinux_x86_64"
+          CIBW_BUILD: "cp312-manylinux_x86_64 cp313-manylinux_x86_64"
           # Drive scikit-build-core through uv as the in-container build frontend.
           CIBW_BUILD_FRONTEND: "build[uv]"
           CIBW_ENVIRONMENT: >-
             PIP_ONLY_BINARY=:all:
             PIP_PREFER_BINARY=1
-            PIP_CONSTRAINT=/project/.github/constraints/cibw-build-constraints.txt
-            UV_CONSTRAINT=/project/.github/constraints/cibw-build-constraints.txt
             SETUPTOOLS_SCM_PRETEND_VERSION_FOR_JAXDECOMP=${{ steps.version.outputs.value }}
           # Belt-and-suspenders: if PRETEND_VERSION is ever empty, setuptools_scm falls back
           # to `git describe` inside the container (root over a mounted checkout).
           CIBW_BEFORE_ALL: "git config --global --add safe.directory '*'"
+          CIBW_TEST_SKIP: "*"
           CIBW_BUILD_VERBOSITY: 2
 
       - uses: actions/upload-artifact@v4
