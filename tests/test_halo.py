@@ -440,6 +440,66 @@ class TestHaloExchangeGrad:
     def test_cudecomp_hessian(self, pdims, use_shardy, axis_type):
         self._run_hessian_test(pdims, 'CUDECOMP', use_shardy, axis_type)
 
+    def _run_linearize_test(self, pdims, backend, use_shardy):
+        """Test that jax.linearize works with halo exchange (the HiPrim `lin`/`linearized` rules).
+
+        The linearized map must agree with the jvp rule (halo exchange is linear) and
+        satisfy the transpose dot-product test ⟨w, J v⟩ == ⟨Jᵀ w, v⟩.
+        """
+        jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
+        halo_size = 2
+
+        halo_x = (halo_size, halo_size) if pdims[0] > 1 else (0, 0)
+        halo_y = (halo_size, halo_size) if pdims[1] > 1 else (0, 0)
+        halo_extents = (halo_x[0], halo_y[0])
+        periodic = (True, True)
+        padding = (halo_x, halo_y, (0, 0))
+
+        def f(arr):
+            return jaxdecomp.halo_exchange(arr, halo_extents=halo_extents, halo_periods=periodic, backend=backend)
+
+        # Small non-distributed array, like the hessian test
+        padded = jnp.pad(
+            jax.random.normal(jax.random.PRNGKey(0), (16, 16, 16), dtype=jnp.float64),
+            padding,
+            mode='linear_ramp',
+            end_values=20,
+        )
+        v = jax.random.normal(jax.random.PRNGKey(1), padded.shape, dtype=padded.dtype)
+
+        # jax.linearize requires the HiPrim `lin`/`linearized` rules
+        _, lin_fn = jax.linearize(f, padded)
+
+        # The linearized map must agree with the jvp rule (halo exchange is linear)
+        _, Jv_jvp = jax.jvp(f, (padded,), (v,))
+        Jv_lin = lin_fn(v)
+        assert assert_allclose(Jv_jvp, Jv_lin, rtol=1e-5, atol=1e-5)
+
+        # Transpose dot-product test: Re[wᵀ(J v)] == (Jᵀ w)ᵀv — the real part of the bilinear
+        # pairing, which is the transpose contract jax.linear_transpose defines for complex
+        # outputs on real inputs (the returned cotangent Jᵀ w is real).
+        w = jax.random.normal(jax.random.PRNGKey(2), Jv_lin.shape, dtype=Jv_lin.dtype)
+        _, vjp_fn = jax.vjp(f, padded)
+        (JTw,) = vjp_fn(w)
+        assert assert_allclose(jnp.sum(w * Jv_lin).real, jnp.sum(JTw * v), rtol=1e-5, atol=1e-5)
+
+    @pytest.mark.parametrize('use_shardy', use_shardy)
+    @pytest.mark.parametrize('pdims', pdims)
+    def test_jax_linearize(self, pdims, use_shardy):
+        """Test that jax.linearize works with halo exchange (JAX backend)."""
+        self._run_linearize_test(pdims, 'JAX', use_shardy)
+
+    @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
+    @pytest.mark.parametrize('use_shardy', use_shardy)
+    @pytest.mark.parametrize('pdims', pdims)
+    def test_cudecomp_linearize(self, pdims, use_shardy):
+        """Test that jax.linearize works with halo exchange (cuDecomp backend)."""
+        self._run_linearize_test(pdims, 'CUDECOMP', use_shardy)
+
     @pytest.mark.parametrize('use_shardy', use_shardy)  # Test with and without shardy
     @pytest.mark.parametrize('pdims', pdims)
     def test_jax_halo(

@@ -309,6 +309,54 @@ class TestFFTsGrad:
         global_shape = (4, 4, 4)
         self._run_hessian_test(pdims, global_shape, local_transpose, 'cuDecomp', use_shardy, axis_type)
 
+    def _run_linearize_test(self, local_transpose, use_shardy, backend):
+        """Test that jax.linearize works with FFT (the HiPrim `lin`/`linearized` rules).
+
+        The linearized map must agree with the jvp rule (the FFT is linear) and satisfy
+        the transpose dot-product test ⟨w, J v⟩ == ⟨Jᵀ w, v⟩.
+        """
+        if use_shardy and not ALLOW_SHARDY_PARTITIONER:
+            pytest.skip(reason='Shardy partitioner is not supported in this JAX version use at least JAX 0.7.0')
+
+        jaxdecomp.config.update('transpose_axis_contiguous', local_transpose)
+        jax.config.update('jax_use_shardy_partitioner', use_shardy)
+
+        def f(arr):
+            return jaxdecomp.fft.pfft3d(arr, backend=backend)
+
+        # Small non-distributed array, like the hessian test
+        x = jax.random.normal(jax.random.PRNGKey(0), (4, 4, 4), dtype=jnp.float64)
+        v = jax.random.normal(jax.random.PRNGKey(1), x.shape, dtype=x.dtype)
+
+        # jax.linearize requires the HiPrim `lin`/`linearized` rules
+        _, lin_fn = jax.linearize(f, x)
+
+        # The linearized map must agree with the jvp rule (the FFT is linear)
+        _, Jv_jvp = jax.jvp(f, (x,), (v,))
+        Jv_lin = lin_fn(v)
+        assert assert_allclose(Jv_jvp, Jv_lin, rtol=1e-5, atol=1e-5)
+
+        # Transpose dot-product test: Re[wᵀ(J v)] == (Jᵀ w)ᵀv — the real part of the bilinear
+        # pairing, which is the transpose contract jax.linear_transpose defines for complex
+        # outputs on real inputs (the returned cotangent Jᵀ w is real).
+        w = jax.random.normal(jax.random.PRNGKey(2), Jv_lin.shape, dtype=Jv_lin.dtype)
+        _, vjp_fn = jax.vjp(f, x)
+        (JTw,) = vjp_fn(w)
+        assert assert_allclose(jnp.sum(w * Jv_lin).real, jnp.sum(JTw * v), rtol=1e-5, atol=1e-5)
+
+    @pytest.mark.parametrize('use_shardy', use_shardy)
+    @pytest.mark.parametrize('local_transpose', local_transpose)
+    def test_jax_linearize(self, local_transpose, use_shardy):
+        """Test that jax.linearize works with FFT (JAX backend)."""
+        self._run_linearize_test(local_transpose, use_shardy, 'jax')
+
+    @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
+    @pytest.mark.parametrize('use_shardy', use_shardy)
+    @pytest.mark.parametrize('local_transpose', local_transpose)
+    def test_cudecomp_linearize(self, local_transpose, use_shardy):
+        """Test that jax.linearize works with FFT (cuDecomp backend)."""
+        self._run_linearize_test(local_transpose, use_shardy, 'cuDecomp')
+
     @pytest.mark.skipif(not is_on_cluster(), reason='Only run on cluster')
     @pytest.mark.parametrize('local_transpose', local_transpose)  # Test with and without local transpose
     @pytest.mark.parametrize('pdims', decomp)  # Test with Slab and Pencil decompositions

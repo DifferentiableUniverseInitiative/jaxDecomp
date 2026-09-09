@@ -5,6 +5,7 @@ from jax import ShapeDtypeStruct, lax
 from jax._src.interpreters import batching
 from jax.core import ShapedArray
 from jax.experimental.hijax import VJPHiPrimitive as HiPrim
+from jax.experimental.hijax import linearize_from_jvp
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
@@ -507,6 +508,8 @@ class HaloExchangeHiPrim(HiPrim):
         y = self(x)
         y_dot = self(x_dot)
         return y, y_dot
+
+    lin, linearized = linearize_from_jvp
 
     def vjp_fwd(self, nzs_in, x):
         return self(x), x

@@ -10,6 +10,7 @@ from jax._src.interpreters import ad, mlir
 from jax._src.typing import Array
 from jax.core import ShapedArray
 from jax.experimental.hijax import VJPHiPrimitive as HiPrim
+from jax.experimental.hijax import linearize_from_jvp
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp
@@ -435,6 +436,8 @@ class HaloExchangeHiPrim(HiPrim):
         y = self.expand(x)
         y_dot = self.expand(x_dot)
         return y, y_dot
+
+    lin, linearized = linearize_from_jvp
 
     def vjp_fwd(self, nzs_in, x):
         return self.expand(x), x
