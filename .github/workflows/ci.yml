@@ -25,6 +25,7 @@ jobs:
   test:
     name: Run tests on Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -48,10 +49,13 @@ jobs:
       - name: Run tests
         # --doctest-modules imports jax at collection time, before conftest's session
         # fixture runs, so the device-count flags must be set in the environment here.
+        # JAXDECOMP_SKIP_PRIME_TESTS: the prime-sized FFTs deadlock XLA's CPU collective
+        # rendezvous on 4-core runners (thread starvation), see the conftest note.
         env:
           JAX_PLATFORM_NAME: cpu
           XLA_FLAGS: "--xla_force_host_platform_device_count=8"
-        run: uv run pytest -v
+          JAXDECOMP_SKIP_PRIME_TESTS: '1'
+        run: uv run pytest -v --timeout=600 --timeout-method=thread
 
   docs:
     name: Build documentation
