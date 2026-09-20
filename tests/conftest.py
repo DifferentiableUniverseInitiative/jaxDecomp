@@ -6,6 +6,12 @@ import pytest
 setup_done = False
 on_cluster = False
 
+# XLA CPU collective starvation: on core-limited machines (e.g. 4-core CI runners), the
+# prime-sized shapes exercise long-running all_to_all collectives that deadlock the XLA CPU
+# rendezvous. CI sets JAXDECOMP_SKIP_PRIME_TESTS=1 to skip them; local machines and the
+# cluster (where the tests pass and matter) run them by default.
+skip_prime_tests = os.environ.get('JAXDECOMP_SKIP_PRIME_TESTS', '0') == '1'
+
 
 def is_on_cluster():
     global on_cluster

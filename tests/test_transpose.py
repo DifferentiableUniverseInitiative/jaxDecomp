@@ -8,6 +8,7 @@ from conftest import (
     create_spmd_array,
     initialize_distributed,
     is_on_cluster,
+    skip_prime_tests,
 )
 
 initialize_distributed()
@@ -45,7 +46,17 @@ pencil_1 = (size // 2, size // (size // 2))  # 2x2 for V100 and 4x2 for A100
 pencil_2 = (size // (size // 2), size // 2)  # 2x2 for V100 and 2x4 for A100
 
 decomp = [(size, 1), (1, size), pencil_1, pencil_2]
-global_shapes = [(8, 16, 32), (8, 8, 8), (29 * size, 19 * size, 17 * size)]
+global_shapes = [
+    pytest.param((8, 16, 32), id='8x16x32'),
+    pytest.param((8, 8, 8), id='8x8x8'),
+    pytest.param(
+        (29 * size, 19 * size, 17 * size),
+        id='prime_sizes',
+        marks=pytest.mark.skipif(
+            skip_prime_tests, reason='prime shapes deadlock XLA CPU collectives on core-limited runners (JAXDECOMP_SKIP_PRIME_TESTS=1)'
+        ),
+    ),
+]
 # Cubes, non-cubes and primes
 local_transpose = [
     pytest.param(False, id='no_local_transpose'),
