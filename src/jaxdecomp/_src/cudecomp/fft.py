@@ -9,8 +9,7 @@ from jax import ShapeDtypeStruct
 from jax._src.interpreters import ad, mlir
 from jax._src.numpy.util import promote_dtypes_complex
 from jax.core import ShapedArray
-from jax.experimental.hijax import VJPHiPrimitive as HiPrim
-from jax.experimental.hijax import linearize_from_jvp
+from jax.experimental.hijax import HiPrim, linearize_from_jvp
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from jaxdecomplib import _jaxdecomp

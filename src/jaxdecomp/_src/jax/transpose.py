@@ -5,8 +5,7 @@ from jax import ShapeDtypeStruct, lax
 from jax._src.interpreters import batching
 from jax._src.typing import Array, ArrayLike
 from jax.core import ShapedArray
-from jax.experimental.hijax import VJPHiPrimitive as HiPrim
-from jax.experimental.hijax import linearize_from_jvp
+from jax.experimental.hijax import HiPrim, linearize_from_jvp
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
