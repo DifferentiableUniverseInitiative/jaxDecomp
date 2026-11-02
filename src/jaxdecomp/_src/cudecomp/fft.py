@@ -494,7 +494,7 @@ class PfftHiPrim(HiPrim):
         fft_type, adjoint = res
         return (PfftHiPrim(jax.typeof(g), ADJOINT(fft_type), not adjoint).expand(g),)
 
-    def batch_dim_rule(self, axis_data, in_dims):
+    def batch(self, axis_data, args, dims):
         raise NotImplementedError('Batching not implemented for cuDecomp FFT')
 
 

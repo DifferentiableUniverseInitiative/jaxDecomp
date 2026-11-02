@@ -444,7 +444,7 @@ class HaloExchangeHiPrim(HiPrim):
     def vjp_bwd_retval(self, res, g):
         return (self.expand(g),)
 
-    def batch_dim_rule(self, axis_data, in_dims):
+    def batch(self, axis_data, args, dims):
         raise NotImplementedError('Batching not implemented for cuDecomp halo exchange')
 
 
