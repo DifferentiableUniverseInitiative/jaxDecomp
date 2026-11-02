@@ -32,6 +32,7 @@ classifiers = [
 dependencies = [
   "jaxtyping>=0.2.0",
   "jax>=0.11.2",
+  "packaging",
 ]
 
 [project.optional-dependencies]

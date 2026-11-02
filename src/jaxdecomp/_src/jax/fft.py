@@ -624,8 +624,12 @@ class PfftHiPrim(HiPrim):
         fft_type, adjoint = res
         return (PfftHiPrim(jax.typeof(g), ADJOINT(fft_type), not adjoint)(g),)
 
-    def batch_dim_rule(self, axis_data, in_dims):
-        return in_dims[0]
+    def batch(self, axis_data, args, dims):
+        (x,), (bd,) = args, dims
+        if bd is None:  # input not batched
+            return self(x), None
+        x = batching.moveaxis(x, bd, 0)
+        return PfftHiPrim(jax.typeof(x), **self.params)(x), 0
 
 
 def pfft(x: Array, fft_type: FftType, adjoint: bool = False) -> Array:

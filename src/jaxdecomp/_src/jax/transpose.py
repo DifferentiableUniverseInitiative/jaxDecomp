@@ -369,8 +369,12 @@ class TransposeHiPrim(HiPrim):
         inv_kind = _INV_KIND[self.params['kind']]
         return (TransposeHiPrim(jax.typeof(g), inv_kind)(g),)
 
-    def batch_dim_rule(self, axis_data, in_dims):
-        return in_dims[0]
+    def batch(self, axis_data, args, dims):
+        (x,), (bd,) = args, dims
+        if bd is None:  # input not batched
+            return self(x), None
+        x = batching.moveaxis(x, bd, 0)
+        return TransposeHiPrim(jax.typeof(x), **self.params)(x), 0
 
 
 def transpose(x: ArrayLike, kind: str) -> Array:

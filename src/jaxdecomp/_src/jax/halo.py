@@ -516,8 +516,12 @@ class HaloExchangeHiPrim(HiPrim):
     def vjp_bwd_retval(self, res, g):
         return (self(g),)
 
-    def batch_dim_rule(self, axis_data, in_dims):
-        return in_dims[0]
+    def batch(self, axis_data, args, dims):
+        (x,), (bd,) = args, dims
+        if bd is None:  # input not batched
+            return self(x), None
+        x = batching.moveaxis(x, bd, 0)
+        return HaloExchangeHiPrim(jax.typeof(x), **self.params)(x), 0
 
 
 def halo_exchange(x: Array, halo_extents: HaloExtentType, halo_periods: Periodicity) -> Array:
